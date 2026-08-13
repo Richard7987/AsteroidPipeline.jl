@@ -11,10 +11,11 @@ Cross-match candidate tracklets against a known-object catalog
 known objects from candidates warranting human verification.
 
 `candidates` is an iterable of rows with `id`, `ra`, `dec` fields (degrees,
-J2000). SkyBoT additionally requires an `epoch` field (Julian Date) on each
-row, since it computes solar-system-object ephemerides for a specific
-instant rather than querying a static catalog; `:vsx` and `:simbad` are
-queried in a single batched request via the CDS X-Match service.
+J2000), such as the table returned by [`astrometric_calibrate`](@ref).
+SkyBoT additionally requires an `epoch` field (Julian Date) on each row,
+since it computes solar-system-object ephemerides for a specific instant
+rather than querying a static catalog; `:vsx` and `:simbad` are queried in
+a single batched request via the CDS X-Match service.
 
 Returns a table with one row per (candidate, catalog match) pair found
 within `radius`. Candidate `id`s absent from the returned table have no

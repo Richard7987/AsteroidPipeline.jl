@@ -1,6 +1,7 @@
 using AsteroidPipeline
 using TypedTables
 using HTTP
+using WCS
 using Random
 using Test
 
@@ -40,6 +41,30 @@ using Test
 
         @test isempty(link_candidates([frame1, frame2, frame3], timestamps; max_speed=0.1))
         @test_throws ArgumentError link_candidates([frame1, frame2], [0.0, 0.0])
+    end
+
+    @testset "astrometry" begin
+        wcs = WCSTransform(2; crpix=[500.0, 500.0], crval=[150.0, 20.0],
+                            cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+
+        ra, dec = pix_to_sky(wcs, 500.0, 500.0)
+        @test ra ≈ 150.0 atol=1e-9
+        @test dec ≈ 20.0 atol=1e-9
+
+        loaded = load_wcs(WCS.to_header(wcs))
+        ra2, dec2 = pix_to_sky(loaded, 500.0, 500.0)
+        @test ra2 ≈ ra atol=1e-9
+        @test dec2 ≈ dec atol=1e-9
+
+        tracklets = [[(frame=1, x=500.0, y=500.0), (frame=2, x=501.0, y=500.0)]]
+        timestamps = [2460000.5, 2460000.51]
+        candidates = astrometric_calibrate(tracklets, [wcs, wcs], timestamps)
+
+        @test length(candidates) == 2
+        @test all(==(1), candidates.id)
+        @test candidates[1].ra ≈ 150.0 atol=1e-9
+        @test candidates[2].epoch == timestamps[2]
+        @test candidates[2].ra != candidates[1].ra
     end
 
     @testset "crossmatch_catalog" begin
