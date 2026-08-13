@@ -1,0 +1,21 @@
+name = "AsteroidPipeline"
+uuid = "1001636e-a0d1-496e-b23d-cef10bc3cdca"
+version = "0.1.0"
+authors = ["Alejandro <anything.la@tuta.com>"]
+
+[deps]
+FITSIO = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
+LombScargle = "fc60dff9-86e7-5f2f-a8a0-edeadbb75bd9"
+Photometry = "af68cb61-81ac-52ed-8703-edc140936be4"
+
+[compat]
+FITSIO = "0.17.5"
+LombScargle = "1.0.3"
+Photometry = "0.9.8"
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

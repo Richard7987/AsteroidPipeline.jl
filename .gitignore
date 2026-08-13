@@ -1,0 +1,9 @@
+Manifest.toml
+/data/
+*.fits
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+.vscode/
+result
+result-*
