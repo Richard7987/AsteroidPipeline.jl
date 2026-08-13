@@ -3,6 +3,9 @@ module AsteroidPipeline
 using FITSIO
 using Photometry
 using LombScargle
+using HTTP
+using CSV
+using TypedTables: Table
 
 include("detection.jl")
 include("linking.jl")

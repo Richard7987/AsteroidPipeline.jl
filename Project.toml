@@ -4,18 +4,25 @@ version = "0.1.0"
 authors = ["Alejandro <anything.la@tuta.com>"]
 
 [deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 FITSIO = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 LombScargle = "fc60dff9-86e7-5f2f-a8a0-edeadbb75bd9"
 Photometry = "af68cb61-81ac-52ed-8703-edc140936be4"
+TypedTables = "9d95f2ec-7b3d-5a63-8d20-e2491e220bb9"
 
 [compat]
+CSV = "0.10.16"
 FITSIO = "0.17.5"
+HTTP = "2.6.4"
 LombScargle = "1.0.3"
 Photometry = "0.9.8"
+TypedTables = "1.4.6"
 julia = "1.10"
 
 [extras]
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["Random", "Test"]
