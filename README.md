@@ -27,6 +27,16 @@ Early development. `detect_sources`, `link_candidates`, the WCS
 calibration step, and `crossmatch_catalog` are implemented; they have not
 yet been run end-to-end on a real IASC dataset.
 
+## Known limitations
+
+- **No plate-solving fallback.** `load_wcs` only parses a WCS solution
+  already present in the FITS header; it cannot derive one from an
+  unsolved frame. IASC campaign frames are generally pre-solved, so this
+  is not currently blocking, but it will need addressing before the
+  pipeline can be used on frames from other sources (e.g. own
+  blazar/exoplanet-timing imaging). See the `TODO` on `load_wcs` in
+  `src/astrometry.jl` for candidate approaches.
+
 ## Installation
 
 ```julia
