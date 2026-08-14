@@ -18,14 +18,19 @@ The pipeline processes sequences of FITS frames from a survey field to:
    SIMBAD — to separate previously cataloged objects from candidates that
    warrant human verification (`crossmatch_catalog`).
 
+`run_pipeline` runs steps 1-3 end to end on a sequence of FITS file paths,
+returning a candidate table ready for `crossmatch_catalog`.
+
 Planned extensions: variable-star and transient detection, and rotation
 period recovery via Lomb-Scargle periodograms for confirmed discoveries.
 
 ## Status
 
 Early development. `detect_sources`, `link_candidates`, the WCS
-calibration step, and `crossmatch_catalog` are implemented; they have not
-yet been run end-to-end on a real IASC dataset.
+calibration step, and `crossmatch_catalog` are implemented and wired
+together end to end in `run_pipeline`, validated against synthetic FITS
+frames with a known injected source track. Not yet run on a real IASC
+dataset.
 
 ## Known limitations
 

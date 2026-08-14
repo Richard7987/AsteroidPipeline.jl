@@ -2,6 +2,7 @@ using AsteroidPipeline
 using TypedTables
 using HTTP
 using WCS
+using FITSIO
 using Random
 using Test
 
@@ -65,6 +66,56 @@ using Test
         @test candidates[1].ra ≈ 150.0 atol=1e-9
         @test candidates[2].epoch == timestamps[2]
         @test candidates[2].ra != candidates[1].ra
+    end
+
+    @testset "run_pipeline" begin
+        mktempdir() do dir
+            nx, ny = 80, 60  # deliberately non-square, to catch axis-order bugs
+            wcs = WCSTransform(2; crpix=[nx / 2, ny / 2], crval=[150.0, 20.0],
+                                cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+
+            # true asteroid track, in FITS pixel coordinates (x, y differ so a
+            # transposed axis order would be caught)
+            x0, y0, dx, dy = 20.0, 45.0, 5.0, -3.0
+            mjd0 = 60000.0
+
+            Random.seed!(2)
+            paths = String[]
+            for k in 0:2
+                raw = 100.0 .+ 5.0 .* randn(nx, ny)  # FITS-native (x, y) layout
+                xk, yk = x0 + k * dx, y0 + k * dy
+                for i in 1:nx, j in 1:ny
+                    r2 = (i - xk)^2 + (j - yk)^2
+                    raw[i, j] += 500.0 * exp(-r2 / (2 * 2.0^2))
+                end
+
+                header = FITSHeader(
+                    ["MJD-OBS", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2",
+                     "CDELT1", "CDELT2", "CTYPE1", "CTYPE2"],
+                    Any[mjd0 + k * 1e-3, wcs.crpix[1], wcs.crpix[2], wcs.crval[1], wcs.crval[2],
+                        wcs.cdelt[1], wcs.cdelt[2], wcs.ctype[1], wcs.ctype[2]],
+                    fill("", 9),
+                )
+
+                path = joinpath(dir, "frame$k.fits")
+                FITS(path, "w") do f
+                    write(f, raw; header=header)
+                end
+                push!(paths, path)
+            end
+
+            candidates = run_pipeline(paths; threshold=5.0, match_radius=1.0)
+
+            @test length(candidates) == 3
+            @test length(unique(candidates.id)) == 1
+            @test sort(candidates.frame) == [1, 2, 3]
+
+            by_frame = Dict(row.frame => row for row in candidates)
+            @test by_frame[1].x ≈ x0 atol=1.0
+            @test by_frame[1].y ≈ y0 atol=1.0
+            @test by_frame[3].x ≈ x0 + 2dx atol=1.0
+            @test by_frame[3].y ≈ y0 + 2dy atol=1.0
+        end
     end
 
     @testset "crossmatch_catalog" begin
