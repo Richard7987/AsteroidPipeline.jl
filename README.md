@@ -29,8 +29,17 @@ period recovery via Lomb-Scargle periodograms for confirmed discoveries.
 Early development. `detect_sources`, `link_candidates`, the WCS
 calibration step, and `crossmatch_catalog` are implemented and wired
 together end to end in `run_pipeline`, validated against synthetic FITS
-frames with a known injected source track. Not yet run on a real IASC
-dataset.
+frames with a known injected source track, and exercised against real
+public survey data (see `examples/real_data_demo.jl`). Not yet run on a
+real IASC dataset.
+
+Running the pipeline against real ZTF frames (rather than synthetic ones)
+surfaced two real bugs neither the synthetic tests nor casual code review
+caught, both now fixed with regression tests: an empty cross-match result
+crashing table construction, and `crossmatch_catalog(...; :skybot)`
+silently returning zero matches on every real call because Julian Date
+epochs (~2.4e6) print in scientific notation by default, which SkyBoT's
+API rejects as an empty epoch.
 
 ## Known limitations
 
@@ -41,6 +50,25 @@ dataset.
   pipeline can be used on frames from other sources (e.g. own
   blazar/exoplanet-timing imaging). See the `TODO` on `load_wcs` in
   `src/astrometry.jl` for candidate approaches.
+- **No difference imaging.** `detect_sources` runs directly on science
+  frames rather than on a science-minus-reference difference image, so it
+  is limited to sources well above the field's own background noise.
+  Surveys like ZTF rely on subtracting a deep reference image to detect
+  much fainter moving objects; see `examples/real_data_demo.jl` for a
+  concrete case where this limit is the difference between recovering a
+  known Mv ~ 20.7 asteroid or not.
+
+## Example: real data
+
+`examples/real_data_demo.jl` runs the full pipeline against a real ZTF
+(Zwicky Transient Facility) same-night exposure triplet, then
+cross-matches the resulting candidates against SkyBoT. Fetch the data
+first (public, no authentication required):
+
+```
+examples/fetch_data.sh
+julia --project=. examples/real_data_demo.jl
+```
 
 ## Installation
 

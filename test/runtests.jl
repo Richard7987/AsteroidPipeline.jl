@@ -130,6 +130,37 @@ using Test
             e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
             @test_skip "network unavailable"
         end
+
+        try
+            # A known object (127319 "2002 JB99") ~134" from this position
+            # at this epoch (verified independently against SkyBoT). This
+            # is a positive control: it caught a real bug where the Julian
+            # Date epoch, formatted with Julia's default Float64 `string`,
+            # rendered in scientific notation (e.g. "2.46e6") and SkyBoT
+            # silently rejected it as empty, making every match vanish
+            # regardless of true content — an all-empty test wouldn't have
+            # caught this, since it can't distinguish "correctly empty"
+            # from "silently broken".
+            known = [(id=1, ra=36.521300910000, dec=2.127107410000, epoch=2459288.617372700)]
+            matches = crossmatch_catalog(known, :skybot; radius=200.0)
+            @test any(==("2002 JB99"), matches.name)
+        catch e
+            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            @test_skip "network unavailable"
+        end
+
+        try
+            # near the celestial pole, an epoch/radius/id chosen so no
+            # minor planet falls inside: regression test for an empty
+            # result crashing Table construction (found via real ZTF data).
+            empty_candidates = [(id=1, ra=0.0, dec=89.9, epoch=2459288.6174)]
+            matches = crossmatch_catalog(empty_candidates, :skybot; radius=1.0)
+            @test length(matches) == 0
+            @test isempty(matches.id)
+        catch e
+            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            @test_skip "network unavailable"
+        end
     end
 
 end

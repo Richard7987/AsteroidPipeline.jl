@@ -58,20 +58,37 @@ end
 
 function _crossmatch_skybot(candidates, radius::Real)
     radius_deg = radius / 3600
-    rows = NamedTuple[]
+
+    id = Int[]
+    name = String[]
+    ra = Float64[]
+    dec = Float64[]
+    class = String[]
+    mv = Float64[]
+    distance_arcsec = Float64[]
 
     for c in candidates
         query = Dict(
             "-ra" => string(c.ra), "-dec" => string(c.dec), "-rd" => string(radius_deg),
-            "-ep" => string(c.epoch), "-mime" => "text", "-output" => "object",
+            # Julian Dates are ~2.4e6, which Julia's default Float64 printing
+            # renders in scientific notation (e.g. "2.4592886174e6"); SkyBoT
+            # rejects that outright as an empty/null epoch, so every match
+            # silently came back empty. @sprintf forces fixed-point.
+            "-ep" => @sprintf("%.6f", c.epoch), "-mime" => "text", "-output" => "object",
         )
         response = HTTP.get(_SKYBOT_URL; query=query)
         for match in _parse_skybot(String(response.body))
-            push!(rows, merge((id=c.id,), match))
+            push!(id, c.id)
+            push!(name, match.name)
+            push!(ra, match.ra)
+            push!(dec, match.dec)
+            push!(class, match.class)
+            push!(mv, match.mv)
+            push!(distance_arcsec, match.distance_arcsec)
         end
     end
 
-    return Table(rows)
+    return Table(; id, name, ra, dec, class, mv, distance_arcsec)
 end
 
 function _parse_skybot(text::AbstractString)
