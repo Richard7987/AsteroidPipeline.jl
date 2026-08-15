@@ -44,6 +44,42 @@ using Reproject
 
         @test isempty(link_candidates([frame1, frame2, frame3], timestamps; max_speed=0.1))
         @test_throws ArgumentError link_candidates([frame1, frame2], [0.0, 0.0])
+
+        # velocity refit: frame 2's position has centroiding-like noise
+        # ((+0.5,-0.3) off true (15,7)), so the 2-point seed velocity
+        # (5.5,-3.3) drifts from the true (5,-3) enough that its
+        # extrapolation misses frame 5 by 2.33 px — outside match_radius.
+        # Only a refit (least squares over the seed's own matched points,
+        # which pulls the fit back toward the 4 exact points) recovers it.
+        noisy1 = Table(x=[10.0], y=[10.0])
+        noisy2 = Table(x=[15.5], y=[6.7])
+        noisy3 = Table(x=[20.0], y=[4.0])
+        noisy4 = Table(x=[25.0], y=[1.0])
+        noisy5 = Table(x=[30.0], y=[-2.0])
+        noisy_ts = [0.0, 1.0, 2.0, 3.0, 4.0]
+
+        refit_tracklets = link_candidates([noisy1, noisy2, noisy3, noisy4, noisy5], noisy_ts;
+                                           match_radius=2.0, min_frames=5)
+        @test length(refit_tracklets) == 1
+        @test length(refit_tracklets[1]) == 5
+        @test refit_tracklets[1][end].frame == 5
+        @test [p.frame for p in refit_tracklets[1]] == 1:5  # sorted by frame
+
+        # If the refit's own velocity would exceed max_speed, the refit is
+        # discarded and the tracklet keeps its original (already
+        # max_speed-checked) seed points, rather than being dropped
+        # entirely — a seed under-estimating speed (frame 2 offset toward
+        # frame 1: (-1.0,+0.6) off true (15,7)) passes max_speed=5.0 at
+        # ~4.66, but refitting with the exact frame 3 point pulls the
+        # velocity back toward the true ~5.83, which exceeds it.
+        under1 = Table(x=[10.0], y=[10.0])
+        under2 = Table(x=[14.0], y=[7.6])
+        under3 = Table(x=[20.0], y=[4.0])
+        under_tracklets = link_candidates([under1, under2, under3], [0.0, 1.0, 2.0];
+                                           match_radius=3.0, min_frames=1, max_speed=5.0)
+        @test length(under_tracklets) == 1
+        @test length(under_tracklets[1]) == 3
+        @test under_tracklets[1][2].x == 14.0 && under_tracklets[1][2].y == 7.6  # unrefit seed point kept
     end
 
     @testset "astrometry" begin
@@ -291,9 +327,16 @@ using Reproject
             psf = estimate_psf(image; threshold=20.0, min_separation=15.0)
             reference = (image=image, sigma=sigma, mask=mask, psf=psf, wcs=sci_wcs)
 
+            # quality_max_std=Inf: this test is about NaN-border
+            # sanitization under dithering, not the quality gate — at this
+            # image's small (100x100) size, the gate's plain-std metric
+            # would otherwise be skewed by this test's own genuine
+            # injected source (see "run_pipeline quality gate" below,
+            # which is sized specifically to test the gate correctly).
             candidates = run_pipeline(scipaths; threshold=6.0, match_radius=2.0,
                                        reference=reference,
-                                       psf_threshold=20.0, psf_min_separation=15.0)
+                                       psf_threshold=20.0, psf_min_separation=15.0,
+                                       quality_max_std=Inf)
 
             @test length(unique(candidates.id)) >= 1
             @test !any(isnan, candidates.x) && !any(isnan, candidates.ra)
@@ -310,6 +353,90 @@ using Reproject
                 @test by_frame[3].x ≈ x0 + 2dx - 4.0 * 2 atol=1.5
                 @test by_frame[3].y ≈ y0 + 2dy - (-3.0 * 2) atol=1.5
             end
+        end
+    end
+
+    @testset "run_pipeline quality gate" begin
+        mktempdir() do dir
+            # 600x600, not the 100x100 used elsewhere in this file: this
+            # gate uses plain Statistics.std (see src/pipeline.jl for why
+            # — a MAD-based spread turned out blind to the real anomaly it
+            # exists to catch), and a plain std over a *small* image is
+            # skewed by wherever a genuine bright source happens to be,
+            # which would wrongly penalize the very detection this
+            # pipeline exists to make. At 100x100 a real ~60 sigma source
+            # pushed a clean frame's std to ~4; at 600x600 (the same
+            # source, now a much smaller fraction of the image, closer to
+            # real ~10^6 px ZTF data) it stays ~1.1, correctly separated
+            # from the deliberately-bad frame's ~3.5.
+            nx, ny = 600, 600
+            wcs = WCSTransform(2; crpix=[nx / 2, ny / 2], crval=[150.0, 20.0],
+                                cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+            header(mjd) = FITSHeader(
+                ["MJD-OBS", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2",
+                 "CTYPE1", "CTYPE2", "GAIN", "MAGZP"],
+                Any[mjd, wcs.crpix[1], wcs.crpix[2], wcs.crval[1], wcs.crval[2],
+                    wcs.cdelt[1], wcs.cdelt[2], wcs.ctype[1], wcs.ctype[2], 1.0, 25.0],
+                fill("", 11),
+            )
+            star!(img, cx, cy, flux; sigma=1.8) = for i in 1:size(img, 1), j in 1:size(img, 2)
+                r2 = (i - cx)^2 + (j - cy)^2
+                img[i, j] += flux * exp(-r2 / (2 * sigma^2))
+            end
+
+            Random.seed!(17)
+            refpaths = String[]
+            for k in 1:6
+                img = 100.0 .+ 3.0 .* randn(nx, ny)
+                star!(img, 300.0, 300.0, 2000.0)
+                path = joinpath(dir, "ref$k.fits")
+                FITS(path, "w") do f
+                    write(f, img; header=header(59000.0 + k))
+                end
+                push!(refpaths, path)
+            end
+
+            # Frames 1-2: clean, plus a genuine bright transient (250 flux,
+            # present in science only) — must NOT trip the gate. Frame 3:
+            # clean pixel noise plus a broad, low-contrast "glow" patch — a
+            # stand-in for the real anomalous-frame case in git log
+            # `3e31b95` (a spatially localized issue, not simply higher
+            # uniform noise, which zogy_subtract's sigma_n already corrects
+            # for and so would *not* trip this gate).
+            x0, y0 = 450.0, 150.0
+            scipaths = String[]
+            for k in 1:3
+                img = 100.0 .+ 3.0 .* randn(nx, ny)
+                star!(img, 300.0, 300.0, 2000.0)
+                star!(img, x0, y0, 250.0)
+                k == 3 && star!(img, 150.0, 450.0, 60.0; sigma=20.0)
+                path = joinpath(dir, "sci$k.fits")
+                FITS(path, "w") do f
+                    write(f, img; header=header(60000.0 + (k - 1) * 1e-3))
+                end
+                push!(scipaths, path)
+            end
+
+            sci_wcs = load_frame(scipaths[1]).wcs
+            refs = [load_frame(p) for p in refpaths]
+            image, sigma, mask = build_reference(refs, sci_wcs, (nx, ny))
+            psf = estimate_psf(image; threshold=20.0, min_separation=15.0)
+            reference = (image=image, sigma=sigma, mask=mask, psf=psf, wcs=sci_wcs)
+
+            candidates = @test_logs (:warn, r"quality_max_std") match_mode = :any run_pipeline(
+                scipaths; threshold=6.0, match_radius=5.0, min_frames=1,
+                reference=reference, psf_threshold=20.0, psf_min_separation=15.0)
+
+            @test !isempty(candidates)
+            @test !(3 in candidates.frame)  # the glow-patch frame contributed nothing
+            @test 1 in candidates.frame     # the real transient still recovered elsewhere
+
+            # lowering the threshold further should also drop the clean frames
+            @test_logs((:warn, r"quality_max_std"), (:warn, r"quality_max_std"),
+                       (:warn, r"quality_max_std"), match_mode = :any,
+                       run_pipeline(scipaths; threshold=6.0, match_radius=5.0, min_frames=1,
+                                    reference=reference, psf_threshold=20.0, psf_min_separation=15.0,
+                                    quality_max_std=0.0))
         end
     end
 
@@ -363,6 +490,56 @@ using Reproject
         end
     end
 
+    @testset "light_curve / recover_rotation_period" begin
+        mktempdir() do dir
+            nx, ny = 60, 60
+            wcs = WCSTransform(2; crpix=[nx / 2, ny / 2], crval=[150.0, 20.0],
+                                cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+            ra, dec = pix_to_sky(wcs, 30.0, 30.0)
+
+            true_period = 0.2  # days
+            F0, amp = 3000.0, 0.4
+            Random.seed!(21)
+
+            paths = String[]
+            mjd0 = 60000.0
+            n = 40
+            for k in 0:n-1
+                t = mjd0 + k * 0.011 + 0.003 * rand()  # uneven sampling over ~2 periods
+                flux_k = F0 * (1 + amp * sin(2pi * t / true_period))
+                img = 100.0 .+ 3.0 .* randn(nx, ny)
+                for i in 1:nx, j in 1:ny
+                    r2 = (i - 30)^2 + (j - 30)^2
+                    img[i, j] += flux_k * exp(-r2 / (2 * 1.8^2)) / (2pi * 1.8^2)
+                end
+                header = FITSHeader(
+                    ["MJD-OBS", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2",
+                     "CDELT1", "CDELT2", "CTYPE1", "CTYPE2"],
+                    Any[t, wcs.crpix[1], wcs.crpix[2], wcs.crval[1], wcs.crval[2],
+                        wcs.cdelt[1], wcs.cdelt[2], wcs.ctype[1], wcs.ctype[2]],
+                    fill("", 9),
+                )
+                path = joinpath(dir, "f$k.fits")
+                FITS(path, "w") do f
+                    write(f, img; header=header)
+                end
+                push!(paths, path)
+            end
+
+            times, flux, flux_err = light_curve(paths, ra, dec; aperture_radius=6.0)
+            @test length(times) == n
+            @test all(>(0), flux_err)
+            @test maximum(flux) > minimum(flux)  # the injected variability is present
+
+            result = recover_rotation_period(times, flux; minimum_period=0.05, maximum_period=1.0)
+            @test result.period ≈ true_period rtol=0.05
+            @test result.false_alarm_probability < 1e-3
+
+            @test_throws ArgumentError recover_rotation_period(times, flux;
+                                                                 minimum_period=1.0, maximum_period=0.5)
+        end
+    end
+
     @testset "crossmatch_catalog" begin
         @test_throws ArgumentError crossmatch_catalog([], :unknown_catalog; radius=5.0)
 
@@ -405,6 +582,66 @@ using Reproject
         catch e
             e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
             @test_skip "network unavailable"
+        end
+    end
+
+    @testset "plate_solve" begin
+        # pure request/response helpers, no network needed
+        body = AsteroidPipeline._astrometry_login_body("mykey123")
+        @test body == "request-json=" * HTTP.escapeuri("""{"apikey":"mykey123"}""")
+
+        success = AsteroidPipeline._parse_astrometry_response(
+            """{"status":"success","session":"abc123"}""", "login")
+        @test success["session"] == "abc123"
+
+        @test_throws ErrorException AsteroidPipeline._parse_astrometry_response(
+            """{"status":"error","errormessage":"bad apikey"}""", "login")
+        try
+            AsteroidPipeline._parse_astrometry_response(
+                """{"status":"error","errormessage":"bad apikey"}""", "login")
+        catch e
+            @test occursin("bad apikey", sprint(showerror, e))
+        end
+
+        # _astrometry_poll: succeeds once `check` stops returning nothing,
+        # and times out (erroring) if it never does. (_astrometry_submission_job
+        # and _astrometry_job_done both make real HTTP requests, so aren't
+        # unit-testable without network — only _astrometry_poll's own
+        # retry/timeout logic, generic over any `check` closure, is.)
+        calls = Ref(0)
+        result = AsteroidPipeline._astrometry_poll(0.3, 0.05, "test condition") do
+            calls[] += 1
+            calls[] >= 3 ? :done : nothing
+        end
+        @test result == :done
+        @test calls[] == 3
+        @test_throws ErrorException AsteroidPipeline._astrometry_poll(
+            () -> nothing, 0.1, 0.05, "test condition")
+
+        # live end-to-end round trip against the real service — not run
+        # unless a real API key is available (none was during development;
+        # this project has never exercised this path against the live
+        # service — see README)
+        api_key = get(ENV, "ASTROMETRY_API_KEY", nothing)
+        if api_key === nothing
+            @test_skip "ASTROMETRY_API_KEY not set"
+        else
+            mktempdir() do dir
+                nx, ny = 60, 60
+                wcs = WCSTransform(2; crpix=[nx / 2, ny / 2], crval=[150.0, 20.0],
+                                    cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+                img = 100.0 .+ 5.0 .* randn(nx, ny)
+                for i in 1:nx, j in 1:ny
+                    r2 = (i - 30)^2 + (j - 30)^2
+                    img[i, j] += 2000.0 * exp(-r2 / (2 * 2.0^2))
+                end
+                path = joinpath(dir, "test.fits")
+                FITS(path, "w") do f
+                    write(f, img)  # deliberately no WCS: this is what plate_solve is for
+                end
+                solved = plate_solve(path; api_key=api_key)
+                @test solved isa WCSTransform
+            end
         end
     end
 

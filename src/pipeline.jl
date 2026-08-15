@@ -4,7 +4,8 @@
                  threshold::Real=5.0, box_size::NTuple{2,<:Integer}=(5, 5),
                  aperture_radius::Real=3.0, max_speed::Real=Inf,
                  match_radius::Real=2.0, min_frames::Integer=length(fits_paths),
-                 reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0)
+                 reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
+                 quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing)
 
 Run the local stages of the pipeline — detection, linking, and
 astrometric calibration — on a time-ordered sequence of FITS frames from
@@ -46,16 +47,35 @@ are also detected and passed to [`zogy_subtract`](@ref) as
 residual sub-pixel misregistration at exactly those positions instead of
 `S_corr` reporting an inflated, uncorrected significance there.
 
+A per-frame quality gate applies in the `reference` path: if a frame's
+`S_corr` standard deviation (plain `Statistics.std`, over its valid,
+in-footprint region) exceeds `quality_max_std`, that frame is treated as
+having found nothing (a warning is emitted) rather than contributing
+possibly-spurious detections. `S_corr` is only *nominally* unit-variance —
+real registration and PSF-matching imperfections inflate it — and on real
+ZTF data, good frames measured std ~1.1-1.2 while one frame with an
+apparent transient atmospheric issue (see git log `3e31b95`) measured
+~2.0 and produced roughly twice as many bright detections as every other
+frame. Plain `std`, not a robust (MAD-based) one, deliberately: that real
+anomalous frame's excess showed up as ~232 point-like bright residuals
+rather than a bulk noise increase, and a MAD-based spread — robust to
+exactly that kind of minority-of-pixels outlier — measured ~0.997 for it,
+indistinguishable from the good frames' ~0.98-1.10; plain `std` is what
+actually separates them here. The default of `1.5` sits with margin on
+both sides of that real gap; it is calibrated from that one dataset, not
+a universal constant — tune per survey/conditions.
+
+If a frame's header has no WCS, [`load_wcs`](@ref) raises an error;
+passing `plate_solve_api_key` (a nova.astrometry.net API key) makes that
+frame fall back to [`plate_solve`](@ref) instead of failing outright —
+see its docstring for what that involves (a live network round trip,
+polling until the frame solves or times out).
+
 `fits_paths` must already be given in time order. `psf_threshold` and
 `psf_min_separation` are forwarded to `estimate_psf` for each frame's own
 PSF (only used when `reference` is given — `reference.psf` is estimated
 separately, by the caller, when building it). All other keyword arguments
 are forwarded to `detect_sources` and `link_candidates`.
-
-TODO: `link_candidates` derives its trial velocity from frames 1 and 2
-only (see its docstring); closely spaced first frames amplify velocity
-error when extrapolated across a long time baseline. A robust fit across
-all frames would remove this sensitivity to frame spacing and ordering.
 
 Returns the candidate table from `astrometric_calibrate` (columns `id`,
 `frame`, `x`, `y`, `ra`, `dec`, `epoch`), ready to pass to
@@ -67,7 +87,8 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        threshold::Real=5.0, box_size::NTuple{2,<:Integer}=(5, 5),
                        aperture_radius::Real=3.0, max_speed::Real=Inf,
                        match_radius::Real=2.0, min_frames::Integer=length(fits_paths),
-                       reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0)
+                       reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
+                       quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing)
     detections_per_frame = []
     wcs_per_frame = WCSTransform[]
     timestamps = Float64[]
@@ -89,7 +110,12 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
             # (src/reference.jl, src/zogy.jl) works in raw (x, y) order
             # throughout and only permutes at this same final step.
             raw = Float64.(read(hdu))
-            frame_wcs = load_wcs(read_header(hdu, String))
+            frame_wcs = try
+                load_wcs(read_header(hdu, String))
+            catch e
+                plate_solve_api_key === nothing && rethrow(e)
+                plate_solve(path; api_key=plate_solve_api_key)
+            end
             gain = haskey(read_header(hdu), "GAIN") ? read_key(hdu, "GAIN")[1] : 1.0
 
             if reference === nothing
@@ -128,7 +154,27 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                                            psf_n=psf_n, psf_r=reference.psf,
                                            sigma_n=sigma_n, sigma_r=reference.sigma, gain_n=gain,
                                            n_sources=n_sources, r_sources=r_sources)
-                image = permutedims(s_corr .* frame_mask .* reference.mask)
+                valid = frame_mask .& reference.mask
+                # Statistics.std, not a robust (MAD-based) spread: on real
+                # data, the anomalous frame this gate exists to catch
+                # (git log 3e31b95) showed up as ~232 excess point-like
+                # bright residuals rather than a bulk noise increase — its
+                # plain std (2.03) stood clearly apart from every good
+                # frame's (1.10-1.18), but its *MAD* (0.997) did not
+                # (0.98-1.10), since MAD is specifically robust to a
+                # minority of outlier pixels — exactly what this needs to
+                # catch. (MAD was tried first, to avoid a real source
+                # skewing std in a small *synthetic test* image; the test
+                # was fixed by using a larger image instead, since on real
+                # ~10^6 px data a real source's few dozen pixels are too
+                # small a fraction to skew std regardless.)
+                frame_std = std(s_corr[valid])
+                if frame_std > quality_max_std
+                    @warn "skipping frame: S_corr std exceeds quality_max_std" path frame_std quality_max_std
+                    image = permutedims(zeros(size(s_corr)))
+                else
+                    image = permutedims(s_corr .* valid)
+                end
                 push!(wcs_per_frame, reference.wcs)
             end
             push!(detections_per_frame, detect_sources(image; threshold, box_size, aperture_radius))
