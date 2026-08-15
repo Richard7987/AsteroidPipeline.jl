@@ -34,12 +34,17 @@ unit variance by construction; pixels outside either frame's footprint are
 excluded from detection. Because reprojection puts every frame's
 detections on `reference.wcs` rather than each frame's own WCS,
 `astrometric_calibrate` is given `reference.wcs` for every frame in this
-path. The empirical PSF is estimated from each frame *before*
-reprojection (interpolation would otherwise bias its shape), which means
-`psf_n` describes the pre-reprojection image while `zogy_subtract` is fed
-the post-reprojection one — a known approximation, adequate because
-`reference.psf` was built the same way (`build_reference` also reprojects
-before this pipeline ever measures a PSF from it).
+path. The empirical PSF is estimated from each frame *after*
+reprojection, from the same resampled pixels `zogy_subtract` actually
+differences — interpolation subtly reshapes a PSF, and measuring it
+beforehand understated that mismatch, leaving systematic subtraction
+residuals at every bright star (found via real ZTF data: ~85-97% of
+excess `S_corr` detections in a real test field fell within 15 px of a
+bright reference star). Bright stars in both the frame and `reference`
+are also detected and passed to [`zogy_subtract`](@ref) as
+`n_sources`/`r_sources`, so its astrometric-noise term can account for
+residual sub-pixel misregistration at exactly those positions instead of
+`S_corr` reporting an inflated, uncorrected significance there.
 
 `fits_paths` must already be given in time order. `psf_threshold` and
 `psf_min_separation` are forwarded to `estimate_psf` for each frame's own
@@ -67,6 +72,12 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
     wcs_per_frame = WCSTransform[]
     timestamps = Float64[]
 
+    # Computed once, not per frame: reference.image is the same every
+    # iteration, and this is what zogy_subtract's astrometric-noise term
+    # matches each frame's own bright stars against.
+    r_sources = reference === nothing ? nothing :
+                detect_sources(permutedims(reference.image); threshold=psf_threshold)
+
     for path in fits_paths
         FITS(path, "r") do f
             hdu = f[1]
@@ -87,22 +98,36 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
             else
                 _, sigma_n = estimate_background(permutedims(raw);
                                                   location=SourceExtractorBackground(), rms=MADStdRMS())
-                psf_n = estimate_psf(raw; threshold=psf_threshold, min_separation=psf_min_separation)
 
                 resampled, frame_mask = Reproject.reproject((raw, frame_wcs), reference.wcs;
                                                               shape_out=size(reference.image))
-                # Reprojection legitimately leaves NaN at the thin border
-                # where the rotated/dithered footprint doesn't fully cover
-                # the target grid (frame_mask marks exactly this). Left
-                # in, a single NaN poisons zogy_subtract's whole-array
+                # Reprojection legitimately leaves NaN at the border where
+                # the rotated/dithered footprint doesn't fully cover the
+                # target grid (frame_mask marks exactly this). Left in, a
+                # single NaN poisons zogy_subtract's whole-array
                 # median/fft computations, turning the *entire* S_corr
-                # into NaN — the fill value itself doesn't matter for
-                # detection correctness (these pixels are excluded via
-                # frame_mask below regardless), only that it isn't NaN.
-                resampled[.!frame_mask] .= 0.0
+                # into NaN. Filled with 0 instead of the region's own
+                # background, that border — negligible for a real ~1e6 px
+                # ZTF frame (~0.05% invalid) but potentially a large
+                # fraction of a small/heavily-dithered one — would instead
+                # bias zogy_subtract's own background-median computation
+                # toward 0, contaminating the whole difference image. The
+                # exact fill value doesn't matter for detection
+                # correctness (these pixels are excluded via frame_mask
+                # below regardless), only that it matches the valid
+                # region's own level.
+                resampled[.!frame_mask] .= median(resampled[frame_mask])
+
+                # PSF and source positions measured on the resampled
+                # (post-reprojection) pixels, matching what zogy_subtract
+                # actually differences (see the docstring above).
+                psf_n = estimate_psf(resampled; threshold=psf_threshold, min_separation=psf_min_separation)
+                n_sources = detect_sources(permutedims(resampled); threshold=psf_threshold)
+
                 _, s_corr = zogy_subtract(resampled, reference.image;
                                            psf_n=psf_n, psf_r=reference.psf,
-                                           sigma_n=sigma_n, sigma_r=reference.sigma, gain_n=gain)
+                                           sigma_n=sigma_n, sigma_r=reference.sigma, gain_n=gain,
+                                           n_sources=n_sources, r_sources=r_sources)
                 image = permutedims(s_corr .* frame_mask .* reference.mask)
                 push!(wcs_per_frame, reference.wcs)
             end
