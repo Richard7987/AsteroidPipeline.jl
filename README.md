@@ -58,70 +58,18 @@ the pipeline with and without differencing on the same frames and reports
 which known objects each recovers, rather than assuming differencing
 helps.
 
-Several real bugs surfaced only by testing against real ZTF data (not by
-the synthetic tests or code review), all fixed with regression tests:
-
-- An empty cross-match result crashing table construction.
-- `crossmatch_catalog(...; :skybot)` silently returning zero matches on
-  every real call because Julian Date epochs (~2.4e6) print in scientific
-  notation by default, which SkyBoT's API rejects as an empty epoch.
-- `zogy_subtract` never background-subtracted its inputs. A raw FFT's DC
-  term is a *sum*, not a mean, over the whole image (>10^6 pixels here),
-  so even a modest sky-brightness mismatch between a science frame and
-  the reference stack (routine — depends on moon phase and airglow, not
-  the photometric zeropoint `build_reference` already matches) blew up
-  into a near-constant offset that swamped `S_corr` almost everywhere:
-  on real data this meant >99.9% of a frame reading "above 6 sigma" and
-  zero genuine detections surviving.
-- Reprojected frames carry a thin, legitimate NaN border wherever a
-  dithered footprint doesn't fully cover the target grid; left
-  unsanitized before `zogy_subtract`, a single NaN poisoned its
-  whole-array `median`/`fft` calls and turned an entire frame's `S_corr`
-  to NaN.
-- `run_pipeline` filled that same border with `0.0` rather than the valid
-  region's own background level. Negligible for a real ~10^6 px ZTF frame
-  (~0.05% invalid), but a regression test using a synthetic frame with a
-  large dither (~13% invalid) showed this biases `zogy_subtract`'s own
-  background-median computation toward 0, contaminating the whole
-  difference image — the same bug, just large enough at that scale to
-  turn from invisible into a wrong `run_pipeline` output.
-- `estimate_psf` measured each frame's PSF *before* reprojection, but
-  `zogy_subtract` differenced the frame *after* — interpolation reshapes a
-  PSF slightly, and that mismatch showed up as systematic subtraction
-  residuals at bright stars: on real data, 85-97% of the excess
-  `S_corr` detections in 4 of 5 test frames fell within 15 px of one.
-  Moving the PSF measurement after reprojection, and feeding both frames'
-  detected stars to `zogy_subtract`'s astrometric-noise term (`V_ast`) so
-  residual misregistration is priced into the significance map rather
-  than ignored, brought `std(S_corr)` from ~2.0-2.6 down to ~1.1-1.2 in
-  those 4 frames (nominally exactly 1 under the model's assumptions).
-
-A further issue was a dataset-selection mistake rather than a code bug:
-the first real-data demo used a field/night where the faintest catalogued
-asteroid was 1.2 mag *below* that night's own detection limit — no
-algorithm can recover a signal that was never above the noise, so the
-demo now picks a night with a known object bright enough to serve as
-actual ground truth.
-
-With all of this fixed (including a per-frame quality gate, `run_pipeline`'s
-`quality_max_std` — see Known limitations), `examples/real_data_demo.jl`'s
-actual result on that night (field 451, 2019-10-23): the undifferenced
-baseline finds 133 tracklets and recovers both known objects in the field
-(2002 UY45, 1997 KO3); ZOGY also recovers both, at consistent sky offsets
-(confirming the subtraction is correctly calibrated, not just "not
-obviously broken"), but finds 667 tracklets total and no *additional*
-known object. The likely reason ZOGY doesn't show its expected depth
-advantage here: both known objects in this field (Mv 18.4, 19.6) are
-bright enough that the undifferenced baseline already recovers them
-trivially — this dataset doesn't happen to contain a known object faint
-enough to sit below a single frame's noise floor but above the deep
-reference's, which is the specific regime ZOGY is for.
-
-The 667 vs 133 gap is *not* a clean measurement of ZOGY's noise
-properties, and should not be read as one — see the last bullet under
-Known limitations for why (the quality gate, once it correctly excludes
-a bad frame, forces a `min_frames` reduction that itself loosens the
-matching combinatorics, confounding a direct comparison).
+On that real dataset (field 451, 2019-10-23), the undifferenced baseline
+finds 133 tracklets and recovers both known objects in the field (2002
+UY45, 1997 KO3); ZOGY also recovers both, at consistent sky offsets
+(confirming the subtraction is correctly calibrated), but finds 667
+tracklets total and no *additional* known object — both known objects
+here are bright enough that the baseline already recovers them trivially,
+so this dataset doesn't exercise ZOGY's actual advantage (recovering
+objects below a single frame's noise floor). The raw tracklet-count gap
+is not a clean read on ZOGY's noise properties; see
+[`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md) for why, and for the full
+record of every real bug this project's real-data testing surfaced (five
+so far, all fixed with regression tests) and how each was diagnosed.
 
 ## Known limitations
 
@@ -140,53 +88,15 @@ matching combinatorics, confounding a direct comparison).
   `zogy_subtract` level** — it needs `n_sources`/`r_sources` passed
   explicitly, and is `0` without them. `run_pipeline` always supplies
   them, so this only matters when calling `zogy_subtract` directly.
-- **One real-data frame likely had a passing cloud during the exposure —
-  now caught by a quality gate, with a real combinatorial side effect.**
-  On the `examples/real_data_demo.jl` field/night, `std(S_corr)` improved
-  to ~1.1-1.2 (from ~2.0-2.6) in 4 of the 5 science frames after fixing
-  the PSF-timing/astrometric-noise bug above, but the night's last
-  exposure stayed at ~2.0 and produced roughly twice as many bright
-  sources as the other four (232 vs 83-111). GAIN, SEEING, MAGZP,
-  whole-frame background level, saturated-pixel count, and airmass were
-  all checked against the other four frames and none stood out. Directly
-  differencing this frame's *raw* pixels against another frame's (before
-  any ZOGY machinery) found the actual cause: ~1750 pixels with a
-  significant, one-sided (no matching negative lobe, so not a
-  registration/dipole artifact) excess, ~98% confined to the bottom ~30%
-  of the detector — a control pair of two normal frames differenced the
-  same way found only ~80-110 such pixels, distributed in proportion to
-  where the frame's stars actually are (not concentrated in one region).
-  The whole-frame background stayed flat with no gradient across that
-  region, ruling out amplifier glow or vignetting. This pattern — real
-  stars showing localized excess halos in one part of the frame, with no
-  diffuse background change and no positional offset — is the signature
-  of thin cloud scattering starlight during the 30 s exposure, over only
-  part of the field; consistent with this being the one frame among the
-  five with an invalid (negative) `MOONILLF` value in its own archived
-  metadata, a plausible sign of degraded weather telemetry at that time.
-  Not independently confirmed (no all-sky camera or cloud-sensor log was
-  checked), but every alternative explanation checked was ruled out by
-  direct measurement.
-
-  `run_pipeline`'s `quality_max_std` gate (default `1.5`, using plain
-  `Statistics.std` — see its docstring for why a MAD-based spread,
-  robust to exactly this kind of minority-of-pixels outlier, turned out
-  blind to this specific anomaly and was rejected) does correctly
-  exclude this frame on real data (`frame_std=2.025 > 1.5`, confirmed by
-  the actual warning `run_pipeline` emits), and both known objects are
-  still recovered afterward. But `link_candidates` requires every frame
-  to match by default, so a gated frame — contributing zero detections —
-  makes no tracklet reachable at all unless `min_frames` is lowered to
-  account for it (`examples/real_data_demo.jl` uses
-  `length(fits_paths) - 1`); loosening that constraint by one frame,
-  independent of anything about data quality, roughly doubled the
-  tracklet count again (334 → 667) purely through looser matching
-  combinatorics. So the gate is confirmed working, but the net real-data
-  effect on tracklet count is now confounded by that combinatorial
-  change rather than cleanly attributable to data quality — a clean
-  before/after comparison would need to hold `min_frames` fixed some
-  other way (e.g. by literally excluding the bad frame from the input
-  list rather than gating it internally), not attempted here.
+- **A quality-gated frame silently tightens `link_candidates`.**
+  `run_pipeline`'s `quality_max_std` (default `1.5`) excludes a frame
+  whose `S_corr` spread is too high (confirmed against real data — see
+  [`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md)), but a gated frame
+  contributes zero detections, and `link_candidates` requires every frame
+  to match by default. Pass a lower `min_frames` (e.g.
+  `length(fits_paths) - 1`) when using the ZOGY path, or no tracklet will
+  ever be reachable if any frame gets gated — `examples/real_data_demo.jl`
+  does this.
 
 ## Example: real data
 

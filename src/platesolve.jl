@@ -9,9 +9,8 @@ const _ASTROMETRY_WCS_URL = "http://nova.astrometry.net/wcs_file"
 
 Solve for a FITS image's astrometric (WCS) solution via the
 nova.astrometry.net web API, for frames with none already in the header
-(see the `TODO` on [`load_wcs`](@ref) in `src/astrometry.jl` — this
-implements the fallback documented there, requiring an `api_key` rather
-than any local plate-solving dependency).
+that [`load_wcs`](@ref) can parse — this requires an `api_key` rather
+than any local plate-solving dependency.
 
 Runs the full submit/poll/fetch cycle: login with `api_key` for a session
 token, upload `image_path`, poll for a submission to produce a job, poll

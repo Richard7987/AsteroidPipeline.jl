@@ -128,20 +128,12 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                 resampled, frame_mask = Reproject.reproject((raw, frame_wcs), reference.wcs;
                                                               shape_out=size(reference.image))
                 # Reprojection legitimately leaves NaN at the border where
-                # the rotated/dithered footprint doesn't fully cover the
-                # target grid (frame_mask marks exactly this). Left in, a
-                # single NaN poisons zogy_subtract's whole-array
-                # median/fft computations, turning the *entire* S_corr
-                # into NaN. Filled with 0 instead of the region's own
-                # background, that border — negligible for a real ~1e6 px
-                # ZTF frame (~0.05% invalid) but potentially a large
-                # fraction of a small/heavily-dithered one — would instead
-                # bias zogy_subtract's own background-median computation
-                # toward 0, contaminating the whole difference image. The
-                # exact fill value doesn't matter for detection
-                # correctness (these pixels are excluded via frame_mask
-                # below regardless), only that it matches the valid
-                # region's own level.
+                # the footprint doesn't fully cover the target grid; left
+                # in, a single NaN poisons zogy_subtract's whole-array
+                # median/fft, turning all of S_corr to NaN. Filled with the
+                # valid region's own level, not 0, since 0 would instead
+                # bias zogy_subtract's background-median computation
+                # (negligible at real ZTF scale, but not in general).
                 resampled[.!frame_mask] .= median(resampled[frame_mask])
 
                 # PSF and source positions measured on the resampled
@@ -155,19 +147,7 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                                            sigma_n=sigma_n, sigma_r=reference.sigma, gain_n=gain,
                                            n_sources=n_sources, r_sources=r_sources)
                 valid = frame_mask .& reference.mask
-                # Statistics.std, not a robust (MAD-based) spread: on real
-                # data, the anomalous frame this gate exists to catch
-                # (git log 3e31b95) showed up as ~232 excess point-like
-                # bright residuals rather than a bulk noise increase — its
-                # plain std (2.03) stood clearly apart from every good
-                # frame's (1.10-1.18), but its *MAD* (0.997) did not
-                # (0.98-1.10), since MAD is specifically robust to a
-                # minority of outlier pixels — exactly what this needs to
-                # catch. (MAD was tried first, to avoid a real source
-                # skewing std in a small *synthetic test* image; the test
-                # was fixed by using a larger image instead, since on real
-                # ~10^6 px data a real source's few dozen pixels are too
-                # small a fraction to skew std regardless.)
+                # Plain std, not MAD — see the docstring for why.
                 frame_std = std(s_corr[valid])
                 if frame_std > quality_max_std
                     @warn "skipping frame: S_corr std exceeds quality_max_std" path frame_std quality_max_std

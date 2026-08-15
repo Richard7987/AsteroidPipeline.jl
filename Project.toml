@@ -1,7 +1,7 @@
 name = "AsteroidPipeline"
 uuid = "1001636e-a0d1-496e-b23d-cef10bc3cdca"
 version = "0.1.0"
-authors = ["Alejandro <anything.la@tuta.com>"]
+authors = ["Alejandro <ale_bnes@nezzontli.xyz>"]
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"

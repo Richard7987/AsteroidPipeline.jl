@@ -8,14 +8,8 @@ Throws an error if the header defines no WCS solution. If it defines more
 than one (e.g. alternate WCS descriptions with an `a`/`b`/... suffix), the
 first one is returned.
 
-TODO: no fallback plate-solver exists yet for frames without a WCS
-already in the header. IASC campaign frames are generally pre-solved, but
-this will need addressing before this pipeline can be used on frames from
-other sources (e.g. own blazar/exoplanet-timing imaging). Candidate
-approaches: the nova.astrometry.net web API (no new system dependency,
-but network- and rate-limited) or a local `solve-field` (astrometry.net)
-build, which would first require packaging it for Nix since it is not in
-nixpkgs.
+For a frame with no WCS at all, see [`plate_solve`](@ref) — `run_pipeline`
+uses it as a fallback when given `plate_solve_api_key`.
 """
 function load_wcs(header::AbstractString)
     solutions = WCS.from_header(String(header))
