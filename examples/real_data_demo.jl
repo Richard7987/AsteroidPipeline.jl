@@ -1,69 +1,87 @@
 #=
-Runs the pipeline end to end on real ZTF (Zwicky Transient Facility) public
-survey data, then cross-matches the resulting candidates against SkyBoT to
-report which are already-known solar-system objects.
+Runs the pipeline against real ZTF (Zwicky Transient Facility) public
+survey data twice — once on raw science frames, once with ZOGY difference
+imaging against a deep reference stack (see src/zogy.jl, src/reference.jl)
+— and cross-matches both against SkyBoT, to measure whether differencing
+actually helps rather than assume it does.
 
-Data: field 451, CCD 1, quadrant 1, zr filter, 2021-03-15, a same-night
-triplet of science exposures ~3.5 minutes apart (a real ZTF high-cadence
-sequence, suitable for tracklet linking). Not included in the repo; fetch
-first with `fetch_data.sh` in this directory.
+Data: field 451, CCD 1, quadrant 1, zr filter. Science: 2019-10-23, 5
+exposures spread over the night's 6.25 h span (seeing 1.8-2.0 px, maglim
+20.1-20.5). Reference: 30 frames from other nights, best seeing first.
+Not included in the repo; fetch first with `fetch_data.sh` in this
+directory. See the plan this was built from (or git log) for how this
+field/night/reference set was chosen, including a dead end: an earlier
+choice of night turned out to have no catalogued object above that
+night's own detection limit, which would have made ZOGY look like it
+failed when the real problem was upstream.
 
-Parameters below (`threshold`, `match_radius`, `max_speed`) were tuned
-against this specific field: SkyBoT reports a nearby known object (127319
-"2002 JB99", MB>Outer) moving ~6 arcsec over the full triplet baseline,
-i.e. ~3 pixels per exposure gap at this field's ~1.01 arcsec/pixel scale.
-A looser match_radius (e.g. the 2.0 px default) is too tight to recover
-real motion at this cadence; a much looser one produces hundreds of
-spurious tracklets in this crowded, near-ecliptic field. These are not
-universal defaults — re-tune per field/cadence.
+Ground truth: SkyBoT reports 135992 "2002 UY45" (MB>Middle, Mv 18.4) in
+this field, 1.9 mag above the night's own 5-sigma limit and thus
+detectable even without differencing — this is what "recovered by both"
+below should include. It moves ~222" (~219 px) over the full baseline.
+
+Building the 30-frame reference takes a while (each frame is individually
+reprojected onto the science grid — roughly half an hour on a laptop);
+this only has to happen once, not once per science frame.
 =#
 using AsteroidPipeline
 
 const DATA_DIR = joinpath(@__DIR__, "..", "data", "real")
-const PATHS = joinpath.(DATA_DIR, [
-    "ztf_20210315117014_000451_zr_c01_o_q1_sciimg.fits",
-    "ztf_20210315119711_000451_zr_c01_o_q1_sciimg.fits",
-    "ztf_20210315122141_000451_zr_c01_o_q1_sciimg.fits",
+const SCIENCE_PATHS = joinpath.(DATA_DIR, "science", [
+    "ztf_20191023195590_000451_zr_c01_o_q1_sciimg.fits",
+    "ztf_20191023267002_000451_zr_c01_o_q1_sciimg.fits",
+    "ztf_20191023347164_000451_zr_c01_o_q1_sciimg.fits",
+    "ztf_20191023425208_000451_zr_c01_o_q1_sciimg.fits",
+    "ztf_20191023455822_000451_zr_c01_o_q1_sciimg.fits",
 ])
 
-for path in PATHS
+for path in SCIENCE_PATHS
     isfile(path) || error("missing $path — run examples/fetch_data.sh first")
 end
+reference_paths = readdir(joinpath(DATA_DIR, "reference"), join=true)
+isempty(reference_paths) && error("no reference frames found — run examples/fetch_data.sh first")
 
-candidates = run_pipeline(PATHS; timestamp_key="OBSMJD", threshold=8.0,
-                           match_radius=3.5, max_speed=3000.0)
-println(length(unique(candidates.id)), " candidate tracklets from ",
-        length(candidates), " total detections")
+function summarize(label, candidates)
+    n_tracklets = length(unique(candidates.id))
+    println("\n-- $label: $n_tracklets tracklet(s) from $(length(candidates)) detections --")
+    n_tracklets == 0 && return Set{Int}()
 
-# One row per tracklet (first frame) is enough to query SkyBoT; querying
-# every row would triple the request count for no extra information.
-first_rows = [first(filter(r -> r.id == id, candidates))
-              for id in unique(candidates.id)]
-
-matches = crossmatch_catalog(first_rows, :skybot; radius=15.0)
-known_ids = Set(matches.id)
-
-println(length(known_ids), " tracklets match a known SkyBoT object:")
-for m in matches
-    println("  id=$(m.id): $(m.name) ($(m.class), Mv=$(m.mv)), ",
-             "offset $(round(m.distance_arcsec, digits=1))\"")
+    first_rows = [first(filter(r -> r.id == id, candidates)) for id in unique(candidates.id)]
+    matches = crossmatch_catalog(first_rows, :skybot; radius=15.0)
+    known_ids = Set(matches.id)
+    for m in matches
+        println("  id=$(m.id): $(m.name) ($(m.class), Mv=$(m.mv)), offset $(round(m.distance_arcsec, digits=1))\"")
+    end
+    println("  $(length(known_ids))/$(n_tracklets) match a known SkyBoT object; ",
+            "$(n_tracklets - length(known_ids)) unmatched (candidates for human vetting).")
+    return known_ids
 end
 
-unmatched = length(unique(candidates.id)) - length(known_ids)
-println(unmatched, " tracklets have no known counterpart within 15\" — ",
-        "candidates for human vetting.")
+println("Baseline: detection directly on science frames (no differencing)...")
+baseline = run_pipeline(SCIENCE_PATHS; timestamp_key="OBSMJD", threshold=8.0,
+                         match_radius=10.0, max_speed=5000.0)
+baseline_known = summarize("baseline", baseline)
 
-if isempty(known_ids)
-    println()
-    println("Zero known matches is expected here, not a failure: the only ",
-            "catalogued asteroids in this field (per a direct SkyBoT cone ",
-            "search) are Mv >= 19.7, and detect_sources runs on a single, ",
-            "non-difference-imaged 30s frame — ZTF's own real-time pipeline ",
-            "recovers objects this faint by subtracting a deep reference ",
-            "image first, which this pipeline does not (yet) do. The 35 ",
-            "unmatched tracklets are most likely spurious 3-frame linear ",
-            "coincidences among the field's ~400 detected stars, not ",
-            "genuine moving objects — cross-matching against a synthetic, ",
-            "brighter injected source (see test/runtests.jl) is what ",
-            "confirms the detection/linking math itself is correct.")
+println("\nBuilding a deep reference from $(length(reference_paths)) frames (this is the slow part)...")
+sci1 = load_frame(SCIENCE_PATHS[1])
+refs = [load_frame(p) for p in reference_paths]
+ref_image, ref_sigma, ref_mask = build_reference(refs, sci1.wcs, size(sci1.image))
+ref_psf = estimate_psf(ref_image; threshold=15.0)
+reference = (image=ref_image, sigma=ref_sigma, mask=ref_mask, psf=ref_psf, wcs=sci1.wcs)
+println("reference built: sigma=$(round(ref_sigma, digits=3)), ",
+        "coverage=$(round(100 * count(ref_mask) / length(ref_mask), digits=1))%")
+
+println("\nZOGY: detection on the difference image against that reference...")
+zogy_result = run_pipeline(SCIENCE_PATHS; timestamp_key="OBSMJD", threshold=6.0,
+                            match_radius=10.0, max_speed=5000.0, reference=reference)
+zogy_known = summarize("ZOGY", zogy_result)
+
+println("\n== Summary ==")
+println("baseline: $(length(unique(baseline.id))) tracklets, $(length(baseline_known)) known")
+println("ZOGY:     $(length(unique(zogy_result.id))) tracklets, $(length(zogy_known)) known")
+if isempty(baseline_known) && !isempty(zogy_known)
+    println("ZOGY recovered a real object the undifferenced baseline missed.")
+elseif length(zogy_known) <= length(baseline_known)
+    println("ZOGY did not recover more known objects than the baseline here — ",
+            "worth investigating before trusting this path on fainter fields.")
 end
