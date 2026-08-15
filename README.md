@@ -135,20 +135,36 @@ ZOGY problem — see the last bullet under Known limitations.
   docstring) — closely spaced first frames amplify velocity error when
   extrapolated across a longer baseline. A robust fit across all frames
   would remove the sensitivity to frame spacing and ordering.
-- **One real-data frame's excess `S_corr` detections are unexplained.**
+- **One real-data frame likely had a passing cloud during the exposure.**
   On the `examples/real_data_demo.jl` field/night, `std(S_corr)` improved
   to ~1.1-1.2 (from ~2.0-2.6) in 4 of the 5 science frames after fixing
   the PSF-timing/astrometric-noise bug above, but the night's last
   exposure stayed at ~2.0 and produced roughly twice as many bright
-  sources as the other four (232 vs 83-111) rather than improving.
-  Background level, saturated-pixel count, and airmass were all checked
-  against the other frames and ruled out as an explanation. Because
-  `link_candidates` requires all frames to match by default, this one
-  frame's excess candidates dominate the final tracklet count (334 vs
-  baseline's 129) via the linking combinatorics — a single bad frame can
-  disproportionately inflate a whole run's output, which argues for a
-  per-frame quality gate (not implemented) as a follow-up independent of
-  root-causing this specific frame.
+  sources as the other four (232 vs 83-111). GAIN, SEEING, MAGZP,
+  whole-frame background level, saturated-pixel count, and airmass were
+  all checked against the other four frames and none stood out. Directly
+  differencing this frame's *raw* pixels against another frame's (before
+  any ZOGY machinery) found the actual cause: ~1750 pixels with a
+  significant, one-sided (no matching negative lobe, so not a
+  registration/dipole artifact) excess, ~98% confined to the bottom ~30%
+  of the detector — a control pair of two normal frames differenced the
+  same way found only ~80-110 such pixels, distributed in proportion to
+  where the frame's stars actually are (not concentrated in one region).
+  The whole-frame background stayed flat with no gradient across that
+  region, ruling out amplifier glow or vignetting. This pattern — real
+  stars showing localized excess halos in one part of the frame, with no
+  diffuse background change and no positional offset — is the signature
+  of thin cloud scattering starlight during the 30 s exposure, over only
+  part of the field; consistent with this being the one frame among the
+  five with an invalid (negative) `MOONILLF` value in its own archived
+  metadata, a plausible sign of degraded weather telemetry at that time.
+  Not independently confirmed (no all-sky camera or cloud-sensor log was
+  checked), but every alternative explanation checked was ruled out by
+  direct measurement. Because `link_candidates` requires all frames to
+  match by default, this one frame's excess candidates dominate the final
+  tracklet count (334 vs baseline's 129) via the linking combinatorics —
+  a single bad frame can disproportionately inflate a whole run's output,
+  arguing for a per-frame quality gate (not implemented) as a follow-up.
 
 ## Example: real data
 
