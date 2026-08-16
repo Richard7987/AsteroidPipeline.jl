@@ -76,7 +76,8 @@ println("\nZOGY: detection on the difference image against that reference...")
 # (quality_max_std, default 1.5) makes a gated-out frame contribute zero
 # detections, and requiring every one of the 5 frames to match (the
 # default min_frames) means a single gated frame — real on this dataset,
-# see README — would otherwise make no tracklet reachable at all.
+# see the docs site's Known limitations — would otherwise make no
+# tracklet reachable at all.
 zogy_result = run_pipeline(SCIENCE_PATHS; timestamp_key="OBSMJD", threshold=6.0,
                             match_radius=10.0, max_speed=5000.0, reference=reference,
                             min_frames=length(SCIENCE_PATHS) - 1)

@@ -2,18 +2,10 @@ using AsteroidPipeline
 using Documenter
 using DocumenterVitepress
 
-# README.md is the actual source of truth for the project's purpose and
-# status. Copied here at build time, not committed under docs/src (see
-# .gitignore), so the site's home page can never drift out of sync with
-# it. INVESTIGATION_LOG.md lives permanently at docs/src/investigation-log.md
-# instead (a real, committed page, not generated) — it's the docs site's
-# own content, not duplicated from anywhere else.
-const REPO_ROOT = joinpath(@__DIR__, "..")
-
-index_content = read(joinpath(REPO_ROOT, "README.md"), String)
-index_content = replace(index_content, "(docs/src/investigation-log.md)" => "(investigation-log.md)")
-write(joinpath(@__DIR__, "src", "index.md"), index_content)
-
+# index.md and investigation-log.md are both real, permanent, committed
+# pages under docs/src — the docs site's own content, not generated or
+# copied in from README.md/INVESTIGATION_LOG.md (which no longer exist at
+# the repo root; the short root README.md just links here instead).
 DocMeta.setdocmeta!(AsteroidPipeline, :DocTestSetup, :(using AsteroidPipeline); recursive=true)
 
 makedocs(;

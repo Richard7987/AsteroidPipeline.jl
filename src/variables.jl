@@ -39,7 +39,8 @@ _filter_high_snr(detections, max_relative_error::Real) =
 Per-frame photometric scale factor, relative to frame 1, by ensemble
 differential photometry — the survey-agnostic way to put every frame's
 flux on a common scale without depending on any zeropoint header keyword
-(real IASC campaign headers are unverified — see `README.md`).
+(real IASC campaign headers are unverified — see the docs site's "Using
+real IASC campaign data" section).
 
 For each frame `k`, matches stars against frame 1 by position (within
 `position_tolerance` pixels, via [`link_candidates`](@ref)'s
