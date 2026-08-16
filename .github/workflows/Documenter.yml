@@ -1,0 +1,54 @@
+# Builds docs/ (Documenter.jl + DocumenterVitepress.jl) and deploys it to
+# the gh-pages branch. Mirrors DocumenterVitepress.jl's own workflow
+# (github.com/LuxDL/DocumenterVitepress.jl/.github/workflows/Documenter.yml) —
+# julia-docdeploy handles the Julia side (Pkg.develop the package into
+# docs/, instantiate, run docs/make.jl); DocumenterVitepress bootstraps
+# its own Node/Vitepress toolchain, no separate setup-node step needed.
+name: Documenter
+
+on:
+  push:
+    branches:
+      - main
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+
+# Needed for deploydocs to push to gh-pages and for GitHub Pages deployment.
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  statuses: write
+
+# One deploy at a time; let an in-progress deploy finish rather than
+# cancelling it mid-push.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+      - name: Load Julia packages from cache
+        id: julia-cache
+        uses: julia-actions/cache@v2
+      - name: Build and deploy docs
+        uses: julia-actions/julia-docdeploy@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # authenticates the push to gh-pages
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }} # only needed if GITHUB_TOKEN push is restricted; see README.md
+          JULIA_DEBUG: "Documenter"
+      - name: Save Julia depot cache on cancel or failure
+        if: cancelled() || failure()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.julia-cache.outputs.cache-paths }}
+          key: ${{ steps.julia-cache.outputs.cache-key }}

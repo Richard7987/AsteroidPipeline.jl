@@ -48,7 +48,7 @@ end
 
 Run `query` (an ADQL string) as a synchronous TAP query against `url`,
 returning the CSV response parsed by `CSV.File`. Shared by
-[`_crossmatch_simbad`](@ref) and [`_crossmatch_vsx`](@ref).
+`_crossmatch_simbad` and `_crossmatch_vsx`.
 """
 function _tap_query(url::AbstractString, query::AbstractString)
     body = HTTP.Form(Dict(
@@ -63,7 +63,7 @@ end
 An ADQL synchronous cone-search query: rows of `table` within
 `radius_deg` of `(ra, dec)`, plus a `distance_arcsec` column (via ADQL's
 `DISTANCE`, in degrees, converted here) — shared by
-[`_crossmatch_simbad`](@ref) and [`_crossmatch_vsx`](@ref), which differ
+`_crossmatch_simbad` and `_crossmatch_vsx`, which differ
 only in `select`/`table`/coordinate column names.
 """
 function _cds_cone_query(select::AbstractString, table::AbstractString,

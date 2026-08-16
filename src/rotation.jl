@@ -14,8 +14,8 @@ original discovery epochs. For a target that moves appreciably over the
 follow-up sequence, `ra`/`dec` need to be recomputed per frame from an
 ephemeris — not done here.
 
-Background/noise come from [`estimate_background`](@ref) as in
-[`detect_sources`](@ref); `flux_err` is `Photometry.photometry`'s
+Background/noise come from `Photometry.Background.estimate_background`
+as in [`detect_sources`](@ref); `flux_err` is `Photometry.photometry`'s
 propagated aperture error from a uniform per-pixel `noise`, not a full
 per-pixel variance map.
 

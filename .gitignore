@@ -7,3 +7,17 @@ Manifest.toml
 .vscode/
 result
 result-*
+
+# docs/ — build output and DocumenterVitepress's own Node/Vitepress
+# tooling, plus the two source pages generated at build time from
+# README.md/INVESTIGATION_LOG.md (see docs/make.jl) — never hand-edited,
+# so never committed either.
+docs/build/
+docs/node_modules/
+docs/package-lock.json
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+docs/src/.vitepress/cache/
+docs/src/.vitepress/dist/
+docs/src/index.md
+docs/src/investigation-log.md

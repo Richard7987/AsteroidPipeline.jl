@@ -219,6 +219,30 @@ A reproducible development environment is also provided via Nix
 nix develop
 ```
 
+## Documentation
+
+The full API reference (every exported function's docstring, organized by
+pipeline stage) plus this README and `INVESTIGATION_LOG.md` are built into
+a static site with [Documenter.jl](https://github.com/JuliaDocs/Documenter.jl)
+and [DocumenterVitepress.jl](https://github.com/LuxDL/DocumenterVitepress.jl).
+`docs/make.jl` copies `README.md`/`INVESTIGATION_LOG.md` into `docs/src/`
+at build time (not committed — see `.gitignore`), so the site can't drift
+out of sync with them.
+
+To build locally:
+
+```
+julia --project=docs docs/make.jl
+```
+
+`.github/workflows/Documenter.yml` builds and deploys to the `gh-pages`
+branch on every push to `main` (and on tags), via GitHub's own
+`GITHUB_TOKEN` — no extra setup needed unless the repository's branch
+protection rules block Actions from pushing to `gh-pages`, in which case
+add a `DOCUMENTER_KEY` secret (an SSH deploy key with write access; see
+[Documenter.jl's hosting docs](https://documenter.juliadocs.org/stable/man/hosting/)
+for how to generate one) — the workflow already reads it if present.
+
 ## Dependencies
 
 - [FITSIO.jl](https://github.com/JuliaAstro/FITSIO.jl) — FITS I/O

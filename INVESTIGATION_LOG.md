@@ -206,7 +206,7 @@ not a selection effect at all; see below). Every constant and docstring
 claim built on those numbers was rewritten against the corrected
 measurements rather than left standing.
 
-## What was actually driving the ~10% photometric-scale mismatch, once flux was measured correctly
+## What was actually driving the ~10 percent photometric-scale mismatch, once flux was measured correctly
 
 With flux measured correctly, `photometric_scale`'s ensemble ratio against
 each frame's own `MAGZP` zeropoint still disagreed by 9-13% — but now
