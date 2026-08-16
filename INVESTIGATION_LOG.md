@@ -132,3 +132,25 @@ noise properties — the `min_frames` change confounds it. A clean
 before/after comparison would need to hold `min_frames` fixed some other
 way (e.g. by literally excluding the bad frame from the input list rather
 than gating it internally), not attempted here.
+
+## `plate_solve` validated end-to-end against the live service
+
+nova.astrometry.net's own API docs require a `Referer:
+https://nova.astrometry.net/api/login` header on programmatic file
+downloads, as an anti-scraper-bot check — `plate_solve` didn't set it.
+Added it to every GET request in `src/platesolve.jl` (submission-status
+poll, job-status poll, WCS fetch); also switched the base URLs from
+`http://` to `https://` to match the documented endpoints.
+
+With a real API key: a synthetic image containing one fabricated point
+source in noise (no genuine star pattern) correctly failed to solve,
+astrometry.net reporting `status: "failure"` rather than returning a
+wrong answer — the expected outcome, since plate-solving works by
+matching real star-pattern asterisms against a sky index, and there was
+no real pattern to match. A real ZTF frame (`data/real/science/`, its own
+existing WCS ignored) solved successfully: recovered
+`CRVAL ≈ (36.3997, 2.0038)`, consistent with that field's known centre
+(~36.5, ~2.1). One upload attempt hit a transient `503` from the
+service; a retry succeeded, so `plate_solve` callers should be prepared
+to retry on transient server errors rather than assume a single failed
+upload means the service is unusable.

@@ -618,10 +618,9 @@ using Reproject
         @test_throws ErrorException AsteroidPipeline._astrometry_poll(
             () -> nothing, 0.1, 0.05, "test condition")
 
-        # live end-to-end round trip against the real service — not run
-        # unless a real API key is available (none was during development;
-        # this project has never exercised this path against the live
-        # service — see README)
+        # live end-to-end round trip against the real service — only runs
+        # if a real API key is available; validated once against a real
+        # ZTF frame (see INVESTIGATION_LOG.md), not re-run on every CI pass
         api_key = get(ENV, "ASTROMETRY_API_KEY", nothing)
         if api_key === nothing
             @test_skip "ASTROMETRY_API_KEY not set"

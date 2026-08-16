@@ -1,8 +1,12 @@
-const _ASTROMETRY_LOGIN_URL = "http://nova.astrometry.net/api/login"
-const _ASTROMETRY_UPLOAD_URL = "http://nova.astrometry.net/api/upload"
-const _ASTROMETRY_SUBMISSIONS_URL = "http://nova.astrometry.net/api/submissions"
-const _ASTROMETRY_JOBS_URL = "http://nova.astrometry.net/api/jobs"
-const _ASTROMETRY_WCS_URL = "http://nova.astrometry.net/wcs_file"
+const _ASTROMETRY_LOGIN_URL = "https://nova.astrometry.net/api/login"
+const _ASTROMETRY_UPLOAD_URL = "https://nova.astrometry.net/api/upload"
+const _ASTROMETRY_SUBMISSIONS_URL = "https://nova.astrometry.net/api/submissions"
+const _ASTROMETRY_JOBS_URL = "https://nova.astrometry.net/api/jobs"
+const _ASTROMETRY_WCS_URL = "https://nova.astrometry.net/wcs_file"
+
+# Required by nova.astrometry.net's own API docs for programmatic file
+# downloads, as an anti-scraper-bot check.
+const _ASTROMETRY_REFERER_HEADER = ["Referer" => _ASTROMETRY_LOGIN_URL]
 
 """
     plate_solve(image_path; api_key, timeout=300, poll_interval=5) -> WCSTransform
@@ -23,11 +27,14 @@ an upload failure, a job that fails to solve, or either poll loop timing
 out — a frame astrometry.net cannot solve is a real failure, not
 something to silently pass through.
 
-**Not validated end-to-end against the live service in this project's
-test suite** — no API key was available while writing this; the network
-round trip is only exercised if `ENV["ASTROMETRY_API_KEY"]` is set (see
-`test/runtests.jl`). The individual request/response steps are each
-tested directly against fabricated JSON, without a live connection.
+Validated end-to-end against the live service: a real ZTF frame (with
+its existing WCS ignored) solved successfully, recovering sky coordinates
+consistent with that frame's known field centre; a synthetic image with
+no genuine star pattern correctly failed to solve rather than silently
+returning a wrong answer. `test/runtests.jl`'s live round-trip test runs
+whenever `ENV["ASTROMETRY_API_KEY"]` is set; the individual
+request/response steps are always tested directly against fabricated
+JSON, without a live connection.
 """
 function plate_solve(image_path::AbstractString; api_key::AbstractString,
                       timeout::Real=300, poll_interval::Real=5)
@@ -101,7 +108,7 @@ slot as a JSON `null`, i.e. `nothing` once parsed, as well as an empty
 `jobs` array; both mean "not ready").
 """
 function _astrometry_submission_job(subid)
-    response = HTTP.get("$_ASTROMETRY_SUBMISSIONS_URL/$subid")
+    response = HTTP.get("$_ASTROMETRY_SUBMISSIONS_URL/$subid", _ASTROMETRY_REFERER_HEADER)
     d = JSON.parse(String(response.body))
     jobs = get(d, "jobs", [])
     isempty(jobs) && return nothing
@@ -116,7 +123,7 @@ reported failure (no point continuing to poll); `nothing` while still
 processing.
 """
 function _astrometry_job_done(job_id)
-    response = HTTP.get("$_ASTROMETRY_JOBS_URL/$job_id")
+    response = HTTP.get("$_ASTROMETRY_JOBS_URL/$job_id", _ASTROMETRY_REFERER_HEADER)
     d = JSON.parse(String(response.body))
     status = d["status"]
     status == "success" && return true
@@ -125,7 +132,7 @@ function _astrometry_job_done(job_id)
 end
 
 function _astrometry_fetch_wcs(job_id)
-    response = HTTP.get("$_ASTROMETRY_WCS_URL/$job_id")
+    response = HTTP.get("$_ASTROMETRY_WCS_URL/$job_id", _ASTROMETRY_REFERER_HEADER)
     path, io = mktemp()
     write(io, response.body)
     close(io)

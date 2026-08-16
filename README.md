@@ -73,13 +73,6 @@ so far, all fixed with regression tests) and how each was diagnosed.
 
 ## Known limitations
 
-- **`plate_solve` has no live validation.** It implements the full
-  nova.astrometry.net login/upload/poll/fetch cycle (see its docstring),
-  and its request/response-parsing logic is unit-tested directly, but no
-  API key was available while writing it, so the actual network round
-  trip has never been exercised — set `ENV["ASTROMETRY_API_KEY"]` to run
-  that test (`test/runtests.jl`, `@testset "plate_solve"`) and confirm it
-  actually solves a real frame before relying on it.
 - **Empirical PSF, not a fitted model.** `estimate_psf` stacks real star
   cutouts rather than fitting an analytic profile (Gaussian/Moffat), which
   keeps it survey-agnostic but means its quality depends on having enough
@@ -144,9 +137,8 @@ run_pipeline(fits_paths; reference=reference, plate_solve_api_key=key)
 
 or directly: `plate_solve(fits_path; api_key=key)`. This is a live
 network round trip — upload, then poll until the frame solves — so it is
-slow and requires connectivity; see the **Known limitations** entry above
-before relying on it, since this project has not yet run it against the
-real service end to end.
+slow and requires connectivity. Validated against the real service: see
+[`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md).
 
 ## Using real IASC campaign data
 
