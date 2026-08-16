@@ -28,6 +28,15 @@ using Reproject
         @test best.flux > 0
         @test best.flux_err > 0
 
+        # gain=nothing (default) uses background noise only; a finite gain
+        # adds the bright source's own Poisson (shot) noise, which must
+        # only ever widen flux_err, never narrow it, and only for a real
+        # source (a pure-noise frame's flux_err is unaffected since there's
+        # no positive signal to contribute shot noise).
+        with_gain = detect_sources(image; threshold=5.0, gain=2.0)
+        best_gain = with_gain[argmax(with_gain.peak)]
+        @test best_gain.flux_err > best.flux_err
+
         noise_only = 100.0 .+ 5.0 .* randn(32, 32)
         @test length(detect_sources(noise_only; threshold=100.0)) == 0
     end
@@ -119,6 +128,52 @@ using Reproject
         calibrated = astrometric_calibrate(groups, fill(wcs, 5), timestamps)
         @test length(calibrated) == 5
         @test all(==(1), calibrated.id)
+    end
+
+    @testset "photometric_scale / normalized find_variable_sources" begin
+        # 5 constant stars, well above the default S/N floor, whose flux
+        # in frame 2 is uniformly 0.8x frame 1's (standing in for a real
+        # zeropoint/transparency mismatch between exposures — measured as
+        # large as this on real ZTF frames, see INVESTIGATION_LOG.md) plus
+        # one genuinely variable source whose flux does *not* follow that
+        # scaling; frame 3 returns to frame 1's scale.
+        star_x = [10.0, 20.0, 30.0, 40.0, 50.0]
+        star_y = copy(star_x)
+        frame1 = Table(x=vcat(star_x, 70.0), y=vcat(star_y, 70.0),
+                        flux=vcat(fill(1000.0, 5), 2000.0), flux_err=vcat(fill(5.0, 5), 10.0))
+        frame2 = Table(x=vcat(star_x, 70.0), y=vcat(star_y, 70.0),
+                        flux=vcat(fill(800.0, 5), 2000.0), flux_err=vcat(fill(4.0, 5), 10.0))
+        frame3 = Table(x=vcat(star_x, 70.0), y=vcat(star_y, 70.0),
+                        flux=vcat(fill(1000.0, 5), 2000.0), flux_err=vcat(fill(5.0, 5), 10.0))
+        timestamps = [0.0, 1.0, 2.0]
+
+        scales = photometric_scale([frame1, frame2, frame3])
+        @test scales[1] == 1.0
+        @test scales[2]≈1.25 rtol=1e-6   # 1000/800
+        @test scales[3]≈1.0 rtol=1e-6
+
+        groups = find_variable_sources([frame1, frame2, frame3], timestamps)
+        @test length(groups) == 1
+        @test all(p.x == 70.0 && p.y == 70.0 for p in groups[1])
+
+        # without normalization, frame 2's uniform 0.8x mismatch alone can
+        # push a merely-rescaled constant star's chi2 over threshold too —
+        # normalization is what keeps that from happening above, so
+        # disabling it must not find *fewer* candidates here.
+        raw_groups = find_variable_sources([frame1, frame2, frame3], timestamps; normalize=false)
+        @test length(raw_groups) >= length(groups)
+    end
+
+    @testset "photometric_scale min_stars guard" begin
+        # only 2 matched stars per frame — below the default min_stars=5 —
+        # so the scale must stay uncorrected (1.0) rather than trust a
+        # factor derived from 2 stars (measured on real data: only 2 of
+        # 120 detections cleared the default S/N floor in every frame).
+        frame1 = Table(x=[10.0, 20.0], y=[10.0, 20.0], flux=[1000.0, 1000.0], flux_err=[5.0, 5.0])
+        frame2 = Table(x=[10.0, 20.0], y=[10.0, 20.0], flux=[800.0, 800.0], flux_err=[4.0, 4.0])
+
+        scales = @test_logs (:warn, r"too few") match_mode = :any photometric_scale([frame1, frame2])
+        @test scales == [1.0, 1.0]
     end
 
     @testset "astrometry" begin
@@ -563,16 +618,29 @@ using Reproject
 
     @testset "search_field" begin
         mktempdir() do dir
-            nx, ny = 80, 60
+            # Larger canvas than the "run_pipeline" testset above needs
+            # (80x60): a bright-enough variable star to clear the S/N floor
+            # below (amplitude up to 8000) contaminates
+            # BackgroundMeshes' background/RMS estimate at that canvas
+            # size — found empirically as ~175-450 spurious detections
+            # per frame at 80x60, dropping to a clean 2 once the source is
+            # a small enough fraction of the frame — the same
+            # source-fraction-of-image effect already documented in
+            # INVESTIGATION_LOG.md's quality-gate test (600x600 for the
+            # same reason). Real ZTF frames (~10^6 px) aren't at risk of
+            # this; a small synthetic frame with a very bright source is.
+            nx, ny = 300, 225
             wcs = WCSTransform(2; crpix=[nx / 2, ny / 2], crval=[150.0, 20.0],
                                 cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
 
             # true asteroid track (as in the "run_pipeline" testset above)
             x0, y0, dx, dy = 20.0, 45.0, 5.0, -3.0
             # stationary variable star, well separated from the track,
-            # with a flux swing far beyond photon noise
-            xv, yv = 60.0, 15.0
-            var_amps = [200.0, 900.0, 200.0]
+            # with a flux swing far beyond photon noise and flux_err/flux
+            # comfortably under find_variable_sources's default 10% S/N
+            # floor in every frame.
+            xv, yv = 220.0, 150.0
+            var_amps = [3000.0, 8000.0, 3000.0]
             mjd0 = 60000.0
 
             Random.seed!(3)
@@ -686,6 +754,34 @@ using Reproject
             matches = crossmatch_catalog(vega, :simbad; radius=5.0)
             @test length(matches) >= 1
             @test matches[1].id == 1
+        catch e
+            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            @test_skip "network unavailable"
+        end
+
+        try
+            # a real VSX variable (Gaia DR3 2501737571391422464, type RS)
+            # inside the real_data_demo.jl field, verified independently
+            # via a direct VizieR TAP query during the migration off the
+            # CDS X-Match service (see INVESTIGATION_LOG.md) — a positive
+            # control, not just an absence-of-error check.
+            star = [(id=1, ra=36.2344, dec=2.06997)]
+            matches = crossmatch_catalog(star, :vsx; radius=5.0)
+            @test any(==("RS"), matches.class)
+            @test matches[1].id == 1
+        catch e
+            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            @test_skip "network unavailable"
+        end
+
+        try
+            # near the celestial pole, tiny radius: regression test for
+            # empty CDS TAP results (mirrors the SkyBoT empty-result case
+            # below) — table construction must not crash on zero rows.
+            empty_candidates = [(id=1, ra=0.0, dec=89.9)]
+            matches = crossmatch_catalog(empty_candidates, :simbad; radius=1.0)
+            @test length(matches) == 0
+            @test isempty(matches.id)
         catch e
             e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
             @test_skip "network unavailable"

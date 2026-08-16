@@ -69,9 +69,16 @@ helps.
 
 `find_variable_sources`/`search_field` (stationary, flux-varying source
 detection) and `fit_moffat_psf` (`estimate_psf`'s analytic-PSF fallback)
-are implemented and validated only against synthetic data so far — not
-yet exercised against real survey frames the way the rest of this list
-has been.
+are implemented, tested against synthetic data, and — for
+`find_variable_sources`'s photometric normalization, S/N floor, and
+`chi2_threshold` default, and for `fit_moffat_psf`'s recovered PSF
+width — calibrated directly against real ZTF data (see
+[`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md), including a real bug in
+`detect_sources`'s own flux measurement this calibration work found and
+fixed). Not yet exercised end to end, via `search_field`, against a real
+field with an independently-confirmed variable star as ground truth — the
+one real dataset checked so far has only one catalogued (VSX) variable in
+its footprint, too faint to serve as a useful positive control.
 
 On that real dataset (field 451, 2019-10-23), the undifferenced baseline
 finds 133 tracklets and recovers both known objects in the field (2002
@@ -109,6 +116,21 @@ so far, all fixed with regression tests) and how each was diagnosed.
   `length(fits_paths) - 1`) when using the ZOGY path, or no tracklet will
   ever be reachable if any frame gets gated — `examples/real_data_demo.jl`
   does this.
+- **`find_variable_sources` has a real, measured false-positive floor on
+  real single-epoch aperture photometry.** Peak-pixel (not sub-pixel
+  centroid) positions mean a 1-pixel jitter against a small aperture can
+  look like genuine variability; on real ZTF data even a generous
+  `chi2_threshold` still flags several times more stars than the true
+  stellar variable fraction (see `find_variable_sources`'s docstring and
+  [`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md) for the measured rate).
+  Treat a candidate as needing independent confirmation (a catalog match
+  or a recovered period), not as self-evidently real.
+- **`crossmatch_catalog(...; :vsx)`/`(...; :simbad)` query one candidate
+  at a time.** Migrated off the CDS X-Match service (extended, total
+  outages — see [`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md)) to direct
+  SIMBAD/VizieR TAP queries, which don't offer X-Match's single-batched-request
+  shape; a large candidate list means that many requests. `:skybot` is
+  unaffected (a different service, always queried this way).
 
 ## Example: real data
 

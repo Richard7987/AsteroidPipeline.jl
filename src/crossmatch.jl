@@ -1,5 +1,5 @@
-const _CDS_XMATCH_URL = "https://cdsxmatch.u-strasbg.fr/xmatch/api/v1/sync"
-const _CDS_CATALOG_NAMES = Dict(:vsx => "vizier:B/vsx/vsx", :simbad => "simbad")
+const _SIMBAD_TAP_URL = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
+const _VIZIER_TAP_URL = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync"
 
 const _SKYBOT_URL = "https://vo.imcce.fr/webservices/skybot/skybotconesearch_query.php"
 
@@ -14,46 +14,115 @@ known objects from candidates warranting human verification.
 J2000), such as the table returned by [`astrometric_calibrate`](@ref).
 SkyBoT additionally requires an `epoch` field (Julian Date) on each row,
 since it computes solar-system-object ephemerides for a specific instant
-rather than querying a static catalog; `:vsx` and `:simbad` are queried in
-a single batched request via the CDS X-Match service.
+rather than querying a static catalog. `:vsx` and `:simbad` are each
+queried directly against their own CDS TAP service (ADQL cone search),
+**one request per candidate** — not the single batched request the CDS
+X-Match service used to offer, since X-Match itself became unreliable
+(extended, total outages; see `INVESTIGATION_LOG.md`) while the
+underlying SIMBAD and VizieR TAP services stayed up. The trade-off is real
+(N candidates means N requests, not 1) and matters for a large candidate
+list — batch by querying a shared sky region directly via TAP if that
+becomes a bottleneck; not done here since it wasn't yet.
 
 Returns a table with one row per (candidate, catalog match) pair found
-within `radius`. Candidate `id`s absent from the returned table have no
-known counterpart in `catalog`.
+within `radius`; `:vsx` and `:simbad` return different columns (VSX
+carries variability class/magnitude/period, SIMBAD doesn't), matching
+what each catalog actually offers, but both always include `id`, `ra`,
+`dec`, and `distance_arcsec`. Candidate `id`s absent from the returned
+table have no known counterpart in `catalog`.
 """
 function crossmatch_catalog(candidates, catalog::Symbol; radius::Real)
     if catalog === :skybot
         return _crossmatch_skybot(candidates, radius)
-    elseif haskey(_CDS_CATALOG_NAMES, catalog)
-        return _crossmatch_cds(candidates, _CDS_CATALOG_NAMES[catalog], radius)
+    elseif catalog === :simbad
+        return _crossmatch_simbad(candidates, radius)
+    elseif catalog === :vsx
+        return _crossmatch_vsx(candidates, radius)
     else
         throw(ArgumentError("unknown catalog $(repr(catalog)); expected :skybot, :vsx, or :simbad"))
     end
 end
 
-function _crossmatch_cds(candidates, cds_name::AbstractString, radius::Real)
-    0 < radius <= 180 ||
-        throw(ArgumentError("radius must be in (0, 180] arcsec for the CDS X-Match service"))
+"""
+    _tap_query(url, query) -> CSV.File
 
-    upload = IOBuffer()
-    println(upload, "id,ra,dec")
-    for c in candidates
-        println(upload, "$(c.id),$(c.ra),$(c.dec)")
-    end
-    seekstart(upload)
-
+Run `query` (an ADQL string) as a synchronous TAP query against `url`,
+returning the CSV response parsed by `CSV.File`. Shared by
+[`_crossmatch_simbad`](@ref) and [`_crossmatch_vsx`](@ref).
+"""
+function _tap_query(url::AbstractString, query::AbstractString)
     body = HTTP.Form(Dict(
-        "request" => "xmatch",
-        "distMaxArcsec" => string(radius),
-        "RESPONSEFORMAT" => "csv",
-        "cat1" => HTTP.Multipart("candidates.csv", upload, "text/csv"),
-        "colRA1" => "ra",
-        "colDec1" => "dec",
-        "cat2" => cds_name,
-    ))
-    response = HTTP.post(_CDS_XMATCH_URL, [], body)
+        "REQUEST" => "doQuery", "LANG" => "ADQL", "FORMAT" => "csv", "QUERY" => query))
+    response = HTTP.post(url, [], body)
+    return CSV.File(response.body)
+end
 
-    return Table(CSV.File(response.body))
+"""
+    _cds_cone_query(select, table, ra_col, dec_col, ra, dec, radius_deg) -> String
+
+An ADQL synchronous cone-search query: rows of `table` within
+`radius_deg` of `(ra, dec)`, plus a `distance_arcsec` column (via ADQL's
+`DISTANCE`, in degrees, converted here) — shared by
+[`_crossmatch_simbad`](@ref) and [`_crossmatch_vsx`](@ref), which differ
+only in `select`/`table`/coordinate column names.
+"""
+function _cds_cone_query(select::AbstractString, table::AbstractString,
+                          ra_col::AbstractString, dec_col::AbstractString,
+                          ra::Real, dec::Real, radius_deg::Real)
+    point = "POINT('ICRS', $ra_col, $dec_col)"
+    return "SELECT $select, DISTANCE($point, POINT('ICRS', $ra, $dec)) * 3600 AS distance_arcsec " *
+           "FROM $table WHERE CONTAINS($point, CIRCLE('ICRS', $ra, $dec, $radius_deg)) = 1"
+end
+
+_nan_if_missing(x) = x === missing ? NaN : Float64(x)
+
+function _crossmatch_simbad(candidates, radius::Real)
+    0 < radius <= 180 || throw(ArgumentError("radius must be in (0, 180] arcsec"))
+    radius_deg = radius / 3600
+
+    id = Int[]; name = String[]; ra = Float64[]; dec = Float64[]; distance_arcsec = Float64[]
+    for c in candidates
+        query = _cds_cone_query("main_id, ra, dec", "basic", "ra", "dec", c.ra, c.dec, radius_deg)
+        for row in _tap_query(_SIMBAD_TAP_URL, query)
+            push!(id, c.id)
+            push!(name, String(row.main_id))
+            push!(ra, row.ra)
+            push!(dec, row.dec)
+            push!(distance_arcsec, row.distance_arcsec)
+        end
+    end
+
+    return Table(; id, name, ra, dec, distance_arcsec)
+end
+
+function _crossmatch_vsx(candidates, radius::Real)
+    0 < radius <= 180 || throw(ArgumentError("radius must be in (0, 180] arcsec"))
+    radius_deg = radius / 3600
+
+    id = Int[]; name = String[]; class = String[]; ra = Float64[]; dec = Float64[]
+    mag_max = Float64[]; mag_min = Float64[]; period = Float64[]; distance_arcsec = Float64[]
+    for c in candidates
+        query = _cds_cone_query("Name, Type, RAJ2000, DEJ2000, max, min, Period", "\"B/vsx/vsx\"",
+                                 "RAJ2000", "DEJ2000", c.ra, c.dec, radius_deg)
+        for row in _tap_query(_VIZIER_TAP_URL, query)
+            push!(id, c.id)
+            # VizieR's TAP service returns Name/Type as fixed-width,
+            # space-padded strings (e.g. "RS" arrives as "RS" followed by
+            # 28 spaces) — found via a real query, not documented anywhere
+            # obvious; strip or every string comparison against these
+            # silently fails.
+            push!(name, String(strip(row.Name)))
+            push!(class, String(strip(row.Type)))
+            push!(ra, row.RAJ2000)
+            push!(dec, row.DEJ2000)
+            push!(mag_max, _nan_if_missing(row.max))
+            push!(mag_min, _nan_if_missing(row.min))
+            push!(period, _nan_if_missing(row.Period))
+            push!(distance_arcsec, row.distance_arcsec)
+        end
+    end
+
+    return Table(; id, name, class, ra, dec, mag_max, mag_min, period, distance_arcsec)
 end
 
 function _crossmatch_skybot(candidates, radius::Real)

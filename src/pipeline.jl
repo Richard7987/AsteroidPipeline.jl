@@ -5,7 +5,8 @@
                  aperture_radius::Real=3.0, max_speed::Real=Inf,
                  match_radius::Real=2.0, min_frames::Integer=length(fits_paths),
                  reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
-                 quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing)
+                 quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
+                 photometric_outlier_threshold::Real=0.2)
 
 Run the local stages of the pipeline — detection, linking, and
 astrometric calibration — on a time-ordered sequence of FITS frames from
@@ -65,6 +66,24 @@ actually separates them here. The default of `1.5` sits with margin on
 both sides of that real gap; it is calibrated from that one dataset, not
 a universal constant — tune per survey/conditions.
 
+The raw (no-`reference`) path has no equivalent gate built into
+`S_corr`'s own statistics, but a related signal is available there:
+[`photometric_scale`](@ref)'s per-frame flux-scale factor (computed after
+detection, from every frame's own detections). If any frame's factor
+relative to the field's median deviates by more than
+`photometric_outlier_threshold` (default `0.2`, i.e. 20%), a warning is
+emitted — this is only a warning, never an automatic exclusion, unlike
+`quality_max_std`, precisely to avoid repeating that gate's own
+combinatorial side effect on `link_candidates`'s `min_frames` (see
+`INVESTIGATION_LOG.md`). Unlike `quality_max_std`, this has **not** been
+validated against a real, independently-confirmed anomaly: on the same 5
+real ZTF frames used to calibrate `quality_max_std` (one of which is a
+confirmed likely passing cloud), every frame's raw-path photometric scale
+stayed within ~3-13% of the field median — well under the default
+threshold, so this signal did not (and, on this dataset, could not have)
+flagged that frame. It is included as a plausible general-purpose check,
+not a proven one; treat the default threshold as unvalidated until it is.
+
 If a frame's header has no WCS, [`load_wcs`](@ref) raises an error;
 passing `plate_solve_api_key` (a nova.astrometry.net API key) makes that
 frame fall back to [`plate_solve`](@ref) instead of failing outright —
@@ -88,10 +107,12 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        aperture_radius::Real=3.0, max_speed::Real=Inf,
                        match_radius::Real=2.0, min_frames::Integer=length(fits_paths),
                        reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
-                       quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing)
+                       quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
+                       photometric_outlier_threshold::Real=0.2)
     detections_per_frame, wcs_per_frame, timestamps = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
-        reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key)
+        reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
+        photometric_outlier_threshold)
 
     tracklets = link_candidates(detections_per_frame, timestamps; max_speed, match_radius, min_frames)
     return astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
@@ -108,15 +129,23 @@ links these into movers) and [`search_field`](@ref) (which additionally
 looks for stationary variable sources) — factored out so both share one
 detection pass over `fits_paths` rather than repeating the expensive
 reprojection/PSF/ZOGY work. See `run_pipeline`'s docstring for the
-meaning of every keyword; behaviour here is identical to what
-`run_pipeline` did inline before this split.
+meaning of every keyword. On the raw (no-`reference`) path, each frame's
+own `GAIN` header keyword (default `1.0` if absent) is passed to
+[`detect_sources`](@ref) so `flux_err` includes source shot noise, not
+just background noise — needed for [`find_variable_sources`](@ref)'s
+chi-squared test to have a realistic error bar to test against. Not
+applied on the `reference` (ZOGY) path, since `S_corr` there is already a
+normalized detection-significance map, not physical counts. On that same
+raw path, `photometric_outlier_threshold` is forwarded to a post-loop
+[`photometric_scale`](@ref) check — see `run_pipeline`'s docstring.
 """
 function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              timestamp_key::AbstractString="MJD-OBS",
                              threshold::Real=5.0, box_size::NTuple{2,<:Integer}=(5, 5),
                              aperture_radius::Real=3.0,
                              reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
-                             quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing)
+                             quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
+                             photometric_outlier_threshold::Real=0.2)
     detections_per_frame = []
     wcs_per_frame = WCSTransform[]
     timestamps = Float64[]
@@ -185,10 +214,26 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                 end
                 push!(wcs_per_frame, reference.wcs)
             end
-            push!(detections_per_frame, detect_sources(image; threshold, box_size, aperture_radius))
+            # gain only applies to the raw path: S_corr (the reference
+            # path) is already a normalized detection-significance map,
+            # not physical counts, so Poisson noise doesn't apply to it.
+            push!(detections_per_frame,
+                  detect_sources(image; threshold, box_size, aperture_radius,
+                                  gain=(reference === nothing ? gain : nothing)))
 
             mjd = read_key(hdu, timestamp_key)[1]
             push!(timestamps, mjd + 2400000.5)
+        end
+    end
+
+    if reference === nothing && length(fits_paths) >= 2
+        scales = photometric_scale(detections_per_frame)
+        reference_scale = median(scales)
+        for (k, path) in enumerate(fits_paths)
+            deviation = abs(scales[k] - reference_scale) / reference_scale
+            if deviation > photometric_outlier_threshold
+                @warn "frame's photometric scale deviates from the field's median" path scale=scales[k] reference_scale deviation photometric_outlier_threshold
+            end
         end
     end
 
@@ -199,7 +244,7 @@ end
     search_field(fits_paths; <all run_pipeline keywords>,
                  variability_position_tolerance::Real=2.0,
                  variability_min_frames::Integer=length(fits_paths),
-                 variability_chi2_threshold::Real=3.0)
+                 variability_chi2_threshold::Real=50.0)
         -> (movers=<table>, variables=<table>)
 
 Run [`run_pipeline`](@ref)'s asteroid-candidate search and
@@ -211,11 +256,16 @@ the efficient choice for a real observing run that wants both outputs,
 since `run_pipeline` alone would need a second full pass over the same
 frames to also find variables.
 
-All keywords through `plate_solve_api_key` are exactly `run_pipeline`'s
-(see its docstring); `variability_position_tolerance`,
-`variability_min_frames`, and `variability_chi2_threshold` are forwarded
-to `find_variable_sources` as its `position_tolerance`, `min_frames`, and
-`chi2_threshold`.
+All keywords through `photometric_outlier_threshold` are exactly
+`run_pipeline`'s (see its docstring); `variability_position_tolerance`,
+`variability_min_frames`, `variability_chi2_threshold`,
+`variability_normalize`, and `variability_max_relative_error` are
+forwarded to [`find_variable_sources`](@ref) as its `position_tolerance`,
+`min_frames`, `chi2_threshold`, `normalize`, and `max_relative_error`.
+`variability_normalize` defaults to `reference === nothing` — off on the
+ZOGY path, per `find_variable_sources`'s own docstring (`S_corr` isn't on
+a physical flux scale, so ensemble photometric normalization doesn't
+apply there).
 
 Returns a named tuple `(movers=..., variables=...)`, each an
 `astrometric_calibrate` candidate table (columns `id`, `frame`, `x`, `y`,
@@ -231,12 +281,16 @@ function search_field(fits_paths::AbstractVector{<:AbstractString};
                        match_radius::Real=2.0, min_frames::Integer=length(fits_paths),
                        reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
                        quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
+                       photometric_outlier_threshold::Real=0.2,
                        variability_position_tolerance::Real=2.0,
                        variability_min_frames::Integer=length(fits_paths),
-                       variability_chi2_threshold::Real=3.0)
+                       variability_chi2_threshold::Real=50.0,
+                       variability_normalize::Bool=(reference === nothing),
+                       variability_max_relative_error::Real=0.10)
     detections_per_frame, wcs_per_frame, timestamps = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
-        reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key)
+        reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
+        photometric_outlier_threshold)
 
     tracklets = link_candidates(detections_per_frame, timestamps; max_speed, match_radius, min_frames)
     movers = astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
@@ -245,7 +299,9 @@ function search_field(fits_paths::AbstractVector{<:AbstractString};
         detections_per_frame, timestamps;
         position_tolerance=variability_position_tolerance,
         min_frames=variability_min_frames,
-        chi2_threshold=variability_chi2_threshold)
+        chi2_threshold=variability_chi2_threshold,
+        normalize=variability_normalize,
+        max_relative_error=variability_max_relative_error)
     variables = astrometric_calibrate(variable_groups, wcs_per_frame, timestamps)
 
     return (movers=movers, variables=variables)

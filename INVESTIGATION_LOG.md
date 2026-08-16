@@ -154,3 +154,86 @@ existing WCS ignored) solved successfully: recovered
 service; a retry succeeded, so `plate_solve` callers should be prepared
 to retry on transient server errors rather than assume a single failed
 upload means the service is unusable.
+
+## `detect_sources`'s flux has been silently wrong since the beginning: a transposed aperture
+
+Building `find_variable_sources` required trusting `detect_sources`'s
+`flux` for the first time in a *quantitative* way — every earlier use
+(`link_candidates`, tracklet building, WCS calibration, cross-matching)
+only depends on its `x`/`y` positions. That new dependency surfaced a bug
+that had been present, silently, since `detect_sources` was first written:
+its measured flux was wrong by orders of magnitude for almost any real
+source.
+
+Root cause: `Photometry.jl` (v0.9.8) is internally inconsistent between
+its own two pieces. `PeakMesh`'s `extract_sources` reports positions in
+the standard Cartesian sense — `to_nt(ci) = (x=ci[2], y=ci[1], ...)`, i.e.
+`x` is the array's *second* dimension (column), `y` its *first* (row).
+`CircularAperture`, in the same package, does the opposite internally —
+`bounds`/`overlap` treat its own `.x` field as indexing the array's
+*first* dimension and `.y` the second. `detect_sources` built
+`CircularAperture(row.x, row.y, aperture_radius)` directly from
+`PeakMesh`'s output, so every aperture was centred at the transposed
+pixel — correct only when a source's row and column indices happened to
+coincide (the diagonal), or invisibly wrong on a square canvas at a
+generic position, or (on a non-square canvas, or once truly out of the
+transposed array's bounds) landing on pure background instead.
+
+Found by comparing `detect_sources`'s measured flux against the closed-form
+enclosed-energy integral for an isolated, noise-free synthetic Gaussian on
+a non-square canvas at an asymmetric position: measured flux came back
+~140x too small. Swapping the aperture's constructor arguments
+(`CircularAperture(row.y, row.x, aperture_radius)`) brought it to within
+~1.4% of the analytic value — geometric quantization error, not a
+remaining bug. `light_curve` (`src/rotation.jl`) was checked the same way
+and is *not* affected: it deliberately never permutes its image (see its
+own docstring), and `WCS.world_to_pix`'s returned `(x, y)` already matches
+raw FITS `(NAXIS1, NAXIS2)` order — which happens to be exactly what
+`CircularAperture` expects internally, by coincidence of two conventions
+cancelling out rather than by any intentional match.
+
+This had zero effect on every result validated so far in this project —
+`run_pipeline`'s real-data tracklet counts (133 baseline / 667 ZOGY, both
+recovering the same 2 known objects) depend only on detected *positions*,
+never on `flux` — but it fully invalidated the first real-data
+measurements made *while building* `find_variable_sources` earlier the
+same session, before this was found: a claimed 29.4% median
+`flux_err/flux` (actual, post-fix: **2.56%**), a claimed "only 2 of 120
+stars clear a 10% S/N floor" (actual: **119 of 119**), and a claimed
+8-40% ensemble-vs-`MAGZP` mismatch explained by low-S/N selection bias
+(the mismatch is real, but stable at 9-13% with or without an S/N cut —
+not a selection effect at all; see below). Every constant and docstring
+claim built on those numbers was rewritten against the corrected
+measurements rather than left standing.
+
+## What was actually driving the ~10% photometric-scale mismatch, once flux was measured correctly
+
+With flux measured correctly, `photometric_scale`'s ensemble ratio against
+each frame's own `MAGZP` zeropoint still disagreed by 9-13% — but now
+*independent* of the S/N cut, ruling out selection bias as the cause.
+Checked against each frame's `SEEING` header value (1.805-2.009 px across
+the 5 real frames): the frames with better (smaller) seeing than frame 1
+all showed `photometric_scale < 1`, consistent with the standard "aperture
+correction" effect — a fixed-radius aperture (`aperture_radius`, default 3
+px, comparable to ZTF's own seeing) encloses a larger fraction of a star's
+total flux when the PSF is more concentrated. `photometric_scale`'s
+ensemble-differential approach corrects for this automatically (it only
+needs frame-to-frame consistency, not a causal model), so no code change
+was needed here — only the docstring's explanation, which had cited the
+now-debunked selection-bias story.
+
+## `find_variable_sources`'s chi-squared test has a real, measured false-positive floor on real data
+
+Even with correct flux and photometric normalization, real ZTF data's
+reduced-chi2 distribution over 119 matched stationary stars has a heavy
+tail: 23% exceed a threshold of 3 (the textbook-reasonable default),
+13% still exceed 20. The likely cause: `detect_sources` positions each
+detection at `PeakMesh`'s integer peak pixel, not a sub-pixel centroid, so
+a 1-pixel jitter between frames — from noise, or a slightly different PSF
+realization — against a small aperture (3 px, close to the PSF's own
+scale) produces a real, but spurious, flux swing frame to frame. Raising
+`chi2_threshold`'s default to 50 cuts the false-positive rate to 8% on
+this dataset — better, but not clean, and documented as such in
+`find_variable_sources`'s own docstring rather than presented as solved.
+The actual fix (forced, sub-pixel-centroided photometry instead of
+peak-position aperture photometry) is a larger change, not attempted here.
