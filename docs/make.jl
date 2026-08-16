@@ -20,12 +20,13 @@ makedocs(;
     modules=[AsteroidPipeline],
     authors="Alejandro",
     sitename="AsteroidPipeline.jl",
-    # Needed explicitly (not just inside `format=`): this repo has no git
-    # remote configured yet, and Documenter's own "edit this page" source
-    # links can't be auto-detected from one that doesn't exist.
-    repo="github.com/ale-bnes/AsteroidPipeline.jl.git",
+    # Needed explicitly (not just inside `format=`): the actual git remote
+    # (Forgejo, self-hosted) isn't github.com, so Documenter's own "edit
+    # this page" source-link auto-detection can't work here — this must
+    # match the *GitHub mirror* deploydocs below actually deploys to.
+    repo="github.com/Richard7987/AsteroidPipeline.jl.git",
     format=DocumenterVitepress.MarkdownVitepress(;
-        repo="github.com/ale-bnes/AsteroidPipeline.jl",
+        repo="github.com/Richard7987/AsteroidPipeline.jl",
         devbranch="main",
         devurl="dev",
     ),
@@ -45,7 +46,7 @@ makedocs(;
 )
 
 DocumenterVitepress.deploydocs(;
-    repo="github.com/ale-bnes/AsteroidPipeline.jl",
+    repo="github.com/Richard7987/AsteroidPipeline.jl",
     target=joinpath(@__DIR__, "build"),
     branch="gh-pages",
     devbranch="main",
