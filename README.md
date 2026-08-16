@@ -26,14 +26,23 @@ The pipeline processes sequences of FITS frames from a survey field to:
 `run_pipeline` runs steps 1-4 end to end on a sequence of FITS file paths,
 returning a candidate table ready for `crossmatch_catalog`.
 
+`find_variable_sources` searches the same per-frame detections for
+**stationary**, flux-varying sources — variable stars and transients,
+as opposed to `link_candidates`'s moving-object search — matching
+positions across frames instead of a linear motion model, then filtering
+by `variability_chi2` against a constant-flux null hypothesis.
+`search_field` runs both searches from a single shared detection pass
+over `fits_paths` (avoiding the cost of detecting twice), returning
+`(movers, variables)`; use `run_pipeline` alone when only asteroid
+candidates are needed.
+
 For a confirmed discovery, `light_curve` (forced aperture photometry at a
 fixed sky position across a dedicated follow-up sequence) and
 `recover_rotation_period` (a Lomb-Scargle periodogram over that light
 curve, via `LombScargle.jl`) recover a rotation period — a separate,
-optional follow-up step, not part of `run_pipeline` itself.
-
-Planned extension: variable-star and transient detection (distinguishing
-these from asteroid candidates in `crossmatch_catalog`'s output).
+optional follow-up step, not part of `run_pipeline` itself. The same
+periodogram applies directly to a `find_variable_sources` candidate's own
+`(frame, flux)` points, for periodic variables.
 
 ## Status
 
@@ -58,6 +67,12 @@ the pipeline with and without differencing on the same frames and reports
 which known objects each recovers, rather than assuming differencing
 helps.
 
+`find_variable_sources`/`search_field` (stationary, flux-varying source
+detection) and `fit_moffat_psf` (`estimate_psf`'s analytic-PSF fallback)
+are implemented and validated only against synthetic data so far — not
+yet exercised against real survey frames the way the rest of this list
+has been.
+
 On that real dataset (field 451, 2019-10-23), the undifferenced baseline
 finds 133 tracklets and recovers both known objects in the field (2002
 UY45, 1997 KO3); ZOGY also recovers both, at consistent sky offsets
@@ -73,10 +88,14 @@ so far, all fixed with regression tests) and how each was diagnosed.
 
 ## Known limitations
 
-- **Empirical PSF, not a fitted model.** `estimate_psf` stacks real star
-  cutouts rather than fitting an analytic profile (Gaussian/Moffat), which
-  keeps it survey-agnostic but means its quality depends on having enough
-  bright, isolated, unsaturated stars in the frame.
+- **Empirical PSF's quality depends on the field.** `estimate_psf` stacks
+  real star cutouts, which captures the true PSF shape (wings included)
+  without fitting a model family per instrument, but needs enough bright,
+  isolated, unsaturated stars to do it. When a field doesn't have them, it
+  falls back (by default) to `fit_moffat_psf` — a parametric Moffat fit —
+  rather than failing outright; the fallback trades exact PSF shape for
+  robustness, and is not itself a substitute for a genuinely well-behaved
+  field.
 - **`zogy_subtract`'s astrometric-noise term (`V_ast`) is opt-in at the
   `zogy_subtract` level** — it needs `n_sources`/`r_sources` passed
   explicitly, and is `0` without them. `run_pipeline` always supplies
@@ -187,6 +206,7 @@ nix develop
 - [FFTW.jl](https://github.com/JuliaMath/FFTW.jl) — Fourier-domain ZOGY difference imaging
 - [Interpolations.jl](https://github.com/JuliaMath/Interpolations.jl) — sub-pixel PSF stamp alignment
 - [LombScargle.jl](https://github.com/JuliaAstro/LombScargle.jl) — rotation-period periodogram analysis
+- [LsqFit.jl](https://github.com/JuliaNLSolvers/LsqFit.jl) — analytic (Moffat) PSF fallback fitting
 - [HTTP.jl](https://github.com/JuliaWeb/HTTP.jl), [CSV.jl](https://github.com/JuliaData/CSV.jl) — catalog cross-match queries
 - [JSON.jl](https://github.com/JuliaIO/JSON.jl) — nova.astrometry.net API requests (plate-solving)
 

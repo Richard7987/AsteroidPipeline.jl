@@ -26,6 +26,7 @@ using Reproject
         @test best.x == x0
         @test best.y == y0
         @test best.flux > 0
+        @test best.flux_err > 0
 
         noise_only = 100.0 .+ 5.0 .* randn(32, 32)
         @test length(detect_sources(noise_only; threshold=100.0)) == 0
@@ -80,6 +81,44 @@ using Reproject
         @test length(under_tracklets) == 1
         @test length(under_tracklets[1]) == 3
         @test under_tracklets[1][2].x == 14.0 && under_tracklets[1][2].y == 7.6  # unrefit seed point kept
+    end
+
+    @testset "find_variable_sources" begin
+        # frame column 1: constant star (flux unchanged every frame);
+        # column 2: variable star (flux swings well beyond flux_err);
+        # column 3: mover (position advances each frame, so it can never
+        # match within position_tolerance past frame 1) — a negative case
+        # proving find_variable_sources doesn't also pick up movers.
+        frame1 = Table(x=[50.0, 80.0, 10.0], y=[50.0, 80.0, 10.0],
+                        flux=[1000.0, 1000.0, 1500.0], flux_err=[10.0, 10.0, 10.0])
+        frame2 = Table(x=[50.0, 80.0, 15.0], y=[50.0, 80.0, 10.0],
+                        flux=[1000.0, 2000.0, 1500.0], flux_err=[10.0, 10.0, 10.0])
+        frame3 = Table(x=[50.0, 80.0, 20.0], y=[50.0, 80.0, 10.0],
+                        flux=[1000.0, 800.0, 1500.0], flux_err=[10.0, 10.0, 10.0])
+        frame4 = Table(x=[50.0, 80.0, 25.0], y=[50.0, 80.0, 10.0],
+                        flux=[1000.0, 2200.0, 1500.0], flux_err=[10.0, 10.0, 10.0])
+        frame5 = Table(x=[50.0, 80.0, 30.0], y=[50.0, 80.0, 10.0],
+                        flux=[1000.0, 900.0, 1500.0], flux_err=[10.0, 10.0, 10.0])
+        timestamps = [0.0, 1.0, 2.0, 3.0, 4.0]
+
+        groups = find_variable_sources([frame1, frame2, frame3, frame4, frame5], timestamps;
+                                        position_tolerance=1.0)
+        @test length(groups) == 1
+        @test length(groups[1]) == 5
+        @test all(p.x == 80.0 && p.y == 80.0 for p in groups[1])
+
+        constant_chi2, constant_dof = variability_chi2(fill(1000.0, 5), fill(10.0, 5))
+        @test constant_chi2 / constant_dof < 3.0
+
+        variable_chi2, variable_dof = variability_chi2([p.flux for p in groups[1]],
+                                                         [p.flux_err for p in groups[1]])
+        @test variable_chi2 / variable_dof > 3.0
+
+        wcs = WCSTransform(2; crpix=[50.0, 50.0], crval=[150.0, 20.0],
+                            cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+        calibrated = astrometric_calibrate(groups, fill(wcs, 5), timestamps)
+        @test length(calibrated) == 5
+        @test all(==(1), calibrated.id)
     end
 
     @testset "astrometry" begin
@@ -181,6 +220,38 @@ using Reproject
         @test half_max_pos !== nothing
         half_max_r = half_max_pos - 1
         @test half_max_r - 1 <= true_sigma * 2sqrt(2log(2)) / 2 <= half_max_r + 1
+    end
+
+    @testset "fit_moffat_psf / estimate_psf fallback" begin
+        Random.seed!(13)
+        nx, ny = 120, 120
+        img = 100.0 .+ 3.0 .* randn(nx, ny)
+        true_alpha, true_beta = 3.0, 2.5
+        # centers all within ~25 px of each other, closer than the default
+        # min_separation=40 — every star fails estimate_psf's isolation
+        # filter, forcing the analytic fallback.
+        centers = [(50, 50), (70, 55), (55, 70), (75, 75)]
+        for (cx, cy) in centers, i in 1:nx, j in 1:ny
+            r2 = (i - cx)^2 + (j - cy)^2
+            img[i, j] += 3000.0 / (1 + r2 / true_alpha^2)^true_beta
+        end
+
+        @test_throws ErrorException estimate_psf(img; threshold=15.0, fallback=false)
+
+        psf = estimate_psf(img; threshold=15.0)  # fallback=true by default
+        @test sum(psf) ≈ 1.0 atol=1e-6
+
+        c = size(psf, 1) ÷ 2 + 1
+        @test argmax(psf) == CartesianIndex(c, c)
+
+        true_fwhm = 2 * true_alpha * sqrt(2^(1 / true_beta) - 1)
+        half_max_pos = findfirst(r -> psf[c+r, c] < psf[c, c] / 2, 0:(c - 1))
+        @test half_max_pos !== nothing
+        half_max_r = half_max_pos - 1
+        @test half_max_r - 1 <= true_fwhm / 2 <= half_max_r + 1
+
+        empty_image = fill(100.0, 60, 60)
+        @test_throws ErrorException fit_moffat_psf(empty_image; threshold=15.0)
     end
 
     @testset "zogy_subtract" begin
@@ -487,6 +558,73 @@ using Reproject
             @test by_frame[1].y ≈ y0 atol=1.0
             @test by_frame[3].x ≈ x0 + 2dx atol=1.0
             @test by_frame[3].y ≈ y0 + 2dy atol=1.0
+        end
+    end
+
+    @testset "search_field" begin
+        mktempdir() do dir
+            nx, ny = 80, 60
+            wcs = WCSTransform(2; crpix=[nx / 2, ny / 2], crval=[150.0, 20.0],
+                                cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+
+            # true asteroid track (as in the "run_pipeline" testset above)
+            x0, y0, dx, dy = 20.0, 45.0, 5.0, -3.0
+            # stationary variable star, well separated from the track,
+            # with a flux swing far beyond photon noise
+            xv, yv = 60.0, 15.0
+            var_amps = [200.0, 900.0, 200.0]
+            mjd0 = 60000.0
+
+            Random.seed!(3)
+            paths = String[]
+            for k in 0:2
+                raw = 100.0 .+ 5.0 .* randn(nx, ny)
+                xk, yk = x0 + k * dx, y0 + k * dy
+                for i in 1:nx, j in 1:ny
+                    r2 = (i - xk)^2 + (j - yk)^2
+                    raw[i, j] += 500.0 * exp(-r2 / (2 * 2.0^2))
+                    r2v = (i - xv)^2 + (j - yv)^2
+                    raw[i, j] += var_amps[k+1] * exp(-r2v / (2 * 2.0^2))
+                end
+
+                header = FITSHeader(
+                    ["MJD-OBS", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2",
+                     "CDELT1", "CDELT2", "CTYPE1", "CTYPE2"],
+                    Any[mjd0 + k * 1e-3, wcs.crpix[1], wcs.crpix[2], wcs.crval[1], wcs.crval[2],
+                        wcs.cdelt[1], wcs.cdelt[2], wcs.ctype[1], wcs.ctype[2]],
+                    fill("", 9),
+                )
+
+                path = joinpath(dir, "sf_frame$k.fits")
+                FITS(path, "w") do f
+                    write(f, raw; header=header)
+                end
+                push!(paths, path)
+            end
+
+            result = search_field(paths; threshold=5.0, match_radius=1.0,
+                                   variability_position_tolerance=1.0)
+            baseline = run_pipeline(paths; threshold=5.0, match_radius=1.0)
+
+            # one shared _detect_all_frames pass must produce exactly the
+            # same movers table run_pipeline computes on its own
+            @test result.movers.id == baseline.id
+            @test result.movers.frame == baseline.frame
+            @test result.movers.x == baseline.x
+            @test result.movers.y == baseline.y
+            @test result.movers.ra == baseline.ra
+            @test result.movers.dec == baseline.dec
+            @test result.movers.epoch == baseline.epoch
+
+            mover_ids = [row.id for row in result.movers
+                         if row.frame == 1 && isapprox(row.x, x0; atol=1.0) && isapprox(row.y, y0; atol=1.0)]
+            mover_id = only(mover_ids)
+            mover_rows = Dict(row.frame => row for row in result.movers if row.id == mover_id)
+            @test mover_rows[3].x ≈ x0 + 2dx atol=1.0
+            @test mover_rows[3].y ≈ y0 + 2dy atol=1.0
+
+            @test length(result.variables) == 3
+            @test all(row -> isapprox(row.x, xv; atol=1.0) && isapprox(row.y, yv; atol=1.0), result.variables)
         end
     end
 

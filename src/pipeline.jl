@@ -89,6 +89,34 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        match_radius::Real=2.0, min_frames::Integer=length(fits_paths),
                        reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
                        quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing)
+    detections_per_frame, wcs_per_frame, timestamps = _detect_all_frames(
+        fits_paths; timestamp_key, threshold, box_size, aperture_radius,
+        reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key)
+
+    tracklets = link_candidates(detections_per_frame, timestamps; max_speed, match_radius, min_frames)
+    return astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
+end
+
+"""
+    _detect_all_frames(fits_paths; timestamp_key, threshold, box_size, aperture_radius,
+                        reference, psf_threshold, psf_min_separation,
+                        quality_max_std, plate_solve_api_key)
+        -> (detections_per_frame, wcs_per_frame, timestamps)
+
+The per-frame detection stage shared by [`run_pipeline`](@ref) (which
+links these into movers) and [`search_field`](@ref) (which additionally
+looks for stationary variable sources) — factored out so both share one
+detection pass over `fits_paths` rather than repeating the expensive
+reprojection/PSF/ZOGY work. See `run_pipeline`'s docstring for the
+meaning of every keyword; behaviour here is identical to what
+`run_pipeline` did inline before this split.
+"""
+function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
+                             timestamp_key::AbstractString="MJD-OBS",
+                             threshold::Real=5.0, box_size::NTuple{2,<:Integer}=(5, 5),
+                             aperture_radius::Real=3.0,
+                             reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
+                             quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing)
     detections_per_frame = []
     wcs_per_frame = WCSTransform[]
     timestamps = Float64[]
@@ -164,6 +192,61 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
         end
     end
 
+    return detections_per_frame, wcs_per_frame, timestamps
+end
+
+"""
+    search_field(fits_paths; <all run_pipeline keywords>,
+                 variability_position_tolerance::Real=2.0,
+                 variability_min_frames::Integer=length(fits_paths),
+                 variability_chi2_threshold::Real=3.0)
+        -> (movers=<table>, variables=<table>)
+
+Run [`run_pipeline`](@ref)'s asteroid-candidate search and
+[`find_variable_sources`](@ref)'s variable/transient search together,
+sharing a single detection pass over `fits_paths` (via
+[`_detect_all_frames`](@ref)) rather than repeating the expensive
+per-frame work (reprojection, PSF estimation, ZOGY differencing) twice —
+the efficient choice for a real observing run that wants both outputs,
+since `run_pipeline` alone would need a second full pass over the same
+frames to also find variables.
+
+All keywords through `plate_solve_api_key` are exactly `run_pipeline`'s
+(see its docstring); `variability_position_tolerance`,
+`variability_min_frames`, and `variability_chi2_threshold` are forwarded
+to `find_variable_sources` as its `position_tolerance`, `min_frames`, and
+`chi2_threshold`.
+
+Returns a named tuple `(movers=..., variables=...)`, each an
+`astrometric_calibrate` candidate table (columns `id`, `frame`, `x`, `y`,
+`ra`, `dec`, `epoch`) — `movers` is identical to what `run_pipeline` would
+return for the same arguments; `variables` is ready for
+`crossmatch_catalog(...; :vsx)` the same way. `run_pipeline` itself
+remains the right entry point when only movers are needed.
+"""
+function search_field(fits_paths::AbstractVector{<:AbstractString};
+                       timestamp_key::AbstractString="MJD-OBS",
+                       threshold::Real=5.0, box_size::NTuple{2,<:Integer}=(5, 5),
+                       aperture_radius::Real=3.0, max_speed::Real=Inf,
+                       match_radius::Real=2.0, min_frames::Integer=length(fits_paths),
+                       reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
+                       quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
+                       variability_position_tolerance::Real=2.0,
+                       variability_min_frames::Integer=length(fits_paths),
+                       variability_chi2_threshold::Real=3.0)
+    detections_per_frame, wcs_per_frame, timestamps = _detect_all_frames(
+        fits_paths; timestamp_key, threshold, box_size, aperture_radius,
+        reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key)
+
     tracklets = link_candidates(detections_per_frame, timestamps; max_speed, match_radius, min_frames)
-    return astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
+    movers = astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
+
+    variable_groups = find_variable_sources(
+        detections_per_frame, timestamps;
+        position_tolerance=variability_position_tolerance,
+        min_frames=variability_min_frames,
+        chi2_threshold=variability_chi2_threshold)
+    variables = astrometric_calibrate(variable_groups, wcs_per_frame, timestamps)
+
+    return (movers=movers, variables=variables)
 end
