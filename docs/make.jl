@@ -2,18 +2,17 @@ using AsteroidPipeline
 using Documenter
 using DocumenterVitepress
 
-# README.md and INVESTIGATION_LOG.md are the actual source of truth for
-# the project's purpose, status, and real-data findings (see
-# INVESTIGATION_LOG.md itself for why they're kept separate). Copied here
-# at build time, not committed under docs/src (see .gitignore), so the
-# docs site can never drift out of sync with them.
+# README.md is the actual source of truth for the project's purpose and
+# status. Copied here at build time, not committed under docs/src (see
+# .gitignore), so the site's home page can never drift out of sync with
+# it. INVESTIGATION_LOG.md lives permanently at docs/src/investigation-log.md
+# instead (a real, committed page, not generated) — it's the docs site's
+# own content, not duplicated from anywhere else.
 const REPO_ROOT = joinpath(@__DIR__, "..")
 
 index_content = read(joinpath(REPO_ROOT, "README.md"), String)
-index_content = replace(index_content, "(INVESTIGATION_LOG.md)" => "(investigation-log.md)")
+index_content = replace(index_content, "(docs/src/investigation-log.md)" => "(investigation-log.md)")
 write(joinpath(@__DIR__, "src", "index.md"), index_content)
-
-cp(joinpath(REPO_ROOT, "INVESTIGATION_LOG.md"), joinpath(@__DIR__, "src", "investigation-log.md"); force=true)
 
 DocMeta.setdocmeta!(AsteroidPipeline, :DocTestSetup, :(using AsteroidPipeline); recursive=true)
 

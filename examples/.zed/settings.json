@@ -1,0 +1,9 @@
+{
+  "lsp": {
+    "julia": {
+      "settings": {
+        "julia.lint.missingrefs": "none"
+      }
+    }
+  }
+}

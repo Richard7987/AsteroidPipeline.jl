@@ -73,7 +73,7 @@ are implemented, tested against synthetic data, and — for
 `find_variable_sources`'s photometric normalization, S/N floor, and
 `chi2_threshold` default, and for `fit_moffat_psf`'s recovered PSF
 width — calibrated directly against real ZTF data (see
-[`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md), including a real bug in
+[`INVESTIGATION_LOG.md`](docs/src/investigation-log.md), including a real bug in
 `detect_sources`'s own flux measurement this calibration work found and
 fixed). Not yet exercised end to end, via `search_field`, against a real
 field with an independently-confirmed variable star as ground truth — the
@@ -89,7 +89,7 @@ here are bright enough that the baseline already recovers them trivially,
 so this dataset doesn't exercise ZOGY's actual advantage (recovering
 objects below a single frame's noise floor). The raw tracklet-count gap
 is not a clean read on ZOGY's noise properties; see
-[`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md) for why, and for the full
+[`INVESTIGATION_LOG.md`](docs/src/investigation-log.md) for why, and for the full
 record of every real bug this project's real-data testing surfaced (five
 so far, all fixed with regression tests) and how each was diagnosed.
 
@@ -110,7 +110,7 @@ so far, all fixed with regression tests) and how each was diagnosed.
 - **A quality-gated frame silently tightens `link_candidates`.**
   `run_pipeline`'s `quality_max_std` (default `1.5`) excludes a frame
   whose `S_corr` spread is too high (confirmed against real data — see
-  [`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md)), but a gated frame
+  [`INVESTIGATION_LOG.md`](docs/src/investigation-log.md)), but a gated frame
   contributes zero detections, and `link_candidates` requires every frame
   to match by default. Pass a lower `min_frames` (e.g.
   `length(fits_paths) - 1`) when using the ZOGY path, or no tracklet will
@@ -122,12 +122,12 @@ so far, all fixed with regression tests) and how each was diagnosed.
   look like genuine variability; on real ZTF data even a generous
   `chi2_threshold` still flags several times more stars than the true
   stellar variable fraction (see `find_variable_sources`'s docstring and
-  [`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md) for the measured rate).
+  [`INVESTIGATION_LOG.md`](docs/src/investigation-log.md) for the measured rate).
   Treat a candidate as needing independent confirmation (a catalog match
   or a recovered period), not as self-evidently real.
 - **`crossmatch_catalog(...; :vsx)`/`(...; :simbad)` query one candidate
   at a time.** Migrated off the CDS X-Match service (extended, total
-  outages — see [`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md)) to direct
+  outages — see [`INVESTIGATION_LOG.md`](docs/src/investigation-log.md)) to direct
   SIMBAD/VizieR TAP queries, which don't offer X-Match's single-batched-request
   shape; a large candidate list means that many requests. `:skybot` is
   unaffected (a different service, always queried this way).
@@ -155,6 +155,8 @@ target should barely move between them, unlike the original discovery
 epochs):
 
 ```julia
+using AsteroidPipeline
+
 times, flux, flux_err = light_curve(fits_paths, ra, dec)
 result = recover_rotation_period(times, flux; minimum_period=0.02, maximum_period=1.0)
 result.period, result.false_alarm_probability
@@ -173,13 +175,15 @@ For a frame with no WCS already in its header, and a
 registration):
 
 ```julia
+using AsteroidPipeline
+
 run_pipeline(fits_paths; reference=reference, plate_solve_api_key=key)
 ```
 
 or directly: `plate_solve(fits_path; api_key=key)`. This is a live
 network round trip — upload, then poll until the frame solves — so it is
 slow and requires connectivity. Validated against the real service: see
-[`INVESTIGATION_LOG.md`](INVESTIGATION_LOG.md).
+[`INVESTIGATION_LOG.md`](docs/src/investigation-log.md).
 
 ## Using real IASC campaign data
 
@@ -222,12 +226,14 @@ nix develop
 ## Documentation
 
 The full API reference (every exported function's docstring, organized by
-pipeline stage) plus this README and `INVESTIGATION_LOG.md` are built into
+pipeline stage) plus this README and the investigation log are built into
 a static site with [Documenter.jl](https://github.com/JuliaDocs/Documenter.jl)
 and [DocumenterVitepress.jl](https://github.com/LuxDL/DocumenterVitepress.jl).
-`docs/make.jl` copies `README.md`/`INVESTIGATION_LOG.md` into `docs/src/`
-at build time (not committed — see `.gitignore`), so the site can't drift
-out of sync with them.
+`docs/src/investigation-log.md` (linked throughout this README as
+`INVESTIGATION_LOG.md`) is a real, permanent page there — the docs site's
+own content, not copied in from elsewhere. `docs/make.jl` does copy
+`README.md` itself into `docs/src/index.md` at build time (not committed —
+see `.gitignore`), so the site's home page can't drift out of sync with it.
 
 To build locally:
 
