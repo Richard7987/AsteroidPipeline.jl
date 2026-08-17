@@ -195,7 +195,7 @@ confirmed variable, not just the stationary-star side of the tradeoff.
 `systematic_error_fraction=0.02` (the current default) cuts the
 threshold-10 false-positive rate to 2.0% (vs 1%'s 3.3%), while a real,
 independently-confirmed variable (ASASSN-V J183620.31 — see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#Validating-search_field-against-a-real,-independently-confirmed-variable-star))
+[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/variable-star-validation))
 still clears `chi2_threshold=10.0` with a healthy margin (reduced chi2 ≈
 31, over 3x the threshold) at this floor — a floor of 5% would erase that
 same real signal (reduced chi2 drops to ≈5, below threshold), so 2% is

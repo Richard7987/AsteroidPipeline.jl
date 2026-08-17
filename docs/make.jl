@@ -2,11 +2,21 @@ using AsteroidPipeline
 using Documenter
 using DocumenterVitepress
 
-# index.md and investigation-log.md are both real, permanent, committed
-# pages under docs/src — the docs site's own content, not generated or
-# copied in from README.md/INVESTIGATION_LOG.md (which no longer exist at
-# the repo root; the short root README.md just links here instead).
+# index.md, investigation-log.md, variable-star-validation.md,
+# iasc-campaign-validation.md, and design-refinements.md are all real,
+# permanent, committed pages under docs/src — the docs site's own
+# content, not generated or copied in from README.md/INVESTIGATION_LOG.md
+# (which no longer exist at the repo root; the short root README.md just
+# links here instead).
 DocMeta.setdocmeta!(AsteroidPipeline, :DocTestSetup, :(using AsteroidPipeline); recursive=true)
+
+# Regenerates the figures investigation-log.md embeds, from the real
+# numbers measured during this project's real-data investigations — run
+# before makedocs so both local builds and CI (julia-actions/julia-docdeploy
+# instantiates docs/Project.toml, which includes CairoMakie) produce them
+# fresh rather than relying on committed images that could drift from the
+# numbers in the text.
+include("make_figures.jl")
 
 makedocs(;
     modules=[AsteroidPipeline],
@@ -24,7 +34,12 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
-        "Investigation Log" => "investigation-log.md",
+        "Investigation Log" => [
+            "ZTF field 451 (the original investigation)" => "investigation-log.md",
+            "Variable-star validation" => "variable-star-validation.md",
+            "IASC / Pan-STARRS1 campaign validation" => "iasc-campaign-validation.md",
+            "Design refinements" => "design-refinements.md",
+        ],
         "API Reference" => [
             "Detection & Linking" => "api/detection.md",
             "Variable Stars" => "api/variables.md",

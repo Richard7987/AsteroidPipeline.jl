@@ -1,9 +1,18 @@
 # Investigation log
 
 Chronological record of what real-data testing found and how each finding
-was diagnosed — kept separate from `README.md` so the README stays a
-focused reference rather than a narrative. Cross-referenced from
-`README.md`'s Known limitations section and from the relevant docstrings.
+was diagnosed — kept separate from the main wiki pages so those stay
+focused references rather than narratives. Cross-referenced from
+`docs/src/index.md`'s Known Limitations section and from the relevant
+docstrings.
+
+This page covers the original ZTF field 451 investigation, chronologically
+first. Later validation work against other real datasets got large enough
+to split onto their own pages:
+
+- [Validating `search_field` against a real, independently-confirmed variable star](variable-star-validation.md)
+- [Validating against real IASC (Pan-STARRS1) campaign data](iasc-campaign-validation.md)
+- [Revisiting the two intentional-design "limitations"](design-refinements.md)
 
 ## Real ZTF data surfaced four bugs no synthetic test or code review caught
 
@@ -301,167 +310,27 @@ returned row matches. Batched 50 candidates per request — conservative,
 not measured at higher N on these free, shared, anonymous-use services.
 Cuts N requests to `ceil(N / 50)`.
 
-## Validating `search_field` against a real, independently-confirmed variable star
-
-Every real-data check so far had confirmed known *moving* objects (via
-SkyBoT) but never a known *variable* — the one real dataset checked had
-only one catalogued VSX variable in its footprint, too faint to serve as
-a useful positive control. Fixed by choosing a real target with an actual
-VSX catalog entry: ASASSN-V J183620.31 (type EW, a contact eclipsing
-binary, period 0.322427 d), in ZTF field 487/CCD 12/quadrant 1/zr, night
-2019-06-10 — a real high-cadence campaign with 144 exposures over 2.45 h,
-thinned to 29 for `examples/variable_star_demo.jl`. Declared in advance:
-2.45 h covers only ~32% of one period, so full period recovery from this
-single night was not expected — the actual test was whether
-`find_variable_sources` flags the star as variable at all.
-
-First attempt did not run: `search_field`'s default `threshold=5.0` (used
-at `8.0` in `real_data_demo.jl`) produced ~12,900 detections per frame
-here, against field 451's ~130 — this field sits near the galactic plane.
-`link_candidates`'s tracklet search is pairwise in detections/frame, and
-did not finish in 35 minutes at that density; killed and confirmed via a
-standalone check (`detect_sources` alone, one frame) that the counts were
-real, not a hang. The target star is extremely bright at this field's
-noise level (flux ≈ 87,000, ~1.7 px from its WCS-predicted position at
-every threshold tested from 10 to 100), so raising the demo's threshold
-to 60 — cutting detections/frame to ~1,260 — loses none of the signal
-this run actually needs; a deliberate, field-specific tradeoff, not the
-pipeline's own default. A second bug surfaced once linking finished:
-`light_curve`'s default `timestamp_key="MJD-OBS"` doesn't exist in this
-survey's headers (`search_field` was already correctly called with
-`"OBSMJD"`) — a copy-paste omission in the demo script, not a pipeline
-bug, fixed by passing the same key.
-
-With both fixed, the run found 22 variable candidates from 638
-detections; 2 matched a known VSX variable, including the target itself —
-**ASASSN-V J183620.31, recovered at a 1.7" offset from its catalogued
-position** — the positive-control criterion this whole exercise was
-built to test, and it passed. A Lomb-Scargle fit to the recovered
-candidate's own forced-photometry light curve (`light_curve` +
-`recover_rotation_period`) found a real, highly significant periodic
-signal (false-alarm probability ≈ 0) at 0.5 d, not the catalogued
-0.322 d — the declared-in-advance outcome of fitting a period search to
-a light curve covering less than a third of that period (almost
-certainly an alias, not evidence against the true period), and not a
-failure of `find_variable_sources` itself, which is what the crossmatch
-recovery above actually validates.
-
-## Validating against real IASC (Pan-STARRS1) campaign data
-
-Every real-data check so far used ZTF. `docs/src/index.md`'s "Using real
-IASC campaign data" section had stood as "not attempted" all session —
-closed by running `examples/iasc_demo.jl` against 5 real Pan-STARRS1
-(PS1) IASC practice sets (2019-08-28/09-04/09-24, 4 exposures each).
-`run_pipeline` recovered 26 real, independently-catalogued objects
-across the 5 fields via SkyBoT — including a Jupiter Trojan, 2019 NB9 —
-but getting a clean run took three real, fixed bugs, found in this order.
-
-**`load_wcs` failed on every one of these real headers.** Every PS1
-header raised `"Linear transformation matrix is singular"` from wcslib.
-Bisected a real header down to the exact cause (splitting it into halves,
-testing each half in isolation, recursing into whichever half still
-failed): `CNPIX1`/`CNPIX2` alone — a legacy IRAF/DSS plate-astrometry
-keyword pair, present in these headers but with none of that convention's
-other required keywords — was enough to reproduce it, even combined with
-nothing but `SIMPLE`/`BITPIX`/`NAXIS`. wcslib reads that keyword pair as
-the start of a *separate*, implicit DSS-style WCS description, and with
-the rest of that convention absent builds an all-zero, degenerate linear
-transform for it — a real wcslib parsing quirk, not anything wrong with
-the header's own real, complete CTYPE/CRVAL/CRPIX/CDELT WCS, which parses
-cleanly on its own. Fixed in `load_wcs`: on exactly this error, retry
-after stripping just those two keyword's FITS cards and nothing else —
-confirmed sufficient, not guessed. Regression test constructs a
-synthetic header (a real WCS plus injected `CNPIX1`/`CNPIX2` cards) since
-the real PS1 files can't be committed to the repo.
-
-**`detect_sources` produced enormous numbers of spurious detections on
-some frames.** One real frame: 176,165 "detections" at `threshold=8.0`
-(field 451 on ZTF, by comparison, has ~130). Root cause: these FITS files
-mark invalid/masked pixels using the standard `BLANK` header keyword
-(scaled through `BZERO`/`BSCALE` like any other pixel value) rather than
-`NaN`, and `FITSIO.jl` does not convert `BLANK` sentinels automatically.
-One real frame had 158,443 pixels (2.7% of the image) pegged at exactly
-that sentinel value (65535, from `BLANK=32767` + `BZERO=32768`) —
-`detect_sources` read that as enormous real flux across a large masked
-region and found a spurious "source" seemingly everywhere. Confirmed
-directly: replacing those exact pixels with the frame's own valid-region
-median (before any detection) dropped the same frame from 176,165 to 176
-detections. Handled as a preprocessing step in `examples/iasc_demo.jl`
-(`clean_blank_pixels`, writing cleaned copies preserving the original
-header/WCS/timestamp exactly) rather than in `src/`, since BLANK-sentinel
-handling is a real-FITS-ingestion concern specific to how a given survey
-exports data, not something `detect_sources` itself should need to know
-about.
-
-**`crossmatch_catalog(...; :skybot)` was too slow, and not resilient, at
-real scale.** Unlike `:vsx`/`:simbad` (batched via CDS TAP — see above),
-SkyBoT has no batch mode, so `_crossmatch_skybot` queried one candidate
-per request, fully sequentially. Fine for a handful of candidates; not
-for hundreds to thousands of real tracklets. A full 5-field run of
-`examples/iasc_demo.jl` took over two hours and then died outright, deep
-into the fourth field's crossmatch (2,619 candidates), to
-`"tls write failed: connection is closed"` — an uncaught, unretried
-network error with no partial-progress recovery. Fixed two ways in
-`_crossmatch_skybot`: concurrent requests (Julia `Task`s + a bounded
-`Base.Semaphore`, not extra threads — this is a network-latency-bound
-workload, and cooperative concurrency on however many threads Julia
-already has is enough) and a single retry on any `HTTP.HTTPError`.
-Benchmarked directly against the live SkyBoT service (20 real, identical
-requests, repeated to isolate throughput from any one query's own
-content): concurrency=8 gave a real, measured 2.6x speedup (12.5s vs
-32.8s sequential); concurrency up to 60 ran clean with zero errors,
-though gains flattened past ~20-40 (IMCCE's own server-side queueing, not
-this code, by then). Settled on 20 — inside the tested-clean range, not
-pushed to its edge, matching `_CDS_BATCH_SIZE`'s conservative philosophy.
-The full rerun with both fixes completed end to end, no crash, in around
-20 minutes total (all 5 fields) — down from a run that hadn't even
-finished after two hours.
-
-**`match_radius` was too loose, by a measured, corrected amount.**
-`examples/iasc_demo.jl`'s `match_radius` was first converted from
-`real_data_demo.jl`'s ZTF value to preserve the same ~10" angular
-tolerance — a reasonable-looking choice that turned out to be looser than
-PS1's own real astrometric precision. On the densest of the 5 fields,
-this produced 10,422 tracklets from only ~500 detections/frame — almost
-certainly distinct real stars within 10" of each other across frames
-getting cross-linked into spurious tracklets, not 10,422 real moving
-objects. The known SkyBoT objects were still correctly recovered in
-every field regardless, but rather than guess at a tighter value, PS1's
-own headers report the real number needed: `PERROR`, the astrometric
-solution's per-star positional RMS residual, measured at 0.20-0.23"
-across the fields checked here — not something assumed, read directly
-from real data. Retuned `match_radius` to 2" (~10x `PERROR`, a
-comfortable margin for real motion and centroiding noise, not the bare
-residual) and reran all 5 fields: the same 9 distinct known objects were
-recovered in every field (confirmed by name, not just by count — nothing
-dropped out), while total tracklets across all 5 fields fell from 16,158
-to 4,960 (-69%). The reduction is concentrated exactly where predicted:
-the densest field (XY42_p11) went from 10,422 to 3,478; the two
-previously "26 real objects" and "13/2619" style counts were actually
-counting duplicate tracklet-rows around the same handful of real
-objects, not 26 distinct discoveries — a reporting correction as much as
-a code fix, worth noting since the inflated number was reported once,
-here, before the retune caught it.
-
 ## Tuning `find_variable_sources`'s systematic error floor past the first value that worked
 
 The 1% systematic error floor (see above) was the first value tried,
 chosen because it's a standard number in forced-photometry pipelines, not
 because it was shown to be optimal. With a real positive control now in
 hand (ASASSN-V J183620.31, recovered by `find_variable_sources` earlier
-this session), the floor could finally be checked from *both* sides of
-the tradeoff at once, not just the false-positive side: sweeping
-`systematic_error_fraction` against the same 152 real, matched,
-high-S/N stationary stars from ZTF field 451 (a slightly different count
-than the "119" quoted earlier — this sweep additionally required
-`min_frames` at the full 5-frame count and `normalize=true` together,
-narrowing the matched set), the `chi2_threshold=10.0` false-positive rate
-dropped from 3.3% at a 1% floor to 2.0% at 2%, 1.3% at 3%, and 0% at 5%.
-Naively, that argues for as high a floor as possible — but a floor this
-large also suppresses *real* variability, and that side had never been
-checked. Running the same sweep against ASASSN-V J183620.31's own real
-forced-photometry light curve: reduced chi2 falls from 123 (at 1%) to 31
-(at 2%) to 13.8 (at 3%) to 5.0 (at 5%) — the last of which drops *below*
+this session — see its own
+[validation page](variable-star-validation.md)), the floor could finally
+be checked from *both* sides of the tradeoff at once, not just the
+false-positive side: sweeping `systematic_error_fraction` against the
+same 152 real, matched, high-S/N stationary stars from ZTF field 451 (a
+slightly different count than the "119" quoted earlier — this sweep
+additionally required `min_frames` at the full 5-frame count and
+`normalize=true` together, narrowing the matched set), the
+`chi2_threshold=10.0` false-positive rate dropped from 3.3% at a 1%
+floor to 2.0% at 2%, 1.3% at 3%, and 0% at 5%. Naively, that argues for
+as high a floor as possible — but a floor this large also suppresses
+*real* variability, and that side had never been checked. Running the
+same sweep against ASASSN-V J183620.31's own real forced-photometry
+light curve: reduced chi2 falls from 123 (at 1%) to 31 (at 2%) to 13.8
+(at 3%) to 5.0 (at 5%) — the last of which drops *below*
 `chi2_threshold=10.0`, meaning a 5% floor would have made this exact,
 real, independently-confirmed variable star invisible to
 `find_variable_sources`. Settled on 2%: comfortably above 1%'s
@@ -469,49 +338,10 @@ false-positive rate, while leaving the real variable's signal a 3x margin
 over threshold — the largest floor checked that doesn't cost real
 detections, not the smallest false-positive rate achievable.
 
-## Revisiting the two intentional-design "limitations"
+![False-positive rate on 152 real stationary stars, and reduced chi2 on a real confirmed variable, swept across systematic_error_fraction values](assets/systematic-error-floor-sweep.png)
 
-Two items in `docs/src/index.md`'s Known Limitations were design
-decisions, not bugs — but "intentional" isn't the same as "as good as it
-can be." Asked directly whether either could be genuinely improved
-without abandoning the design choice behind it.
+## See also
 
-**`estimate_psf`'s empirical-vs-fallback split was a hard binary — a
-field either had stars passing the isolation/saturation filter at exactly
-the given `min_separation`, or it fell all the way back to an analytic
-Moffat fit.** But a moderately (not severely) crowded field might have
-real, usable stars at a *slightly* tighter isolation radius — the current
-code was throwing that away and jumping straight to an approximation
-instead of trying harder for the real thing. Added `relaxation_attempts`
-(default 2): on an empty stamp list, halve `min_separation` and retry,
-up to that many times, before falling back. A real empirical PSF from
-fewer, closer stars still beats a parametric approximation, which is the
-whole reason `estimate_psf` exists over just always using
-`fit_moffat_psf`. Regression-tested with two synthetic Gaussian sources
-25 px apart (fails the default `min_separation=40`, but 25 ≥ 20, the
-first relaxed attempt) — recovers the real empirical PSF (correct FWHM)
-instead of falling back, while `relaxation_attempts=0` on the same data
-still fails cleanly, proving the relaxation is what does it. Writing that
-test surfaced a second thing worth knowing: `fit_moffat_psf`'s own stamp
-extraction (`stamp_size=25`, so a ±12 px half-window) doesn't check for
-neighbor contamination the way `estimate_psf`'s isolation filter does —
-stars closer than ~24 px apart corrupt each other's Moffat fit (tested
-directly: clustering the existing fallback test's synthetic stars into a
-6 px box made every fit fail to converge, where the original ~25 px
-spacing fits cleanly) — not fixed here, since `fit_moffat_psf`'s own
-docstring already documents that it deliberately skips the isolation
-check as a defensible trade for a *fit* (a bad stamp shows up as a poor
-residual, in principle), but the synthetic evidence says that trade has
-a real limit worth knowing about.
-
-**`zogy_subtract`'s `V_ast` opt-in was silent — a direct caller who
-simply didn't pass `n_sources`/`r_sources` got `V_ast = 0` with no
-signal anything was skipped**, unlike `run_pipeline`, which always
-supplies them. The design itself (opt-in at the low-level function,
-mandatory at the high-level one) is still the right call — computing
-`n_sources`/`r_sources` costs two extra `detect_sources` passes, real
-cost a direct caller might legitimately not want. What was missing was
-visibility: added a `@warn` (once per session, via `maxlog=1`, so it
-doesn't spam a caller who's already made an informed choice) when both
-are left `nothing`. Regression test confirms it fires when omitted and
-stays silent when both are supplied.
+- [Validating `search_field` against a real, independently-confirmed variable star](variable-star-validation.md)
+- [Validating against real IASC (Pan-STARRS1) campaign data](iasc-campaign-validation.md)
+- [Revisiting the two intentional-design "limitations"](design-refinements.md)
