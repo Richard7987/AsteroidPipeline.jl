@@ -468,3 +468,50 @@ real, independently-confirmed variable star invisible to
 false-positive rate, while leaving the real variable's signal a 3x margin
 over threshold — the largest floor checked that doesn't cost real
 detections, not the smallest false-positive rate achievable.
+
+## Revisiting the two intentional-design "limitations"
+
+Two items in `docs/src/index.md`'s Known Limitations were design
+decisions, not bugs — but "intentional" isn't the same as "as good as it
+can be." Asked directly whether either could be genuinely improved
+without abandoning the design choice behind it.
+
+**`estimate_psf`'s empirical-vs-fallback split was a hard binary — a
+field either had stars passing the isolation/saturation filter at exactly
+the given `min_separation`, or it fell all the way back to an analytic
+Moffat fit.** But a moderately (not severely) crowded field might have
+real, usable stars at a *slightly* tighter isolation radius — the current
+code was throwing that away and jumping straight to an approximation
+instead of trying harder for the real thing. Added `relaxation_attempts`
+(default 2): on an empty stamp list, halve `min_separation` and retry,
+up to that many times, before falling back. A real empirical PSF from
+fewer, closer stars still beats a parametric approximation, which is the
+whole reason `estimate_psf` exists over just always using
+`fit_moffat_psf`. Regression-tested with two synthetic Gaussian sources
+25 px apart (fails the default `min_separation=40`, but 25 ≥ 20, the
+first relaxed attempt) — recovers the real empirical PSF (correct FWHM)
+instead of falling back, while `relaxation_attempts=0` on the same data
+still fails cleanly, proving the relaxation is what does it. Writing that
+test surfaced a second thing worth knowing: `fit_moffat_psf`'s own stamp
+extraction (`stamp_size=25`, so a ±12 px half-window) doesn't check for
+neighbor contamination the way `estimate_psf`'s isolation filter does —
+stars closer than ~24 px apart corrupt each other's Moffat fit (tested
+directly: clustering the existing fallback test's synthetic stars into a
+6 px box made every fit fail to converge, where the original ~25 px
+spacing fits cleanly) — not fixed here, since `fit_moffat_psf`'s own
+docstring already documents that it deliberately skips the isolation
+check as a defensible trade for a *fit* (a bad stamp shows up as a poor
+residual, in principle), but the synthetic evidence says that trade has
+a real limit worth knowing about.
+
+**`zogy_subtract`'s `V_ast` opt-in was silent — a direct caller who
+simply didn't pass `n_sources`/`r_sources` got `V_ast = 0` with no
+signal anything was skipped**, unlike `run_pipeline`, which always
+supplies them. The design itself (opt-in at the low-level function,
+mandatory at the high-level one) is still the right call — computing
+`n_sources`/`r_sources` costs two extra `detect_sources` passes, real
+cost a direct caller might legitimately not want. What was missing was
+visibility: added a `@warn` (once per session, via `maxlog=1`, so it
+doesn't spam a caller who's already made an informed choice) when both
+are left `nothing`. Regression test confirms it fires when omitted and
+stays silent when both are supplied.

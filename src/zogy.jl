@@ -53,6 +53,13 @@ and `r_sources` (tables with `x`, `y` columns, e.g. from
 if reprojection onto a common grid has already removed essentially all
 registration error — reasonable here since `build_reference` already
 reprojects reference frames onto the exact science-frame grid.
+[`run_pipeline`](@ref) always supplies both, so this only affects a
+direct `zogy_subtract` call: omitting them silently (rather than as a
+deliberate, informed choice) risks reading `S_corr`'s significance at
+face value near bright stars where real sub-pixel misregistration is
+exactly what `V_ast` accounts for — a `@warn` (once per session) fires
+when both are left unset, so this stays visible rather than a silent
+default.
 """
 function zogy_subtract(n_image::AbstractMatrix{<:Real}, r_image::AbstractMatrix{<:Real};
                         psf_n::AbstractMatrix{<:Real}, psf_r::AbstractMatrix{<:Real},
@@ -93,6 +100,9 @@ function zogy_subtract(n_image::AbstractMatrix{<:Real}, r_image::AbstractMatrix{
     V_r = _variance_map(r_sub, sigma_r, gain_r)
     var_S = _convolve_variance(V_n, k_n) .+ _convolve_variance(V_r, k_r)
 
+    if n_sources === nothing && r_sources === nothing
+        @warn "n_sources/r_sources not given; V_ast (astrometric registration noise) omitted from S_corr — significance may be overstated near bright stars with real sub-pixel misregistration" maxlog=1
+    end
     if n_sources !== nothing && r_sources !== nothing
         sigma_x, sigma_y = _astrometric_scatter(n_sources, r_sources)
         if sigma_x > 0 || sigma_y > 0

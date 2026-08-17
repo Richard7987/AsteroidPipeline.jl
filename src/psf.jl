@@ -22,56 +22,76 @@ An empirical PSF is used rather than an analytic model (e.g. Gaussian or
 Moffat) because ZOGY needs the real PSF shape, wings included, and this
 keeps `estimate_psf` usable on any survey's data without fitting a model
 family per instrument. But a field sparser or more crowded than expected
-can leave zero stars passing the isolation/saturation filter above; when
-that happens and `fallback` is true (the default), a warning is emitted
-and [`fit_moffat_psf`](@ref) is used instead — an analytic fit trades the
-real PSF's exact shape for something usable at all. `fallback=false`
-keeps the hard failure instead.
+can leave zero stars passing the isolation/saturation filter at the given
+`min_separation`; when that happens, `min_separation` is halved and the
+search retried, up to `relaxation_attempts` times (default 2, i.e.
+`min_separation`, then `/2`, then `/4`) before giving up on the empirical
+approach — a field with a few usable stars at a tighter isolation radius
+still gives the *real* PSF shape, which a fallback to an analytic model
+never can, so this is tried first rather than jumping straight to it. If
+even the most relaxed attempt finds nothing and `fallback` is true (the
+default), a warning is emitted and [`fit_moffat_psf`](@ref) is used
+instead — an analytic fit trades the real PSF's exact shape for something
+usable at all. `fallback=false` keeps the hard failure instead.
 """
 function estimate_psf(image::AbstractMatrix{<:Real}; stamp_size::Integer=25,
                        threshold::Real=20.0, min_separation::Real=40.0,
-                       saturate::Real=Inf, fallback::Bool=true)
+                       saturate::Real=Inf, fallback::Bool=true,
+                       relaxation_attempts::Integer=2)
     isodd(stamp_size) || throw(ArgumentError("stamp_size must be odd"))
     half = stamp_size ÷ 2
 
     sources = detect_sources(permutedims(image); threshold=threshold)
     nx, ny = size(image)
 
+    function collect_stamps(sep::Real)
+        stamps = Matrix{Float64}[]
+        for s in sources
+            x, y = round(Int, s.x), round(Int, s.y)
+            (half < x <= nx - half && half < y <= ny - half) || continue
+
+            isolated = all(hypot(s.x - o.x, s.y - o.y) >= sep
+                            for o in sources if !(o.x == s.x && o.y == s.y))
+            isolated || continue
+
+            stamp = image[x-half:x+half, y-half:y+half]
+            maximum(stamp) < saturate || continue
+
+            background = median(vcat(stamp[1, :], stamp[end, :], stamp[:, 1], stamp[:, end]))
+            stamp = stamp .- background
+
+            total = sum(stamp)
+            total > 0 || continue
+            xs = Float64.(-half:half)
+            cx = sum(xs .* sum(stamp, dims=2)[:]) / total
+            cy = sum(xs .* sum(stamp, dims=1)[:]) / total
+
+            centered = _shift_bilinear(stamp, -cx, -cy)
+            s2 = sum(centered)
+            s2 > 0 || continue
+            push!(stamps, centered ./ s2)
+        end
+        return stamps
+    end
+
     stamps = Matrix{Float64}[]
-    for s in sources
-        x, y = round(Int, s.x), round(Int, s.y)
-        (half < x <= nx - half && half < y <= ny - half) || continue
-
-        isolated = all(hypot(s.x - o.x, s.y - o.y) >= min_separation
-                        for o in sources if !(o.x == s.x && o.y == s.y))
-        isolated || continue
-
-        stamp = image[x-half:x+half, y-half:y+half]
-        maximum(stamp) < saturate || continue
-
-        background = median(vcat(stamp[1, :], stamp[end, :], stamp[:, 1], stamp[:, end]))
-        stamp = stamp .- background
-
-        total = sum(stamp)
-        total > 0 || continue
-        xs = Float64.(-half:half)
-        cx = sum(xs .* sum(stamp, dims=2)[:]) / total
-        cy = sum(xs .* sum(stamp, dims=1)[:]) / total
-
-        centered = _shift_bilinear(stamp, -cx, -cy)
-        s2 = sum(centered)
-        s2 > 0 || continue
-        push!(stamps, centered ./ s2)
+    sep = min_separation
+    for attempt in 0:relaxation_attempts
+        stamps = collect_stamps(sep)
+        isempty(stamps) || break
+        attempt == relaxation_attempts && break
+        sep /= 2
     end
 
     if isempty(stamps)
         if fallback
-            @warn "no isolated, unsaturated stars found for empirical PSF estimation; " *
-                  "falling back to an analytic Moffat fit" threshold min_separation
+            @warn "no isolated, unsaturated stars found for empirical PSF estimation, " *
+                  "even after relaxing min_separation; falling back to an analytic " *
+                  "Moffat fit" threshold min_separation relaxation_attempts
             return fit_moffat_psf(image; stamp_size, threshold, saturate)
         end
-        error("no isolated, unsaturated stars found for PSF estimation " *
-              "(try lowering threshold or min_separation)")
+        error("no isolated, unsaturated stars found for PSF estimation, even after " *
+              "relaxing min_separation (try lowering threshold or raising relaxation_attempts)")
     end
 
     combined = dropdims(median(cat(stamps...; dims=3); dims=3); dims=3)

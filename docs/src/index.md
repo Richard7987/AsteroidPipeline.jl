@@ -108,18 +108,26 @@ all fixed with regression tests, and how each was diagnosed.
 
 ## Known limitations
 
-- **Empirical PSF's quality depends on the field.** `estimate_psf` stacks
-  real star cutouts, which captures the true PSF shape (wings included)
-  without fitting a model family per instrument, but needs enough bright,
-  isolated, unsaturated stars to do it. When a field doesn't have them, it
-  falls back (by default) to `fit_moffat_psf` — a parametric Moffat fit —
-  rather than failing outright; the fallback trades exact PSF shape for
-  robustness, and is not itself a substitute for a genuinely well-behaved
-  field.
-- **`zogy_subtract`'s astrometric-noise term (`V_ast`) is opt-in at the
-  `zogy_subtract` level** — it needs `n_sources`/`r_sources` passed
-  explicitly, and is `0` without them. `run_pipeline` always supplies
-  them, so this only matters when calling `zogy_subtract` directly.
+- **Empirical PSF's quality still depends on the field, though less than
+  it used to.** `estimate_psf` stacks real star cutouts, which captures
+  the true PSF shape (wings included) without fitting a model family per
+  instrument, but needs enough bright, isolated, unsaturated stars to do
+  it. It now retries at a progressively relaxed `min_separation` (halved,
+  up to `relaxation_attempts` times, default 2) before giving up — a
+  field with a few usable stars at a tighter isolation radius still gives
+  the real PSF shape, which the analytic fallback never can. Only once
+  even the most relaxed attempt finds nothing does it fall back (by
+  default) to `fit_moffat_psf` — a parametric Moffat fit — rather than
+  failing outright; the fallback trades exact PSF shape for robustness,
+  and is not itself a substitute for a genuinely well-behaved field.
+- **`zogy_subtract`'s astrometric-noise term (`V_ast`) is still opt-in at
+  the `zogy_subtract` level** — it needs `n_sources`/`r_sources` passed
+  explicitly, and is `0` without them; this is deliberate API layering
+  (`run_pipeline` always supplies them, so a direct caller who doesn't
+  need the extra `detect_sources` cost can skip it), not something
+  planned to change. What did change: leaving both unset now emits a
+  `@warn` (once per session), so omitting `V_ast` is a visible choice
+  instead of a silent default a direct caller could miss.
 - **`find_variable_sources` still has a real, measured false-positive
   floor on real single-epoch aperture photometry, even after fixing it
   once.** The first hypothesis tried — pixel-grid jitter in

@@ -300,16 +300,25 @@ using Reproject
         true_alpha, true_beta = 3.0, 2.5
         # centers all within ~25 px of each other, closer than the default
         # min_separation=40 — every star fails estimate_psf's isolation
-        # filter, forcing the analytic fallback.
+        # filter, forcing the analytic fallback. relaxation_attempts=0
+        # below keeps this true regardless of the relaxation added for
+        # sparser fields (see the "min_separation relaxation" testset) —
+        # this test is specifically about the fallback itself, not about
+        # how hard estimate_psf tries before reaching it, and these
+        # centers are also close enough that a relaxed min_separation
+        # would make some pass isolation while still leaving overlapping
+        # fit_moffat_psf stamps (stamp_size=25 => half=12, closer than
+        # 2*12=24 apart) that would corrupt the analytic fit anyway.
         centers = [(50, 50), (70, 55), (55, 70), (75, 75)]
         for (cx, cy) in centers, i in 1:nx, j in 1:ny
             r2 = (i - cx)^2 + (j - cy)^2
             img[i, j] += 3000.0 / (1 + r2 / true_alpha^2)^true_beta
         end
 
-        @test_throws ErrorException estimate_psf(img; threshold=15.0, fallback=false)
+        @test_throws ErrorException estimate_psf(img; threshold=15.0, fallback=false,
+                                                   relaxation_attempts=0)
 
-        psf = estimate_psf(img; threshold=15.0)  # fallback=true by default
+        psf = estimate_psf(img; threshold=15.0, relaxation_attempts=0)  # fallback=true by default
         @test sum(psf) ≈ 1.0 atol=1e-6
 
         c = size(psf, 1) ÷ 2 + 1
@@ -323,6 +332,40 @@ using Reproject
 
         empty_image = fill(100.0, 60, 60)
         @test_throws ErrorException fit_moffat_psf(empty_image; threshold=15.0)
+    end
+
+    @testset "estimate_psf min_separation relaxation" begin
+        Random.seed!(14)
+        nx, ny = 120, 120
+        img = 100.0 .+ 3.0 .* randn(nx, ny)
+        true_sigma = 1.8
+        # 25 px apart: fails the default min_separation=40, but 25 >= 20
+        # (the first relaxed attempt, 40/2), so both should pass isolation
+        # once relaxed — this should recover a real empirical PSF, not
+        # fall back to the analytic Moffat fit.
+        centers = [(40, 60), (65, 60)]
+        for (cx, cy) in centers, i in 1:nx, j in 1:ny
+            r2 = (i - cx)^2 + (j - cy)^2
+            img[i, j] += 4000.0 * exp(-r2 / (2 * true_sigma^2))
+        end
+
+        # relaxation_attempts=0 must not relax at all: with fallback=false
+        # (so this can't succeed via fit_moffat_psf either), it has to
+        # fail cleanly at the original min_separation=40.
+        @test_throws ErrorException estimate_psf(img; threshold=15.0, fallback=false,
+                                                   min_separation=40.0, relaxation_attempts=0)
+
+        # With relaxation (the default, relaxation_attempts=2), the same
+        # data succeeds via the empirical path instead of falling back —
+        # verified by the recovered FWHM matching the injected Gaussian's.
+        psf_relaxed = estimate_psf(img; threshold=15.0, min_separation=40.0)
+        @test sum(psf_relaxed) ≈ 1.0 atol=1e-9
+        c = size(psf_relaxed, 1) ÷ 2 + 1
+        @test argmax(psf_relaxed) == CartesianIndex(c, c)
+        half_max_pos = findfirst(r -> psf_relaxed[c+r, c] < psf_relaxed[c, c] / 2, 0:(c - 1))
+        @test half_max_pos !== nothing
+        half_max_r = half_max_pos - 1
+        @test half_max_r - 1 <= true_sigma * 2sqrt(2log(2)) / 2 <= half_max_r + 1
     end
 
     @testset "zogy_subtract" begin
@@ -401,6 +444,16 @@ using Reproject
                                       sigma_n=sigma, sigma_r=sigma, gain_n=1e8, gain_r=1e8)
         @test isapprox(mean(s_corr_bg), 0.0; atol=0.2)
         @test isapprox(std(s_corr_bg), 1.0; atol=0.15)
+
+        # regression test: omitting n_sources/r_sources (silently dropping
+        # V_ast) used to be undiscoverable without reading the docstring —
+        # now warns explicitly, one call with, one without.
+        sources_n = Table(x=[64.0], y=[64.0])
+        sources_r = Table(x=[64.2], y=[64.1])
+        @test_logs (:warn, r"V_ast") match_mode=:any zogy_subtract(
+            img, img; psf_n=psf, psf_r=psf, sigma_n=1.0, sigma_r=1.0)
+        @test_logs zogy_subtract(img, img; psf_n=psf, psf_r=psf, sigma_n=1.0, sigma_r=1.0,
+                                  n_sources=sources_n, r_sources=sources_r)
     end
 
     @testset "run_pipeline with reference" begin
