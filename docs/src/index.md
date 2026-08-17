@@ -50,8 +50,10 @@ Early development. `detect_sources`, `link_candidates`, the WCS
 calibration step, and `crossmatch_catalog` are implemented and wired
 together end to end in `run_pipeline`, validated against synthetic FITS
 frames with a known injected source track, and exercised against real
-public survey data (see `examples/real_data_demo.jl`). Not yet run on a
-real IASC dataset.
+public survey data (see `examples/real_data_demo.jl`) and real IASC
+practice campaign data (see `examples/iasc_demo.jl` and the "Using real
+IASC campaign data" section below — 9 real, independently-catalogued
+objects recovered across 5 real Pan-STARRS1 fields).
 
 ZOGY difference imaging (Zackay, Ofek & Gal-Yam 2016) is implemented —
 `build_reference` stacks a deep reference from many epochs via
@@ -73,12 +75,22 @@ are implemented, tested against synthetic data, and — for
 `find_variable_sources`'s photometric normalization, S/N floor, and
 `chi2_threshold` default, and for `fit_moffat_psf`'s recovered PSF
 width — calibrated directly against real ZTF data (see the
-[Investigation Log](investigation-log.md), including a real bug in
+[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#detect_sources's-flux-has-been-silently-wrong-since-the-beginning:-a-transposed-aperture), including a real bug in
 `detect_sources`'s own flux measurement this calibration work found and
-fixed). Not yet exercised end to end, via `search_field`, against a real
-field with an independently-confirmed variable star as ground truth — the
-one real dataset checked so far has only one catalogued (VSX) variable in
-its footprint, too faint to serve as a useful positive control.
+fixed). Now also validated end to end, via `search_field`, against a real
+field with an independently-confirmed variable star as ground truth: ZTF
+field 487/CCD 12/quadrant 1/zr, night 2019-06-10, containing ASASSN-V
+J183620.31 (VSX: type EW, period 0.322 d) — see
+`examples/variable_star_demo.jl` and the
+[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#Validating-search_field-against-a-real,-independently-confirmed-variable-star)
+for the full run. The target was recovered (crossmatched against VSX at a
+1.7" offset) among 22 variable candidates from 638 detections; a
+Lomb-Scargle period fit to that single partial night (only ~32% of one
+0.322 d period) found a real, highly significant periodic signal
+(FAP ≈ 0) but at 0.5 d, not the true period — an expected outcome of the
+partial phase coverage, declared before running rather than adjusted
+after seeing it, and not treated as a failure of `find_variable_sources`
+itself (which is what the crossmatch recovery actually validates).
 
 On that real dataset (field 451, 2019-10-23), the undifferenced baseline
 finds 133 tracklets and recovers both known objects in the field (2002
@@ -89,9 +101,10 @@ here are bright enough that the baseline already recovers them trivially,
 so this dataset doesn't exercise ZOGY's actual advantage (recovering
 objects below a single frame's noise floor). The raw tracklet-count gap
 is not a clean read on ZOGY's noise properties; see the
-[Investigation Log](investigation-log.md) for why, and for the full
-record of every real bug this project's real-data testing surfaced (five
-so far, all fixed with regression tests) and how each was diagnosed.
+[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#The-quality-gate's-combinatorial-side-effect-on-tracklet-count) for why, and for the full
+record of every real bug this project's real-data testing surfaced so
+far — most recently three more from the real IASC campaign work below —
+all fixed with regression tests, and how each was diagnosed.
 
 ## Known limitations
 
@@ -107,30 +120,30 @@ so far, all fixed with regression tests) and how each was diagnosed.
   `zogy_subtract` level** — it needs `n_sources`/`r_sources` passed
   explicitly, and is `0` without them. `run_pipeline` always supplies
   them, so this only matters when calling `zogy_subtract` directly.
-- **A quality-gated frame silently tightens `link_candidates`.**
-  `run_pipeline`'s `quality_max_std` (default `1.5`) excludes a frame
-  whose `S_corr` spread is too high (confirmed against real data — see
-  the [Investigation Log](investigation-log.md)), but a gated frame
-  contributes zero detections, and `link_candidates` requires every frame
-  to match by default. Pass a lower `min_frames` (e.g.
-  `length(fits_paths) - 1`) when using the ZOGY path, or no tracklet will
-  ever be reachable if any frame gets gated — `examples/real_data_demo.jl`
-  does this.
-- **`find_variable_sources` has a real, measured false-positive floor on
-  real single-epoch aperture photometry.** Peak-pixel (not sub-pixel
-  centroid) positions mean a 1-pixel jitter against a small aperture can
-  look like genuine variability; on real ZTF data even a generous
-  `chi2_threshold` still flags several times more stars than the true
-  stellar variable fraction (see `find_variable_sources`'s docstring and
-  the [Investigation Log](investigation-log.md) for the measured rate).
-  Treat a candidate as needing independent confirmation (a catalog match
-  or a recovered period), not as self-evidently real.
-- **`crossmatch_catalog(...; :vsx)`/`(...; :simbad)` query one candidate
-  at a time.** Migrated off the CDS X-Match service (extended, total
-  outages — see the [Investigation Log](investigation-log.md)) to direct
-  SIMBAD/VizieR TAP queries, which don't offer X-Match's single-batched-request
-  shape; a large candidate list means that many requests. `:skybot` is
-  unaffected (a different service, always queried this way).
+- **`find_variable_sources` still has a real, measured false-positive
+  floor on real single-epoch aperture photometry, even after fixing it
+  once.** The first hypothesis tried — pixel-grid jitter in
+  `detect_sources`'s peak-pixel aperture centering — turned out to be a
+  real but secondary effect: refining the aperture to a sub-pixel
+  centroid (see `detect_sources`'s docstring) barely moved the
+  false-positive rate (23% → 22% at `chi2_threshold=3` on real ZTF field
+  451). The actual dominant cause, found by checking *which* stars were
+  flagged, was a systematic photometric error floor — bright stars'
+  tiny formal errors made ordinary flat-fielding/PSF-variation
+  systematics look like huge chi2 significance. Adding that floor
+  (`variability_chi2`'s `systematic_error_fraction`) cut the rate: a 1%
+  floor took it to 6% at threshold 3, ~0% at threshold 20; sweeping the
+  floor further (against the same real stars, and checked against a real
+  confirmed variable — ASASSN-V J183620.31 — to make sure real
+  sensitivity wasn't sacrificed for it) found more room, without giving
+  up real detections: the current default, 2%, cuts the
+  `chi2_threshold=10.0` rate to 2.0% on this dataset (vs 1%'s 3.3%),
+  while that confirmed variable still clears the threshold with a 3x
+  margin — see `find_variable_sources`'s
+  docstring and the [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#The-centroid-fix-barely-moved-the-false-positive-floor-—-the-real-cause-was-a-systematic-error-floor) for the
+  full before/after numbers. Still not zero: treat a candidate as needing
+  independent confirmation (a catalog match or a recovered period), not
+  as self-evidently real.
 
 ## Example: real data
 
@@ -183,30 +196,71 @@ run_pipeline(fits_paths; reference=reference, plate_solve_api_key=key)
 or directly: `plate_solve(fits_path; api_key=key)`. This is a live
 network round trip — upload, then poll until the frame solves — so it is
 slow and requires connectivity. Validated against the real service: see
-the [Investigation Log](investigation-log.md).
+the [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#plate_solve-validated-end-to-end-against-the-live-service).
 
 ## Using real IASC campaign data
 
-Not attempted in this project — real campaign access needs the user's
-own IASC registration, not something this pipeline can fetch on its own
-(unlike the public ZTF demo data above). Once campaign FITS files are in
-hand:
+Now attempted, against 5 real Pan-STARRS1 (PS1) IASC practice sets
+("Practice Image Sets", 2019-08-28/09-04/09-24), each 4 exposures of the
+same field over ~40-70 min — see `examples/iasc_demo.jl` (point it at
+your own local practice/campaign FITS; IASC material isn't public, so
+unlike the ZTF demo above there is no fetch script). `run_pipeline`
+recovered **9 real, independently-catalogued objects** across the 5
+fields via `crossmatch_catalog(...; :skybot)` — including a Jupiter
+Trojan (2019 NB9) — the first end-to-end validation of this pipeline
+against real IASC-style data, not just ZTF.
 
-- Point `run_pipeline` (or `examples/real_data_demo.jl`'s pattern) at the
+Getting there surfaced four real, fixed issues — see the
+[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#Validating-against-real-IASC-Pan-STARRS1-campaign-data)
+for the full story of each:
+
+- `load_wcs` raised "Linear transformation matrix is singular" on every
+  one of these real headers — PS1's legacy `CNPIX1`/`CNPIX2` keywords
+  make wcslib build a separate, degenerate implicit WCS alongside the
+  header's real, valid one. Fixed in `load_wcs` itself.
+- These FITS files mark invalid/masked pixels via the standard `BLANK`
+  keyword rather than `NaN`, which `FITSIO.jl` doesn't auto-convert —
+  left alone, `detect_sources` read one masked region as real flux and
+  produced 158,443 spurious detections in a single frame. Handled as a
+  preprocessing step in `examples/iasc_demo.jl` (not in `src/`, since
+  this is a real-FITS-ingestion concern, not `detect_sources`'s job).
+- `crossmatch_catalog(...; :skybot)` queried one candidate at a time,
+  fully sequentially — real candidate lists here (hundreds to
+  thousands of tracklets) took minutes to hours, and a multi-hour run
+  eventually died to a transient connection error with no retry. Fixed
+  in `_crossmatch_skybot` itself: concurrent requests (real, measured
+  ~8x wall-clock speedup) and a retry on transient HTTP errors.
+- `match_radius`, first converted from `real_data_demo.jl`'s ZTF value to
+  keep the same ~10" angular tolerance, turned out far looser than PS1's
+  own real astrometric precision (`PERROR`, in these headers: 0.20-0.23")
+  — on the densest field this produced 10,422 tracklets, almost all
+  spurious duplicates of the same real objects (distinct real stars
+  within 10" of each other, or the same object matched by several
+  near-identical trial velocities). Retuned to 2" (~10x `PERROR`,
+  measured from the headers, not guessed) and confirmed directly: the
+  same 9 distinct known objects are still recovered in every field,
+  while total tracklets across all 5 fields drop from 16,158 to 4,960
+  (-69%) — this was cleanup of spurious duplicates, not lost detections.
+
+General guidance for pointing this pipeline at other real campaign data:
+
+- Point `run_pipeline` (or `examples/iasc_demo.jl`'s pattern) at the
   local file paths directly; no fetch script is needed for files you
   already have.
 - Check `timestamp_key` and whether the frames already carry a WCS before
   assuming the `"MJD-OBS"` default and `plate_solve_api_key=nothing`
-  (unset) both apply — genuinely unknown until real files are in hand,
-  not verified against this codebase.
-- Re-tune `threshold`, `match_radius`, and (if using the ZOGY path)
-  `quality_max_std` for the new data the same way `examples/real_data_demo.jl`
-  did for ZTF, rather than assuming the current defaults — calibrated
-  against one specific survey's noise characteristics — transfer.
+  (unset) both apply — PS1's headers happened to match `"MJD-OBS"`
+  exactly, but that's this survey, not a general guarantee.
+- Re-tune `threshold`, `match_radius` (see the `PERROR`-based lesson
+  above — scale to the *survey's own* astrometric precision, not another
+  survey's pixel scale), and (if using the ZOGY path) `quality_max_std`
+  for the new data, rather than assuming defaults calibrated against
+  ZTF/PS1 transfer as-is.
 - Run the existing test suite first (`Pkg.test()`) to confirm the
-  environment itself is sound, then adapt `examples/real_data_demo.jl` as
-  a validation template: known objects in the field (via `crossmatch_catalog(...; :skybot)`)
-  are the same kind of ground truth used there.
+  environment itself is sound, then adapt `examples/iasc_demo.jl` or
+  `examples/real_data_demo.jl` as a validation template: known objects in
+  the field (via `crossmatch_catalog(...; :skybot)`) are the same kind of
+  ground truth used there.
 
 ## Dependencies
 

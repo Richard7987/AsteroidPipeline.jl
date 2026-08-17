@@ -72,15 +72,11 @@ println("reference built: sigma=$(round(ref_sigma, digits=3)), ",
         "coverage=$(round(100 * count(ref_mask) / length(ref_mask), digits=1))%")
 
 println("\nZOGY: detection on the difference image against that reference...")
-# min_frames one less than the full count: the per-frame quality gate
-# (quality_max_std, default 1.5) makes a gated-out frame contribute zero
-# detections, and requiring every one of the 5 frames to match (the
-# default min_frames) means a single gated frame — real on this dataset,
-# see the docs site's Known limitations — would otherwise make no
-# tracklet reachable at all.
+# min_frames' default now automatically accounts for whatever frames the
+# per-frame quality gate (quality_max_std, default 1.5) excludes — real
+# on this dataset, see INVESTIGATION_LOG.md — no manual override needed.
 zogy_result = run_pipeline(SCIENCE_PATHS; timestamp_key="OBSMJD", threshold=6.0,
-                            match_radius=10.0, max_speed=5000.0, reference=reference,
-                            min_frames=length(SCIENCE_PATHS) - 1)
+                            match_radius=10.0, max_speed=5000.0, reference=reference)
 zogy_known = summarize("ZOGY", zogy_result)
 
 println("\n== Summary ==")

@@ -189,6 +189,22 @@ using Reproject
         @test ra2 ≈ ra atol=1e-9
         @test dec2 ≈ dec atol=1e-9
 
+        # Regression test for a real bug found on real Pan-STARRS1 (IASC
+        # practice campaign) headers: CNPIX1/CNPIX2 (a legacy IRAF/DSS
+        # plate-astrometry keyword pair, unrelated to this header's real
+        # CTYPE/CRVAL/CRPIX/CDELT WCS) makes wcslib build a separate,
+        # degenerate implicit WCS and raise "Linear transformation matrix
+        # is singular" for the *whole* header, even though the real WCS
+        # parses fine alone — confirmed by bisecting a real PS1 header
+        # down to this exact keyword pair; see load_wcs's docstring.
+        cnpix_cards = rpad("CNPIX1  =                    0", 80) * rpad("CNPIX2  =                    0", 80)
+        header_with_cnpix = WCS.to_header(wcs) * cnpix_cards
+        @test_throws "singular" WCS.from_header(header_with_cnpix)
+        loaded_cnpix = load_wcs(header_with_cnpix)
+        ra3, dec3 = pix_to_sky(loaded_cnpix, 500.0, 500.0)
+        @test ra3 ≈ ra atol=1e-9
+        @test dec3 ≈ dec atol=1e-9
+
         tracklets = [[(frame=1, x=500.0, y=500.0), (frame=2, x=501.0, y=500.0)]]
         timestamps = [2460000.5, 2460000.51]
         candidates = astrometric_calibrate(tracklets, [wcs, wcs], timestamps)
@@ -557,6 +573,18 @@ using Reproject
             @test !(3 in candidates.frame)  # the glow-patch frame contributed nothing
             @test 1 in candidates.frame     # the real transient still recovered elsewhere
 
+            # same real transient, but with min_frames *omitted* entirely
+            # (its new default, nothing, auto-subtracts the 1 gated frame
+            # from length(scipaths)=3, giving an effective min_frames=2) —
+            # must reach the same real result as the explicit min_frames=1
+            # above, without the caller having to know a frame was gated.
+            auto_candidates = @test_logs (:warn, r"quality_max_std") match_mode = :any run_pipeline(
+                scipaths; threshold=6.0, match_radius=5.0,
+                reference=reference, psf_threshold=20.0, psf_min_separation=15.0)
+            @test !isempty(auto_candidates)
+            @test !(3 in auto_candidates.frame)
+            @test 1 in auto_candidates.frame
+
             # lowering the threshold further should also drop the clean frames
             @test_logs((:warn, r"quality_max_std"), (:warn, r"quality_max_std"),
                        (:warn, r"quality_max_std"), match_mode = :any,
@@ -769,6 +797,27 @@ using Reproject
             matches = crossmatch_catalog(star, :vsx; radius=5.0)
             @test any(==("RS"), matches.class)
             @test matches[1].id == 1
+        catch e
+            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            @test_skip "network unavailable"
+        end
+
+        try
+            # regression test for batched (OR-chained, one request for all
+            # candidates) cross-matching: 3 real, independently-verified
+            # positions in one call — 2 real VSX variables (same RS star
+            # as above, plus V0651 Ori, type EW) and 1 real non-match (near
+            # the celestial pole) — confirms each returned row is
+            # attributed to the *correct* candidate id from a single
+            # shared request, not just that matches exist somewhere.
+            batch = [(id=10, ra=36.2344, dec=2.06997),
+                     (id=20, ra=83.1937, dec=5.41603),
+                     (id=30, ra=0.0, dec=89.9)]
+            matches = crossmatch_catalog(batch, :vsx; radius=5.0)
+            @test length(matches) == 2
+            @test Set(matches.id) == Set([10, 20])
+            @test only(matches[matches.id.==10].class) == "RS"
+            @test only(matches[matches.id.==20].class) == "EW"
         catch e
             e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
             @test_skip "network unavailable"

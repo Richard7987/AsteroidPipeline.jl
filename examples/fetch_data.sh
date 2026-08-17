@@ -11,15 +11,14 @@
 set -euo pipefail
 
 dest="$(dirname "$0")/../data/real"
-mkdir -p "$dest/science" "$dest/reference"
+mkdir -p "$dest/science" "$dest/reference" "$dest/variable"
 
-center="36.29821,2.05276"
 base="https://irsa.ipac.caltech.edu/ibe/data/ztf/products/sci"
 
 fetch() {
-    local filefracday="$1" subdir="$2"
+    local filefracday="$1" subdir="$2" center="$3" field="$4" ccdid="$5" qid="$6" filtercode="$7"
     local frac="${filefracday:8:6}" yr="${filefracday:0:4}" md="${filefracday:4:4}"
-    local name="ztf_${filefracday}_000451_zr_c01_o_q1_sciimg.fits"
+    local name="ztf_${filefracday}_$(printf '%06d' "$field")_${filtercode}_c$(printf '%02d' "$ccdid")_o_q${qid}_sciimg.fits"
     local out="$dest/$subdir/$name"
     # Full-size cutouts are ~4 MB; a much smaller file here means a prior
     # run was interrupted mid-download (this happened once with a plain
@@ -40,7 +39,7 @@ fetch() {
 for filefracday in \
     20191023195590 20191023267002 20191023347164 20191023425208 20191023455822
 do
-    fetch "$filefracday" science
+    fetch "$filefracday" science "36.29821,2.05276" 451 1 1 zr
 done
 
 # Reference: 30 frames from other nights (2018-09 onward — earlier ZTF
@@ -54,5 +53,25 @@ for filefracday in \
     20201023337419 20190804485162 20210913418067 20200915420046 20191116312153 \
     20251031279028 20201022416482 20250912391227 20250924338356 20210902478102
 do
-    fetch "$filefracday" reference
+    fetch "$filefracday" reference "36.29821,2.05276" 451 1 1 zr
+done
+
+# Variable-star validation (see examples/variable_star_demo.jl): field
+# 487/CCD 12/quadrant 1/zr, night 2019-06-10, a real high-cadence ZTF
+# campaign with 144 exposures spanning 2.45 h. Thinned to every 5th
+# exposure (~29 frames) — this raw-path demo has no reference stack to
+# build, so many more frames aren't the bottleneck they are for
+# real_data_demo.jl, but 144 near-duplicate 30 s exposures of the same
+# ~2.45 h window add little beyond what 29 spread across it already give.
+# Centred on ASASSN-V J183620.31 (VSX: type EW, period 0.322 d, amplitude
+# 0.63 mag), the real variable this demo validates against.
+for filefracday in \
+    20190610318264 20190610358160 20190610360417 20190610362674 20190610364942 \
+    20190610367199 20190610369456 20190610371713 20190610373958 20190610376215 \
+    20190610378472 20190610380729 20190610382998 20190610385255 20190610387512 \
+    20190610389768 20190610392025 20190610394282 20190610396539 20190610398796 \
+    20190610401053 20190610403310 20190610405567 20190610407824 20190610410081 \
+    20190610412326 20190610414606 20190610416863 20190610419120
+do
+    fetch "$filefracday" variable "279.085,5.56101" 487 12 1 zr
 done
