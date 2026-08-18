@@ -50,3 +50,41 @@ missing was visibility: added a `@warn` (once per session, via
 `maxlog=1`, so it doesn't spam a caller who's already made an informed
 choice) when both are left `nothing`. Regression test confirms it fires
 when omitted and stays silent when both are supplied.
+
+## GitHub Pages was never actually serving the wiki, despite a working deploy pipeline
+
+The GitHub mirror's docs site returned 404 even though
+`.github/workflows/Documenter.yml` reported `success` on every run, and
+`deploydocs` printed a clean `Deploying: ✔` with all five criteria
+checked. Diagnosed with `gh` (installed and authenticated specifically
+for this, not guessed from log snippets) rather than assumed from the
+green checkmark: `gh api repos/.../pages` returned a plain 404
+("Not Found") — GitHub Pages itself was disabled at the repository
+level, Source stuck on "None". The workflow's own job log, read in
+full, confirmed the deploy step really had pushed a working site:
+`fatal: 'upstream/gh-pages' is not a commit` (the expected first-deploy
+message), followed by a clean orphan-branch creation and a real push —
+git's own "Create a pull request for 'gh-pages'" hint, which only
+appears when a *new* branch is actually accepted by the remote. So the
+branch existed with real content; nothing was being served from it
+because Pages was off, a setting independent of whether gh-pages exists.
+Fixed directly: `gh api repos/.../pages -X POST` with
+`source.branch=gh-pages`, confirmed via the API's own `status: "built"`
+and a live `curl` returning 200 on multiple pages.
+
+A related, real mistake made and caught in the same investigation: a
+first attempt at adding a `.nojekyll` file (see above) touched it into
+`docs/build/<n>/` before `deploydocs` ran, reasoning that this local
+directory was "the site root." It isn't — `deploydocs` copies that
+directory's contents into a nested `dev/` subfolder of the actual
+gh-pages branch, generating `versions.js` and a redirect `index.html`
+separately at the *real* root, which no local directory corresponds to.
+Confirmed by listing the live branch's root contents via `gh api`
+(`dev/`, `index.html`, `versions.js` — no `.nojekyll` anywhere) after
+the first attempt had already been deployed. Corrected by adding
+`.nojekyll` directly to the gh-pages root via the API instead, a
+one-time fix rather than build-time logic: `deploydocs`'s own push
+mechanism checks out the *existing* branch and only touches specific
+known paths (each version's subfolder, `versions.js`, the root
+`index.html`) rather than wiping it, so a root file added once persists
+across every future automated deploy.

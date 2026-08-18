@@ -52,21 +52,25 @@ makedocs(;
     ],
 )
 
+# GitHub's default Jekyll processing on a branch-based Pages deploy
+# silently ignores any path starting with `_` — the standard reason any
+# non-Jekyll static site on GitHub Pages needs a `.nojekyll` marker.
 # DocumenterVitepress has the code for this (writer.jl, `touch(...,
 # "final_site", ".nojekyll")`) but it's commented out in the installed
-# version (0.3.5) — confirmed by reading the package source, not assumed
-# — so gh-pages currently has no .nojekyll at all. Nothing has broken
-# from this yet (verified: the live site serves correctly), but GitHub's
-# default Jekyll processing on a branch-based Pages deploy silently
-# ignores any path starting with `_`, which is exactly the kind of thing
-# a future Vitepress internal-asset naming convention could introduce —
-# added here rather than relying on that staying true by luck. One file
-# per built base's own root (`docs/build/<n>/`, one per version — "1" for
-# "dev" right now, more once tags exist) since that's what deploydocs
-# actually publishes as each version's own directory in gh-pages.
-for dir in filter(isdir, readdir(joinpath(@__DIR__, "build"); join=true))
-    isfile(joinpath(dir, "index.html")) && touch(joinpath(dir, ".nojekyll"))
-end
+# version (0.3.5) — confirmed by reading the package source, not assumed.
+# A first attempt here touched `.nojekyll` into each `docs/build/<n>/`
+# (the local per-version build output) before deploydocs — wrong: that
+# directory becomes the *nested* `dev/` (etc.) subfolder on gh-pages, not
+# its root, and `.nojekyll` only has any effect at the true branch root.
+# deploydocs' own git push (see DocumenterVitepress/src/writer.jl) checks
+# out the *existing* gh-pages branch and only touches specific known
+# paths (each version's own subfolder, versions.js, the root redirect
+# index.html) rather than wiping the branch — so a root `.nojekyll`
+# added once, directly, persists across every future automated deploy.
+# Added that way instead (see the Investigation Log for the real
+# gh-pages-was-never-enabled story this was found alongside), not
+# reproduced here as build-time logic since there's nothing in the local
+# build tree that actually corresponds to the branch's real root.
 
 DocumenterVitepress.deploydocs(;
     repo="github.com/Richard7987/AsteroidPipeline.jl",
