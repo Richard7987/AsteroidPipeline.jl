@@ -2,6 +2,21 @@ using AsteroidPipeline
 using Documenter
 using DocumenterVitepress
 
+# This only builds the site (into docs/build/1 — see bases.txt) and never
+# deploys it. Deployment used to be DocumenterVitepress.deploydocs pushing
+# to a gh-pages branch, but that branch only ever existed on the GitHub
+# mirror (created by CI running there) — never on this repo's real origin
+# (a self-hosted Forgejo instance). Forgejo's mirror sync to GitHub forces
+# GitHub to exactly match this origin, which means it deletes gh-pages on
+# every sync (confirmed directly: GitHub's own repo events show a
+# DeleteEvent for gh-pages at the exact same second as every mirrored push,
+# and even on syncs with no new commits) — a structural conflict, not
+# something fixable by re-deploying harder. The real fix: stop using a git
+# branch as the deploy target at all. `.github/workflows/Documenter.yml`
+# now assembles the GitHub Pages artifact directly from docs/build/1 and
+# publishes it via actions/deploy-pages — nothing left for the mirror to
+# delete.
+
 # index.md, investigation-log.md, variable-star-validation.md,
 # iasc-campaign-validation.md, and design-refinements.md are all real,
 # permanent, committed pages under docs/src — the docs site's own
@@ -51,32 +66,4 @@ makedocs(;
             "MPC / ADES Export" => "api/mpc-export.md",
         ],
     ],
-)
-
-# GitHub's default Jekyll processing on a branch-based Pages deploy
-# silently ignores any path starting with `_` — the standard reason any
-# non-Jekyll static site on GitHub Pages needs a `.nojekyll` marker.
-# DocumenterVitepress has the code for this (writer.jl, `touch(...,
-# "final_site", ".nojekyll")`) but it's commented out in the installed
-# version (0.3.5) — confirmed by reading the package source, not assumed.
-# A first attempt here touched `.nojekyll` into each `docs/build/<n>/`
-# (the local per-version build output) before deploydocs — wrong: that
-# directory becomes the *nested* `dev/` (etc.) subfolder on gh-pages, not
-# its root, and `.nojekyll` only has any effect at the true branch root.
-# deploydocs' own git push (see DocumenterVitepress/src/writer.jl) checks
-# out the *existing* gh-pages branch and only touches specific known
-# paths (each version's own subfolder, versions.js, the root redirect
-# index.html) rather than wiping the branch — so a root `.nojekyll`
-# added once, directly, persists across every future automated deploy.
-# Added that way instead (see the Investigation Log for the real
-# gh-pages-was-never-enabled story this was found alongside), not
-# reproduced here as build-time logic since there's nothing in the local
-# build tree that actually corresponds to the branch's real root.
-
-DocumenterVitepress.deploydocs(;
-    repo="github.com/Richard7987/AsteroidPipeline.jl",
-    target=joinpath(@__DIR__, "build"),
-    branch="gh-pages",
-    devbranch="main",
-    push_preview=true,
 )
