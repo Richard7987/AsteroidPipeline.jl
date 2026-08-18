@@ -48,6 +48,7 @@ makedocs(;
             "Reference & ZOGY Differencing" => "api/reference-zogy.md",
             "Pipeline" => "api/pipeline.md",
             "Rotation Period" => "api/rotation.md",
+            "MPC / ADES Export" => "api/mpc-export.md",
         ],
     ],
 )

@@ -44,6 +44,13 @@ optional follow-up step, not part of `run_pipeline` itself. The same
 periodogram applies directly to a `find_variable_sources` candidate's own
 `(frame, flux)` points, for periodic variables.
 
+`ades_psv` formats a candidate table as an ADES PSV observation table —
+the format the Minor Planet Center currently requires for astrometric
+submissions — so a real discovery's candidates can go straight from
+`run_pipeline`'s output to a submittable file, `id`-per-tracklet mapped
+directly to ADES's own `trkSub` tracking-designation field. Only ADES,
+not the legacy 80-column format — see its docstring for why.
+
 ## Status
 
 !!! note "Early development, but validated end to end against real data"
@@ -80,6 +87,12 @@ julia --project=. examples/real_data_demo.jl
 
 Building the reference stack (30 frames, each individually reprojected)
 is the slow part — tens of minutes on a laptop, one-time per run.
+Profiled directly, not just described as slow: the real cost is
+`Reproject.reproject` itself (~24s/frame), not the per-pixel combine
+step after it (a real, fixed 2x, but ~1s total either way) — see
+[Design refinements](https://richard7987.github.io/AsteroidPipeline.jl/dev/design-refinements)
+for that investigation, including a real multi-threading attempt that
+had to be reverted after it crashed inside `wcslib`.
 
 On field 451 (2019-10-23), the undifferenced baseline finds 133
 tracklets and recovers both known objects in the field (2002 UY45, 1997

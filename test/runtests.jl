@@ -980,4 +980,58 @@ using Reproject
         end
     end
 
+    @testset "julian_date_to_iso8601" begin
+        # Two independent, exactly known reference points — not just
+        # trusted from the algorithm's own derivation.
+        @test AsteroidPipeline.julian_date_to_iso8601(2451545.0) == "2000-01-01T12:00:00.000Z"  # J2000.0
+        @test AsteroidPipeline.julian_date_to_iso8601(2440587.5) == "1970-01-01T00:00:00.000Z"  # Unix epoch
+
+        # A fractional-second value that must round, not truncate, to
+        # avoid landing at HH:MM:59.999 instead of rolling to the next
+        # minute — 2451545.0 + 1 second (in days) rounds up to whole ms.
+        one_second = 1.0 / 86400
+        @test AsteroidPipeline.julian_date_to_iso8601(2451545.0 + one_second) == "2000-01-01T12:00:01.000Z"
+    end
+
+    @testset "ades_psv" begin
+        candidates = Table(id=[1, 1, 2], frame=[1, 2, 1],
+                            x=[10.0, 12.0, 20.0], y=[10.0, 12.0, 20.0],
+                            ra=[150.123456789, 150.123556789, 200.5],
+                            dec=[20.987654321, 20.987754321, -10.25],
+                            epoch=[2451545.0, 2451545.01, 2451545.0])
+
+        @test_throws ArgumentError ades_psv(candidates, "XX")  # not 3 characters
+
+        psv = ades_psv(candidates, "I41")
+        lines = split(strip(psv), "\n")
+        @test lines[1] == "trkSub|mode|stn|obsTime|ra|dec"
+        @test length(lines) == 4  # header + 3 observations
+
+        row1 = split(lines[2], "|")
+        @test row1[1] == uppercase(string(1; base=36))  # trkSub from id=1
+        @test row1[2] == "CCD"
+        @test row1[3] == "I41"
+        @test row1[4] == "2000-01-01T12:00:00.000Z"
+        @test parse(Float64, row1[5]) ≈ 150.123456789 atol=1e-6
+        @test parse(Float64, row1[6]) ≈ 20.987654321 atol=1e-6
+
+        # both rows sharing id=1 must share the same trkSub — that's how
+        # MPC correlates them into one tracklet on their end
+        row2 = split(lines[3], "|")
+        @test row2[1] == row1[1]
+        row3 = split(lines[4], "|")
+        @test row3[1] != row1[1]  # id=2 gets a distinct trkSub
+
+        # optional columns only appear when actually supplied
+        psv_with_cat = ades_psv(candidates, "I41"; astCat="Gaia2", band="G")
+        header_with_cat = split(split(strip(psv_with_cat), "\n")[1], "|")
+        @test "astCat" in header_with_cat
+        @test "band" in header_with_cat
+        @test "photCat" ∉ header_with_cat
+
+        # trkSub length limit: a prefix long enough to push a real id
+        # over 8 characters must error rather than silently truncate
+        @test_throws ArgumentError ades_psv(candidates, "I41"; trksub_prefix="TOOLONGPREFIX")
+    end
+
 end

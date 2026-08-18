@@ -85,14 +85,30 @@ relative to the field's median deviates by more than
 emitted — this is only a warning, never an automatic exclusion, unlike
 `quality_max_std`, precisely to avoid repeating that gate's own
 combinatorial side effect on `link_candidates`'s `min_frames` (see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#The-quality-gate's-combinatorial-side-effect-on-tracklet-count)). Unlike `quality_max_std`, this has **not** been
-validated against a real, independently-confirmed anomaly: on the same 5
-real ZTF frames used to calibrate `quality_max_std` (one of which is a
-confirmed likely passing cloud), every frame's raw-path photometric scale
-stayed within ~3-13% of the field median — well under the default
-threshold, so this signal did not (and, on this dataset, could not have)
-flagged that frame. It is included as a plausible general-purpose check,
-not a proven one; treat the default threshold as unvalidated until it is.
+[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#The-quality-gate's-combinatorial-side-effect-on-tracklet-count)).
+
+Tested directly (not left unvalidated) against the one real, confirmed
+anomaly available: the same field-451 frame `quality_max_std` catches (a
+likely passing cloud — `S_corr` std ~2.0 vs. ~1.1-1.2 for the other four,
+and ~232 excess bright residuals). That frame's *raw-path*
+`photometric_scale`, measured directly, differs from the field median by
+only 0.64% — nowhere near the default 20% threshold, at any reasonable
+setting of it. This is a real, informative negative result, not just "it
+didn't flag, so it's unvalidated": it shows `photometric_outlier_threshold`
+and `quality_max_std` are sensitive to genuinely different failure modes,
+not two redundant checks for the same thing. A passing cloud during ZOGY
+differencing shows up as elevated per-pixel residual noise in `S_corr` —
+exactly what `quality_max_std` measures — but a *raw*, undifferenced
+frame's stars can still read at normal relative brightness to each other
+even under a cloud thin enough not to have caused uniform extinction
+across the whole exposure, which is what `photometric_scale`'s
+ensemble-ratio approach would need to see. `photometric_outlier_threshold`
+is left in place for the failure mode it *would* catch (a real, uniform
+per-frame flux-scale shift — heavier cloud, real transparency loss,
+guiding/focus problems) — that specific scenario is still unvalidated,
+since no real example of it has turned up in this project's data yet —
+but it is no longer accurate to say this check has never been tested
+against a real anomaly at all.
 
 If a frame's header has no WCS, [`load_wcs`](@ref) raises an error;
 passing `plate_solve_api_key` (a nova.astrometry.net API key) makes that
