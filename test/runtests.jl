@@ -7,6 +7,7 @@ using Random
 using Test
 using Statistics
 using Reproject
+using Distributed
 
 @testset "AsteroidPipeline.jl" begin
 
@@ -263,6 +264,38 @@ using Reproject
         # above background in the median-combined reference
         outlier_pixels = [image[10+k, 40-k] for k in 1:7]
         @test all(v -> v < 200.0, outlier_pixels)
+    end
+
+    @testset "build_reference with workers" begin
+        # Same synthetic setup as the sequential test above, run through
+        # the `workers` path instead — proves the pmap/WCS-header-string
+        # round trip actually works (not just that it doesn't crash) by
+        # requiring it to reproduce the sequential result exactly.
+        nx, ny = 50, 50
+        wcs = WCSTransform(2; crpix=[25.0, 25.0], crval=[150.0, 20.0],
+                            cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+
+        Random.seed!(11)
+        frames = []
+        for k in 1:7
+            img = 100.0 .+ 2.0 .* randn(nx, ny)
+            img[25, 25] += 400.0
+            img[10 + k, 40 - k] += 3000.0
+            push!(frames, (image=img, wcs=wcs, magzp=25.0, sigma=2.0))
+        end
+
+        sequential = build_reference(frames, wcs, (nx, ny))
+
+        new_workers = addprocs(2; exeflags="--project=$(Base.active_project())")
+        try
+            @everywhere new_workers using AsteroidPipeline
+            distributed = build_reference(frames, wcs, (nx, ny); workers=new_workers)
+            @test distributed[1] ≈ sequential[1]
+            @test distributed[2] ≈ sequential[2]
+            @test distributed[3] == sequential[3]
+        finally
+            rmprocs(new_workers)
+        end
     end
 
     @testset "estimate_psf" begin
