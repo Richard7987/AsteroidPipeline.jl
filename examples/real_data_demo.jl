@@ -21,10 +21,14 @@ detectable even without differencing — this is what "recovered by both"
 below should include. It moves ~222" (~219 px) over the full baseline.
 
 Building the 30-frame reference takes a while (each frame is individually
-reprojected onto the science grid — roughly half an hour on a laptop);
-this only has to happen once, not once per science frame.
+reprojected onto the science grid — roughly half an hour on a laptop,
+sequentially); this only has to happen once, not once per science frame.
+Spread across worker processes below via build_reference's `workers`
+keyword — a real, measured 3.21x on this exact dataset (951s -> 296s,
+8 worker processes; see the Investigation Log's Design refinements page).
 =#
 using AsteroidPipeline
+using Distributed
 
 const DATA_DIR = joinpath(@__DIR__, "..", "data", "real")
 const SCIENCE_PATHS = joinpath.(DATA_DIR, "science", [
@@ -65,7 +69,13 @@ baseline_known = summarize("baseline", baseline)
 println("\nBuilding a deep reference from $(length(reference_paths)) frames (this is the slow part)...")
 sci1 = load_frame(SCIENCE_PATHS[1])
 refs = [load_frame(p) for p in reference_paths]
-ref_image, ref_sigma, ref_mask = build_reference(refs, sci1.wcs, size(sci1.image))
+reference_workers = addprocs(Sys.CPU_THREADS; exeflags="--project=$(Base.active_project())")
+@everywhere reference_workers using AsteroidPipeline
+ref_image, ref_sigma, ref_mask = try
+    build_reference(refs, sci1.wcs, size(sci1.image); workers=reference_workers)
+finally
+    rmprocs(reference_workers)
+end
 ref_psf = estimate_psf(ref_image; threshold=15.0)
 reference = (image=ref_image, sigma=ref_sigma, mask=ref_mask, psf=ref_psf, wcs=sci1.wcs)
 println("reference built: sigma=$(round(ref_sigma, digits=3)), ",
