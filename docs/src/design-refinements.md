@@ -187,11 +187,13 @@ process. The fix: never let a `WCSTransform` cross the wire at all.
 a plain FITS header string (just a `String`, no pointers, serializes
 safely) — send that instead, and have each worker rebuild its own local
 `WCSTransform` via [`load_wcs`](@ref) before calling
-`Reproject.reproject`. Confirmed on the same real 30-frame field-451
-reference set, 8 worker processes: no crash, and a real 331.8s vs. the
-~720s sequential baseline above — about **2.2x**, not full 8x
-core-count scaling, since each worker still re-parses its own WCS header
-per call and `pmap`'s own scheduling/serialization isn't free. Landed as
+`Reproject.reproject`. Confirmed end to end on `build_reference` itself
+(not just the technique standalone), on the same real 30-frame field-451
+reference set, 8 worker processes, sequential and distributed measured
+back to back with identical output: no crash, 295.92s vs. 951.31s
+sequential — a real **3.21x**, not full 8x core-count scaling, since
+each worker still re-parses its own WCS header per call and `pmap`'s own
+scheduling/serialization isn't free. Landed as
 `build_reference`'s `workers` keyword (opt-in; the caller supplies
 already-running worker processes, since spawning and managing a process
 pool is an environment concern, not something a data-processing function
