@@ -12,7 +12,7 @@ to split onto their own pages:
 
 - [Validating `search_field` against a real, independently-confirmed variable star](variable-star-validation.md)
 - [Validating against real IASC (Pan-STARRS1) campaign data](iasc-campaign-validation.md)
-- [Revisiting the two intentional-design "limitations"](design-refinements.md)
+- [Design refinements](design-refinements.md)
 
 ## Real ZTF data surfaced four bugs no synthetic test or code review caught
 
@@ -344,4 +344,4 @@ detections, not the smallest false-positive rate achievable.
 
 - [Validating `search_field` against a real, independently-confirmed variable star](variable-star-validation.md)
 - [Validating against real IASC (Pan-STARRS1) campaign data](iasc-campaign-validation.md)
-- [Revisiting the two intentional-design "limitations"](design-refinements.md)
+- [Design refinements](design-refinements.md)

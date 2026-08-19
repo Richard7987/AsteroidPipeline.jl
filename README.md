@@ -1,6 +1,6 @@
 # AsteroidPipeline.jl
 
-[![Documenter](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/Documenter.yml/badge.svg)](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/Documenter.yml)
+[![CI](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml)
 [![docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/dev/)
 
 An open-source Julia pipeline for asteroid search campaigns, developed for
@@ -41,7 +41,7 @@ julia --project=docs docs/make.jl
 ```
 
 `.github/workflows/Documenter.yml` builds and deploys it to GitHub Pages
-on every push to `main` and on tags.
+on every push to `main`.
 
 ## License
 

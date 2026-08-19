@@ -26,3 +26,8 @@ docs/src/.vitepress/dist/
 # hand-authored logo.png/favicon.ico is ever added there.
 docs/src/assets/systematic-error-floor-sweep.png
 docs/src/assets/iasc-match-radius-retuning.png
+
+# Local-only notes about the GitHub mirror's own CI/Pages plumbing — not
+# part of the project (the wiki documents the pipeline, not its own
+# deploy infrastructure).
+PAGES_NOTES.md
