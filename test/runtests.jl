@@ -1007,28 +1007,24 @@ end
             () -> nothing, 0.1, 0.05, "test condition")
 
         # live end-to-end round trip against the real service — only runs
-        # if a real API key is available; validated once against a real
-        # ZTF frame (see INVESTIGATION_LOG.md), not re-run on every CI pass
+        # if a real API key is available. Needs a real star field: tried
+        # once with a single-Gaussian-source-in-noise synthetic image and
+        # the job legitimately failed to solve — astrometry.net matches
+        # geometric patterns across several stars, which one fake point
+        # source can never provide, no matter how good the key is. Uses
+        # a real downloaded ZTF frame instead (its own real WCS is simply
+        # never read by plate_solve, which only uploads pixels) — this is
+        # the same frame the docstring's one-time manual validation used.
         api_key = get(ENV, "ASTROMETRY_API_KEY", nothing)
+        real_frame = joinpath(@__DIR__, "..", "data", "real", "science",
+                               "ztf_20191023195590_000451_zr_c01_o_q1_sciimg.fits")
         if api_key === nothing
             @test_skip "ASTROMETRY_API_KEY not set"
+        elseif !isfile(real_frame)
+            @test_skip "real ZTF test frame not present — run examples/fetch_data.sh"
         else
-            mktempdir() do dir
-                nx, ny = 60, 60
-                wcs = WCSTransform(2; crpix=[nx / 2, ny / 2], crval=[150.0, 20.0],
-                                    cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
-                img = 100.0 .+ 5.0 .* randn(nx, ny)
-                for i in 1:nx, j in 1:ny
-                    r2 = (i - 30)^2 + (j - 30)^2
-                    img[i, j] += 2000.0 * exp(-r2 / (2 * 2.0^2))
-                end
-                path = joinpath(dir, "test.fits")
-                FITS(path, "w") do f
-                    write(f, img)  # deliberately no WCS: this is what plate_solve is for
-                end
-                solved = plate_solve(path; api_key=api_key)
-                @test solved isa WCSTransform
-            end
+            solved = plate_solve(real_frame; api_key=api_key)
+            @test solved isa WCSTransform
         end
     end
 
