@@ -9,6 +9,25 @@ using Statistics
 using Reproject
 using Distributed
 
+# Loads .env (repo root, gitignored) into ENV for local test runs — e.g.
+# ASTROMETRY_API_KEY, which enables the live plate_solve round-trip test
+# below instead of skipping it. Real environment variables always win: a
+# line here is only applied if that key isn't already set. Not read by
+# src/ itself — plate_solve takes api_key as an explicit argument; this
+# is test-only convenience.
+let env_file = joinpath(pkgdir(AsteroidPipeline), ".env")
+    if isfile(env_file)
+        for line in eachline(env_file)
+            line = strip(line)
+            (isempty(line) || startswith(line, "#")) && continue
+            k, v = split(line, "="; limit=2)
+            k = strip(k)
+            v = strip(strip(v), ['"', '\''])
+            haskey(ENV, k) || (ENV[k] = v)
+        end
+    end
+end
+
 @testset "AsteroidPipeline.jl" begin
 
     @testset "detect_sources" begin

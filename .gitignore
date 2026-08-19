@@ -31,3 +31,7 @@ docs/src/assets/iasc-match-radius-retuning.png
 # part of the project (the wiki documents the pipeline, not its own
 # deploy infrastructure).
 PAGES_NOTES.md
+
+# Real API keys for local test runs (e.g. ASTROMETRY_API_KEY) — see
+# .env.example for the expected format.
+.env
