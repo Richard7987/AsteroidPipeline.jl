@@ -14,6 +14,7 @@ using Statistics
 using Interpolations
 using FFTW
 using LsqFit
+using Distributed
 
 include("detection.jl")
 include("linking.jl")

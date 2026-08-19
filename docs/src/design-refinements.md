@@ -120,16 +120,48 @@ to a sequential loop; kept as a documented, real finding (in
 `build_reference`'s own docstring) so the same "obviously parallelizable"
 mistake isn't attempted again the same way.
 
-**No further speedup found.** `Reproject.reproject` does expose an
-`order` keyword (interpolation order — `0` for nearest-neighbor instead
-of the default bilinear), but the segfault's own stack trace shows the
-real per-pixel cost is in `pix_to_world!` itself — the WCS coordinate
-transform each output pixel needs before any interpolation happens at
-all — which `order` has no effect on, so it wasn't pursued: a real
-accuracy cost (nearest-neighbor reprojection reintroduces the same kind
-of sub-pixel registration error the reference stack exists to average
-out) for a speedup that the evidence says wouldn't materialize. The
-"tens of minutes" cost is, as far as this investigation could establish,
-a real, currently-irreducible property of reprojecting real frames
-through `wcslib` one at a time — not something left unoptimized for lack
-of trying.
+`Reproject.reproject` does expose an `order` keyword (interpolation
+order — `0` for nearest-neighbor instead of the default bilinear), but
+the segfault's own stack trace showed the real per-pixel cost is in
+`pix_to_world!` itself — the WCS coordinate transform each output pixel
+needs before any interpolation happens at all — which `order` has no
+effect on, so it wasn't pursued: a real accuracy cost (nearest-neighbor
+reprojection reintroduces the same kind of sub-pixel registration error
+the reference stack exists to average out) for a speedup the evidence
+said wouldn't materialize.
+
+**Processes succeed where threads crashed — with a real, different
+pitfall of their own.** `Distributed.jl` sidesteps the specific hazard
+above: each worker process has its own independent `wcslib` state, so
+concurrent calls from different processes aren't the same shared-state
+problem concurrent calls from different *threads* are. But the obvious
+first attempt — reproject each frame inside a `pmap` closure that
+receives the frame's already-built `WCSTransform` — segfaulted too, for
+a different reason: `WCSTransform` holds pointers into `wcslib`-allocated
+C memory that's only valid in the process that created it, and Julia's
+generic `Serialization` doesn't reconstruct that state on the receiving
+worker — confirmed via a real crash inside `WCS.jl`'s `getproperty`/
+`convert_string`, deserializing a `WCSTransform` sent from the main
+process. The fix: never let a `WCSTransform` cross the wire at all.
+`WCS.jl` provides `to_header`/`from_header`, an exact round trip through
+a plain FITS header string (just a `String`, no pointers, serializes
+safely) — send that instead, and have each worker rebuild its own local
+`WCSTransform` via [`load_wcs`](@ref) before calling
+`Reproject.reproject`. Confirmed end to end on `build_reference` itself
+(not just the technique standalone), on the same real 30-frame field-451
+reference set, 8 worker processes, sequential and distributed measured
+back to back with identical output: no crash, 295.92s vs. 951.31s
+sequential — a real **3.21x**, not full 8x core-count scaling, since
+each worker still re-parses its own WCS header per call and `pmap`'s own
+scheduling/serialization isn't free. Landed as
+`build_reference`'s `workers` keyword (opt-in; the caller supplies
+already-running worker processes, since spawning and managing a process
+pool is an environment concern, not something a data-processing function
+should own as a side effect).
+
+The "tens of minutes" sequential cost is, as far as this investigation
+could establish, a real, currently-irreducible property of reprojecting
+one frame through `wcslib` at a time — but it is no longer irreducible
+*in total*: spreading that same per-frame cost across independent
+processes is a real, measured ~2x win, not something left unexplored for
+lack of trying.
