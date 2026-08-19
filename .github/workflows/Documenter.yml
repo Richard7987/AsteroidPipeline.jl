@@ -34,11 +34,14 @@ jobs:
         id: julia-cache
         uses: julia-actions/cache@v3
       - name: Build docs
-        # Despite the name, this action doesn't deploy anything itself —
-        # it just runs docs/make.jl (which no longer calls `deploydocs` at
-        # all; see its top comment).
+        # docs/make.jl doesn't call deploydocs anymore, but GITHUB_TOKEN is
+        # still needed: makedocs itself picks the "dev" vs root base path
+        # from Documenter's deploy-criteria check, which requires it — a
+        # real deploy without it built for root and 404'd every asset once
+        # nested under dev/ below.
         uses: julia-actions/julia-docdeploy@v1
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JULIA_DEBUG: "Documenter"
       - name: Save Julia depot cache on cancel or failure
         if: cancelled() || failure()
