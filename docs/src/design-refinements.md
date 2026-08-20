@@ -4,7 +4,7 @@ Part of this project's [Investigation Log](investigation-log.md) —
 split onto its own page since these aren't bugs found on one specific
 real dataset the way the other pages here are: two are design decisions
 revisited to see if they could be improved without abandoning the choice
-behind them, and two are validation/performance investigations that
+behind them, and the rest are validation/performance investigations that
 don't belong to any single dataset-specific page.
 
 ## `estimate_psf`'s empirical-vs-fallback split was a hard binary
@@ -226,3 +226,56 @@ moved from 2% to 3% on this evidence; 0% remains achievable only by
 accepting that cost, which is why it isn't the target.
 
 ![False-positive rate and each field's own real confirmed variable's reduced chi², swept across systematic_error_fraction, for three independent real ZTF fields](assets/systematic-error-floor-sweep.png)
+
+## Looking for another `build_reference`-sized win — profiled, and mostly not found
+
+Asked directly whether anything else in the pipeline was worth
+parallelizing or otherwise speeding up, the way `build_reference`'s
+reprojection loop was. Profiled the real stages of `_detect_all_frames`,
+`find_variable_sources`, `photometric_scale`, and `link_candidates`
+directly (`@time`, not guessed) against the V1012 Mon dataset above —
+useful for this specifically because its field is unusually dense
+(~200-580 detections/frame even at `threshold=100`, denser than field
+451's own ~130), making it a real stress case rather than a typical one.
+
+**Most stages are already fast.** `find_variable_sources` (0.20s) and
+`photometric_scale` (0.08s) across all 34 frames were not remotely close
+to being a bottleneck, despite an initial worry that their per-star
+position-matching loop might scale badly with detection count.
+`detect_sources` itself: 0.06s for a single dense frame (523 sources).
+
+**One real, safe fix found: `_detect_all_frames`'s `detections_per_frame`
+was an untyped `Vector{Any}`.** `detect_sources` always returns the exact
+same concrete `TypedTables.Table` type on every call — confirmed
+directly (`typeof(...)` compared for both its empty and non-empty return
+paths, not assumed from reading the source alone) — so there was no
+reason for the container holding those results to be `Any`-typed. Fixed
+by typing it explicitly from that same concrete type. Measured before
+and after on this same dense dataset: no significant wall-clock change
+here (within noise, ~5.4-5.6s either way) — `_detect_all_frames`'s real
+cost is FITS I/O and `detect_sources`'s own internal allocations, not
+this container's typing. Kept anyway as a real, zero-risk type-stability
+correctness improvement (every downstream consumer of
+`detections_per_frame` — `find_variable_sources`, `link_candidates`,
+`photometric_scale` — now sees a concretely-typed vector instead of
+`Any`), not reported as a performance win it didn't measurably produce.
+
+**`link_candidates`'s real cost on this dense field (0.57s, 52.6% GC
+time) is a known, already-mitigated design tradeoff, not a hidden
+bug.** Its seed-tracklet search is a pairwise loop over every
+frame-1/frame-2 detection pair — confirmed directly: 523 × 365 = 190,895
+pairs checked here, of which only 658 survive the `max_speed` filter and
+go on to the more expensive per-candidate work (a linear
+`_closest_detection` scan across every other frame, plus a
+least-squares refit that itself allocates three small temporary arrays
+per candidate). On a typical field (like field 451's own ~130
+detections/frame) the pair count drops by roughly (130/523)² ≈ 6%,
+putting this well under 50ms — this 0.57s figure is specific to an
+unusually dense field, and `threshold` (already tuned up for exactly
+this kind of dense field in both this dataset and the earlier field-487
+case) is the pipeline's existing, deliberate answer to it, not something
+this profiling pass found reason to change.
+
+No second `build_reference`-sized win turned up. The pipeline's real
+remaining cost, at typical real field densities, is dominated by what
+was already found and fixed.

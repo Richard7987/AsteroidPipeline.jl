@@ -171,6 +171,13 @@ raw path, `photometric_outlier_threshold` is forwarded to a post-loop
 `0` on the raw path, which has no such gate) — both callers use it to
 auto-adjust their own `min_frames` default, since a gated frame otherwise
 silently makes no tracklet/variable-candidate reachable at all.
+
+`detections_per_frame` is concretely typed from `detect_sources`'s own
+return type (confirmed identical on both its empty and non-empty return
+paths, not assumed) rather than left as `Vector{Any}` — a real
+type-stability fix found while profiling for other speedups, though it
+didn't measurably change this function's own real-data timing; see
+[Design refinements](https://richard7987.github.io/AsteroidPipeline.jl/dev/design-refinements).
 """
 function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              timestamp_key::AbstractString="MJD-OBS",
@@ -179,7 +186,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
                              quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
                              photometric_outlier_threshold::Real=0.2)
-    detections_per_frame = []
+    detections_per_frame = typeof(Table(x=Int[], y=Int[], peak=Float64[], flux=Float64[], flux_err=Float64[]))[]
     wcs_per_frame = WCSTransform[]
     timestamps = Float64[]
     n_gated = 0
