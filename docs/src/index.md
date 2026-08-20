@@ -63,7 +63,7 @@ not the legacy 80-column format — see its docstring for why.
 |:--|:--|
 | `detect_sources`, `link_candidates`, WCS calibration, `crossmatch_catalog` | Synthetic (exact recovery) · real ZTF field 451 · 5 real IASC/Pan-STARRS1 fields (**9 known objects** recovered) |
 | ZOGY difference imaging (`build_reference`, `estimate_psf`, `zogy_subtract`) | 3 falsifiable synthetic checks · real ZTF field 451 |
-| `find_variable_sources` / `search_field` | Synthetic · false-positive rate calibrated on real ZTF stars · a real confirmed variable (ASASSN-V J183620.31) |
+| `find_variable_sources` / `search_field` | Synthetic · false-positive rate calibrated on real ZTF stars across 3 independent fields · 3 real confirmed variables (ASASSN-V J183620.31, V1012 Mon, ASASSN-V J072906.85-090518.2) |
 | `fit_moffat_psf` (PSF analytic fallback) | Synthetic · PSF width calibrated on real ZTF data |
 | `plate_solve` | Live nova.astrometry.net service |
 | `crossmatch_catalog` (`:skybot`/`:vsx`/`:simbad`) | Live services, real positive controls |
@@ -236,18 +236,24 @@ pipeline at a real campaign, or any other survey's data:
     errors made ordinary flat-fielding/PSF-variation systematics look
     like huge chi2 significance. Adding that floor
     (`variability_chi2`'s `systematic_error_fraction`) cut the rate: a
-    1% floor took it to 6% at threshold 3, ~0% at threshold 20; sweeping
-    the floor further (against the same real stars, and checked against
-    a real confirmed variable — ASASSN-V J183620.31 — to make sure real
-    sensitivity wasn't sacrificed for it) found more room without giving
-    up real detections: the current default, 2%, cuts the
-    `chi2_threshold=10.0` rate to 2.0% on this dataset (vs 1%'s 3.3%),
-    while that confirmed variable still clears the threshold with a 3x
-    margin — see `find_variable_sources`'s docstring and the
-    [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#The-centroid-fix-barely-moved-the-false-positive-floor-—-the-real-cause-was-a-systematic-error-floor)
-    for the full before/after numbers. Still not zero: treat a candidate
-    as needing independent confirmation (a catalog match or a recovered
-    period), not as self-evidently real.
+    1% floor took it to 6% at threshold 3, ~0% at threshold 20.
+    Sweeping the floor further, first against field 451 alone and its
+    one real confirmed variable (ASASSN-V J183620.31, from a different
+    field), settled on 2% — later repeated against two more real,
+    independent fields (V1012 Mon and ASASSN-V J072906.85-090518.2,
+    each with its own real confirmed variable and 180+ real matched
+    stars), which moved the default to **3%**: the largest floor at
+    which all three confirmed variables stay above `chi2_threshold=10.0`
+    while the false-positive rate is the same or better than at 2% in
+    every field (1.3%/2.04%/0.55% at 3% vs. 2.0%/2.55%/0.55% at 2%). A
+    literal 0% rate is reachable at a 5% floor, but only by also erasing
+    two of the three real variables' own signal below threshold — a
+    different failure mode, not a real improvement. See
+    `find_variable_sources`'s docstring and
+    [Design refinements](https://richard7987.github.io/AsteroidPipeline.jl/dev/design-refinements)
+    for the full three-field before/after numbers. Still not zero: treat
+    a candidate as needing independent confirmation (a catalog match or
+    a recovered period), not as self-evidently real.
 
 ## Follow-up workflows
 

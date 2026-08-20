@@ -338,7 +338,11 @@ false-positive rate, while leaving the real variable's signal a 3x margin
 over threshold — the largest floor checked that doesn't cost real
 detections, not the smallest false-positive rate achievable.
 
-![False-positive rate on 152 real stationary stars, and reduced chi2 on a real confirmed variable, swept across systematic_error_fraction values](assets/systematic-error-floor-sweep.png)
+This 2% default rested on field 451 alone — later cross-validated
+against two more real, independent confirmed variables in two more real
+fields, which moved the default to 3%; see
+[Design refinements](design-refinements.md) for the full three-field
+sweep and figure.
 
 ## See also
 

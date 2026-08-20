@@ -1,5 +1,5 @@
 """
-    variability_chi2(flux, flux_err; systematic_error_fraction::Real=0.02) -> (chi2, dof)
+    variability_chi2(flux, flux_err; systematic_error_fraction::Real=0.03) -> (chi2, dof)
 
 Chi-squared goodness of fit of `flux` against the constant-flux
 (non-variable) null hypothesis, using the error-weighted mean as the
@@ -23,13 +23,19 @@ forced-photometry pipelines, tried first) cut the false-positive rate at
 a reduced-chi2 threshold of 3 from 22% (no floor) to 6%, and at
 threshold 20 from 13% to essentially 0%. Sweeping the floor further
 against the same real, matched stationary stars — not guessed — found
-more room: 2% (the current default) cuts the threshold-10 rate to 2.0%
-(vs 1%'s 3.3%), while a real, independently-confirmed variable
-(ASASSN-V J183620.31, checked at the same floor sweep) still clears
-threshold 10 with a healthy margin (reduced chi2 ≈ 31 at 2%, only
-dropping below 10 once the floor reaches 5%) — see
-[`find_variable_sources`](@ref)'s docstring for the full before/after
-table.
+more room, and was later cross-checked against two more real,
+independently-confirmed variable stars in two more real fields, not just
+one: 3% (the current default) keeps every one of three real confirmed
+variables above `chi2_threshold=10.0` (reduced chi2 13.8/61.2/17.5 across
+the three fields) while cutting the false-positive rate on real
+stationary stars in those same three fields to 1.3%/2.04%/0.55% (vs.
+2.0%/2.55%/0.55% at the previous 2% default — better or equal in every
+field, never worse) — see [`find_variable_sources`](@ref)'s docstring
+for the full before/after table across all three. A literal 0% false
+positive rate is achievable (a 5% floor reaches it on two of the three
+fields), but only by also erasing two of the three real confirmed
+variables' own signal below `chi2_threshold` — not a real improvement,
+just a different failure mode.
 
 A large `chi2 / dof` is evidence against the null hypothesis — i.e.
 evidence of genuine flux variability beyond both statistical noise and
@@ -38,7 +44,7 @@ separately since a caller may want the raw statistic rather than only a
 threshold decision.
 """
 function variability_chi2(flux::AbstractVector{<:Real}, flux_err::AbstractVector{<:Real};
-                           systematic_error_fraction::Real=0.02)
+                           systematic_error_fraction::Real=0.03)
     length(flux) == length(flux_err) ||
         throw(ArgumentError("flux and flux_err must have the same length"))
     eff_err = sqrt.(flux_err .^ 2 .+ (systematic_error_fraction .* flux) .^ 2)
@@ -130,7 +136,7 @@ end
                            chi2_threshold::Real=10.0,
                            normalize::Bool=true,
                            max_relative_error::Real=0.10,
-                           systematic_error_fraction::Real=0.02)
+                           systematic_error_fraction::Real=0.03)
 
 Match source detections across frames by consistent *position* (zero
 assumed motion) rather than [`link_candidates`](@ref)'s linear-motion
@@ -157,7 +163,7 @@ Three corrections are applied before any variability test:
   a constant star doesn't read as variable just because one exposure's
   aperture happened to enclose a different fraction of its PSF. Set
   `normalize=false` to skip this (e.g. if `flux` is already calibrated).
-- **Systematic error floor** (`systematic_error_fraction`, default 2%,
+- **Systematic error floor** (`systematic_error_fraction`, default 3%,
   forwarded to [`variability_chi2`](@ref)): the actual dominant fix for
   this function's real, measured false-positive floor — see below.
 
@@ -169,14 +175,15 @@ constant-flux null hypothesis; a group is kept only if its **reduced**
 chi-squared (`chi2 / dof`) exceeds `chi2_threshold`.
 
 `chi2_threshold`'s default and `systematic_error_fraction` (forwarded to
-[`variability_chi2`](@ref)) were both calibrated against the same real
-ZTF field (451, 119 matched, high-S/N stationary stars) this whole
-docstring measures against — and the calibration story is worth reading,
-because the first hypothesis tried here was wrong. `detect_sources` used
-to center its aperture on `PeakMesh`'s raw *integer*-pixel peak; the
-working theory was that per-frame pixel-grid jitter in that peak, against
-a small `aperture_radius`, was producing spurious flux swings. Fixing
-that (`detect_sources` now refines to a sub-pixel centroid — see its own
+[`variability_chi2`](@ref)) were both calibrated against real ZTF data —
+first against field 451 (119 matched, high-S/N stationary stars), later
+cross-checked against two more independent real fields — and the
+calibration story is worth reading, because the first hypothesis tried
+here was wrong. `detect_sources` used to center its aperture on
+`PeakMesh`'s raw *integer*-pixel peak; the working theory was that
+per-frame pixel-grid jitter in that peak, against a small
+`aperture_radius`, was producing spurious flux swings. Fixing that
+(`detect_sources` now refines to a sub-pixel centroid — see its own
 docstring) barely moved the false-positive rate at all (23% → 22% at a
 threshold of 3; 13% → 13% at 20) — a real, measured non-result, not
 swept under the rug. Checking *which* stars were actually being flagged
@@ -188,21 +195,31 @@ vs. 2.93% among the rest, the signature of a systematic error floor
 underestimated statistical noise. Adding that floor
 (`systematic_error_fraction`, in `variability_chi2`) is what actually
 fixed it: a 1% floor cut it to 6% at a threshold of 3, ~0% at 20; a real,
-large improvement over the 23-8% range measured before either fix, but
-sweeping the floor further (against the same 119 real stars) found more
-room without giving up real sensitivity — checked against an actual
-confirmed variable, not just the stationary-star side of the tradeoff.
-`systematic_error_fraction=0.02` (the current default) cuts the
-threshold-10 false-positive rate to 2.0% (vs 1%'s 3.3%), while a real,
-independently-confirmed variable (ASASSN-V J183620.31 — see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/variable-star-validation))
-still clears `chi2_threshold=10.0` with a healthy margin (reduced chi2 ≈
-31, over 3x the threshold) at this floor — a floor of 5% would erase that
-same real signal (reduced chi2 drops to ≈5, below threshold), so 2% is
-not "as high as possible", it's the largest floor checked that still
-leaves real variability comfortably detectable. Still not zero: treat any
-candidate here as requiring independent confirmation (a VSX/SIMBAD match
-via [`crossmatch_catalog`](@ref), or a period recovered by
+large improvement over the 23-8% range measured before either fix.
+
+Sweeping the floor further, first against field 451 alone, found more
+room without giving up real sensitivity — checked against a real
+confirmed variable (ASASSN-V J183620.31, from a different real field),
+not just the stationary-star side of the tradeoff. That first pass
+settled on 2%. Later, two more real, independently-confirmed variables
+were found in two more real ZTF fields (V1012 Mon and ASASSN-V
+J072906.85-090518.2 — dense fields near the galactic plane, each with
+over 180 real matched stationary stars of its own), letting the same
+sweep be repeated three times over, each with its own real confirmed
+variable and its own real false-positive sample, instead of trusting one
+field's result to generalize. That repeat is what moved the default from
+2% to 3%: at 3%, all **three** confirmed variables (reduced chi2
+13.8/61.2/17.5 across field 451/V1012 Mon/ASASSN-072906) still clear
+`chi2_threshold=10.0`, while the false-positive rate in every one of the
+three fields is the same or better than at 2% (1.3%/2.04%/0.55% at 3% vs.
+2.0%/2.55%/0.55% at 2%). A literal 0% false-positive rate is reachable —
+a 5% floor gets there on two of the three fields — but only by also
+pushing two of the three confirmed variables' own reduced chi2 below
+`chi2_threshold`, i.e. by going blind to real variability rather than
+genuinely improving anything; 3% is the largest floor across all three
+real fields that doesn't cost that. Still not zero: treat any candidate
+here as requiring independent confirmation (a VSX/SIMBAD match via
+[`crossmatch_catalog`](@ref), or a period recovered by
 [`recover_rotation_period`](@ref)), not as self-evidently real.
 
 With the default `min_frames` (every frame must match at high S/N), a
@@ -245,7 +262,7 @@ function find_variable_sources(detections_per_frame, timestamps;
                                 chi2_threshold::Real=10.0,
                                 normalize::Bool=true,
                                 max_relative_error::Real=0.10,
-                                systematic_error_fraction::Real=0.02)
+                                systematic_error_fraction::Real=0.03)
     nframes = length(detections_per_frame)
     nframes == length(timestamps) ||
         throw(ArgumentError("detections_per_frame and timestamps must have the same length"))

@@ -31,40 +31,49 @@ set_theme!(Theme(
 ))
 
 # --- find_variable_sources: systematic_error_fraction sweep -----------
-# Real measurements from sweeping systematic_error_fraction against (a)
-# 152 real, matched, high-S/N stationary stars on real ZTF field 451
-# (false-positive rate at chi2_threshold=10.0) and (b) the real,
-# independently-confirmed variable ASASSN-V J183620.31's own real
-# forced-photometry light curve (reduced chi2). See "Tuning
+# Real measurements from sweeping systematic_error_fraction against three
+# independent real ZTF fields, each with its own real matched stationary
+# stars (false-positive rate at chi2_threshold=10.0) and its own real,
+# independently-confirmed variable star (reduced chi2): field 451 (152
+# stars; variable ASASSN-V J183620.31, from a different real field), and
+# two more found and validated later, V1012 Mon (197 stars) and ASASSN-V
+# J072906.85-090518.2 (182 stars). See "Cross-validating
 # find_variable_sources's systematic error floor..." in this log.
 let
-    floors = [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0]  # percent
-    false_positive_rate = [13.2, 6.6, 3.3, 2.6, 2.0, 1.3, 0.0]  # percent, at chi2_threshold=10
-    variable_reduced_chi2 = [20688.5, 484.4, 123.4, 55.1, 31.0, 13.8, 5.0]
+    floors = [0.0, 1.0, 2.0, 3.0, 5.0]  # percent, common to all three fields
+    field451_fp = [13.2, 3.3, 2.0, 1.3, 0.0]
+    field451_chi2 = [20688.5, 123.4, 31.0, 13.8, 5.0]
+    v1012_fp = [62.24, 6.12, 2.55, 2.04, 1.02]
+    v1012_chi2 = [31908.9, 542.3, 137.4, 61.2, 22.1]
+    asassn_fp = [49.72, 2.76, 0.55, 0.55, 0.55]
+    asassn_chi2 = [3298.5, 151.2, 39.2, 17.5, 6.3]
 
-    fig = Figure(size=(720, 460))
+    fig = Figure(size=(760, 520))
     ax1 = Axis(fig[1, 1];
         xlabel="systematic_error_fraction (%)",
         ylabel="false-positive rate at chi2_threshold=10 (%)",
-        title="Real ZTF field 451 stationary stars (152) vs. a real confirmed variable")
-    ax2 = Axis(fig[1, 1];
-        ylabel="reduced chi² (real variable, ASASSN-V J183620.31)",
-        yscale=log10, yaxisposition=:right, ygridvisible=false)
-    hidespines!(ax2)
-    hidexdecorations!(ax2)
+        title="Three real, independent ZTF fields: false-positive rate vs. systematic_error_fraction")
+    ax2 = Axis(fig[2, 1];
+        xlabel="systematic_error_fraction (%)",
+        ylabel="reduced chi² (real confirmed variable)", yscale=log10,
+        title="Each field's own real confirmed variable's reduced chi²")
 
-    l1 = lines!(ax1, floors, false_positive_rate; color=:tomato, linewidth=2)
-    scatter!(ax1, floors, false_positive_rate; color=:tomato, markersize=10)
-    l2 = lines!(ax2, floors, variable_reduced_chi2; color=:dodgerblue, linewidth=2)
-    scatter!(ax2, floors, variable_reduced_chi2; color=:dodgerblue, markersize=10)
-    hlines!(ax2, [10.0]; color=:dodgerblue, linestyle=:dash, linewidth=1)
-    vlines!(ax1, [2.0]; color=:white, linestyle=:dot, linewidth=1)
-    text!(ax1, 2.05, 12.0; text="chosen default (2%)", fontsize=12, color=:white)
+    colors = (:tomato, :mediumspringgreen, :dodgerblue)
+    labels = ("field 451 (152 stars)", "V1012 Mon (197 stars)", "ASASSN-V J072906.85 (182 stars)")
 
-    Legend(fig[2, 1], [l1, l2],
-           ["false-positive rate (left axis)",
-            "real variable's reduced chi² (right axis, log scale; dashed = chi2_threshold=10)"];
-           orientation=:horizontal, tellwidth=false)
+    for (fp, chi2, color, label) in zip(
+        (field451_fp, v1012_fp, asassn_fp), (field451_chi2, v1012_chi2, asassn_chi2), colors, labels)
+        lines!(ax1, floors, fp; color, linewidth=2, label)
+        scatter!(ax1, floors, fp; color, markersize=10)
+        lines!(ax2, floors, chi2; color, linewidth=2, label)
+        scatter!(ax2, floors, chi2; color, markersize=10)
+    end
+    hlines!(ax2, [10.0]; color=:white, linestyle=:dash, linewidth=1)
+    vlines!(ax1, [3.0]; color=:white, linestyle=:dot, linewidth=1)
+    vlines!(ax2, [3.0]; color=:white, linestyle=:dot, linewidth=1)
+    text!(ax1, 3.1, 55.0; text="chosen default (3%)", fontsize=12, color=:white)
+
+    Legend(fig[3, 1], ax1; orientation=:horizontal, tellwidth=false)
 
     save(joinpath(ASSETS_DIR, "systematic-error-floor-sweep.png"), fig)
 end

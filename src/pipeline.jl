@@ -280,7 +280,7 @@ end
                  variability_position_tolerance::Real=2.0,
                  variability_min_frames::Union{Nothing,Integer}=nothing,
                  variability_chi2_threshold::Real=10.0,
-                 variability_systematic_error_fraction::Real=0.02)
+                 variability_systematic_error_fraction::Real=0.03)
         -> (movers=<table>, variables=<table>)
 
 Run [`run_pipeline`](@ref)'s asteroid-candidate search and
@@ -327,7 +327,7 @@ function search_field(fits_paths::AbstractVector{<:AbstractString};
                        variability_chi2_threshold::Real=10.0,
                        variability_normalize::Bool=(reference === nothing),
                        variability_max_relative_error::Real=0.10,
-                       variability_systematic_error_fraction::Real=0.02)
+                       variability_systematic_error_fraction::Real=0.03)
     detections_per_frame, wcs_per_frame, timestamps, n_gated = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
         reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
