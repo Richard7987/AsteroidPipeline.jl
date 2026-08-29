@@ -1082,4 +1082,62 @@ end
         @test_throws ArgumentError ades_psv(candidates, "I41"; trksub_prefix="TOOLONGPREFIX")
     end
 
+    @testset "mpc80_report" begin
+        candidates = Table(id=[1, 1, 2], frame=[1, 2, 1],
+                            x=[10.0, 12.0, 20.0], y=[10.0, 12.0, 20.0],
+                            ra=[150.123456789, 150.123556789, 200.5],
+                            dec=[20.987654321, 20.987754321, -10.25],
+                            epoch=[2451545.0, 2451545.01, 2451545.0])
+
+        @test_throws ArgumentError mpc80_report(candidates, "XX")  # not 3 characters
+
+        report = mpc80_report(candidates, "I41")
+        # chomp, not strip: the leading 5 blank columns on line 1 (no
+        # permanent number) are real, fixed-width content, not
+        # incidental whitespace to trim.
+        lines = split(chomp(report), "\n")
+        @test length(lines) == 3
+        @test all(l -> length(l) == 80, lines)  # the whole point of the format
+
+        line1 = lines[1]
+        @test line1[1:5] == "     "                                # no permanent number
+        @test strip(line1[6:12]) == uppercase(string(1; base=36))  # temp designation from id=1
+        @test line1[15] == 'C'                                     # note2 default (CCD)
+        @test line1[78:80] == "I41"
+
+        # date/RA/Dec: parse the formatted fields back to numbers and
+        # compare against the input, within the format's own precision
+        # — checks the actual round-trip rather than a hand-computed
+        # expected string.
+        date_field = line1[16:32]
+        @test date_field[1:4] == "2000"
+        @test date_field[6:7] == "01"
+        @test parse(Float64, date_field[9:end]) ≈ 1.5 atol=1e-6  # J2000.0 = Jan 1.5
+
+        ra_field = line1[33:44]
+        ra_deg = 15 * (parse(Float64, ra_field[1:2]) + parse(Float64, ra_field[4:5]) / 60 +
+                        parse(Float64, ra_field[7:end]) / 3600)
+        # atol matches the field's own precision (0.001s of time ≈
+        # 4.2e-6°), not tighter than what the format can represent
+        @test ra_deg ≈ 150.123456789 atol=1e-5
+
+        dec_field = line1[45:56]
+        dec_sign = dec_field[1] == '-' ? -1 : 1
+        dec_deg = dec_sign * (parse(Float64, dec_field[2:3]) + parse(Float64, dec_field[5:6]) / 60 +
+                               parse(Float64, dec_field[8:end]) / 3600)
+        @test dec_deg ≈ 20.987654321 atol=1e-5
+
+        # both rows sharing id=1 must share the same temp designation
+        @test strip(lines[2][6:12]) == strip(line1[6:12])
+        @test strip(lines[3][6:12]) != strip(line1[6:12])  # id=2 gets a distinct one
+
+        # sign is mandatory even for a negative declination (row 3, dec=-10.25)
+        @test lines[3][45] == '-'
+
+        # temp designation length limit: mirrors ades_psv's trkSub cap,
+        # but one character tighter (7, not 8) since this format's
+        # designation slot has no eighth column to spare
+        @test_throws ArgumentError mpc80_report(candidates, "I41"; trksub_prefix="TOOLONG")
+    end
+
 end

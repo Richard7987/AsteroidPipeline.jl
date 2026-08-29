@@ -48,8 +48,10 @@ periodogram applies directly to a `find_variable_sources` candidate's own
 the format the Minor Planet Center currently requires for astrometric
 submissions — so a real discovery's candidates can go straight from
 `run_pipeline`'s output to a submittable file, `id`-per-tracklet mapped
-directly to ADES's own `trkSub` tracking-designation field. Only ADES,
-not the legacy 80-column format — see its docstring for why.
+directly to ADES's own `trkSub` tracking-designation field. `mpc80_report`
+does the same for the legacy fixed-width 80-column format, still
+required by some programs (e.g. IASC, as of 2026) even though the MPC's
+own submissions now prefer ADES.
 
 ## Status
 
@@ -179,8 +181,13 @@ for the full story of each:
 #### Using real IASC campaign data
 
 Not yet attempted on a live campaign — practice data above is the
-closest real-world test so far. General guidance for pointing this
-pipeline at a real campaign, or any other survey's data:
+closest real-world test so far. IASC's own coordinator confirmed
+(2026-08) that testing an outside program during a real campaign is
+possible, on the condition that submitted reports use the 80-column
+format specifically — not just ADES, which the MPC itself now prefers
+but this pipeline's own submission format (`mpc80_report`) covers as of
+this confirmation. General guidance for pointing this pipeline at a
+real campaign, or any other survey's data:
 
 - Point `run_pipeline` (or `examples/iasc_demo.jl`'s pattern) at the
   local file paths directly; no fetch script is needed for files you
