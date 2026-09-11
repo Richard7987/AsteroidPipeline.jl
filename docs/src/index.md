@@ -53,6 +53,13 @@ does the same for the legacy fixed-width 80-column format, still
 required by some programs (e.g. IASC, as of 2026) even though the MPC's
 own submissions now prefer ADES.
 
+`digest2_score` scores tracklets against real solar-system orbit
+classes via the Minor Planet Center's own external `digest2` classifier
+— see [MPC digest2 Scoring](@ref), including a real finding about what
+it can and can't tell apart. `link_across_nights` extends
+`link_candidates`'s within-night linking across multiple observing
+nights — see [Cross-Night Linking](@ref).
+
 ## Status
 
 !!! note "Early development, but validated end to end against real data"
@@ -69,6 +76,8 @@ own submissions now prefer ADES.
 | `fit_moffat_psf` (PSF analytic fallback) | Synthetic · PSF width calibrated on real ZTF data |
 | `plate_solve` | Live nova.astrometry.net service |
 | `crossmatch_catalog` (`:skybot`/`:vsx`/`:simbad`) | Live services, real positive controls |
+| `digest2_score` | Real, locally-built `digest2` binary · real ZTF field 451 candidates (see [MPC digest2 Scoring](@ref) for a real, non-obvious finding) |
+| `link_across_nights` | Synthetic exact-recovery only — no real multi-night same-object case found yet, see [Cross-Night Linking](@ref) |
 
 Not yet run on a live IASC search campaign (as opposed to practice data)
 — see [Using real IASC campaign data](@ref) for what that would involve.
@@ -261,6 +270,24 @@ real campaign, or any other survey's data:
     for the full three-field before/after numbers. Still not zero: treat
     a candidate as needing independent confirmation (a catalog match or
     a recovered period), not as self-evidently real.
+
+!!! note "GPU reprojection and local plate-solving: investigated, not recommended now"
+    Explored alongside `digest2`/cross-night linking as candidate
+    technologies. **GPU-accelerated reprojection**: `Reproject.jl` (used
+    by `build_reference`) has no GPU code path at all (checked its
+    source directly), and the real per-frame cost is `wcslib`'s own C
+    calls — not portable to a GPU kernel without reimplementing WCS
+    pixel math from scratch, real correctness risk in a domain that has
+    already produced two real bugs this project (the transposed-aperture
+    bug, the cross-process `WCSTransform` segfault), for a target
+    already solved by a real, measured 3.21x via multiprocessing (see
+    [Design refinements](@ref)). **Local plate-solving** (`solve-field`,
+    replacing the live nova.astrometry.net API `plate_solve` already
+    uses): not packaged in nixpkgs, and needs multiple GB of scale-specific
+    index files even once built — real setup cost to replace something
+    that already works. Recorded here so this isn't silently forgotten
+    or re-litigated from scratch without new information changing the
+    calculus.
 
 ## Follow-up workflows
 

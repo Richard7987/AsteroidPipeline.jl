@@ -64,6 +64,8 @@ makedocs(;
             "Pipeline" => "api/pipeline.md",
             "Rotation Period" => "api/rotation.md",
             "MPC / ADES Export" => "api/mpc-export.md",
+            "MPC digest2 Scoring" => "api/digest2.md",
+            "Cross-Night Linking" => "api/cross-night-linking.md",
         ],
     ],
 )

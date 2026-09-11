@@ -279,3 +279,43 @@ this profiling pass found reason to change.
 No second `build_reference`-sized win turned up. The pipeline's real
 remaining cost, at typical real field densities, is dominated by what
 was already found and fixed.
+
+## Four candidate technologies investigated; two built, two rejected with real reasons
+
+Asked generally what other technology could improve this pipeline
+(separately from whether a boosted-decision-tree real/bogus classifier
+was worth adding — rejected on its own, before this: only ~12 real
+confirmed positives exist across every real run this project has done,
+nowhere near enough to train or validate one). Four concrete candidates,
+each checked against this project's own real environment/code rather
+than decided on general reputation:
+
+- **GPU-accelerated reprojection** (`build_reference`'s real bottleneck,
+  already solved 3.21x via multiprocessing) — rejected. `Reproject.jl`'s
+  own source has zero GPU code path, and the actual per-pixel cost is
+  `wcslib`'s C calls, which aren't portable to a GPU kernel without
+  reimplementing WCS math from scratch — real risk in a domain that has
+  already produced two real bugs here (the transposed-aperture bug, the
+  cross-process `WCSTransform` segfault this same multiprocessing work
+  hit), for a target already solved.
+- **Local plate-solving** (replacing `plate_solve`'s live
+  nova.astrometry.net dependency) — rejected. `solve-field` isn't in
+  nixpkgs, and needs multiple GB of scale-specific index files even
+  once built, to replace something that already works.
+- **`digest2` NEO/orbit-class scoring** — built (`digest2_score`, [MPC
+  digest2 Scoring](@ref)). Real verification against real ZTF field 451
+  candidates surfaced a genuinely useful, non-obvious finding: `digest2`
+  correctly scored the field's 2 real known objects (Main Belt) low on
+  `neo_score`, while 131 of the other 133 tracklets — bogus links of
+  ordinary stationary stars, an artifact of that demo's own
+  looser-than-ZTF's-real-precision `match_radius` — scored `neo_score=100`.
+  Not a bug in `digest2_score`; a real lesson about what it can and
+  can't tell apart, written up in full on its own page.
+- **Cross-night tracklet linking** — built (`link_across_nights`,
+  [Cross-Night Linking](@ref)). Genuinely greenfield (no night/session
+  concept existed anywhere in `src/` before this). Validated
+  synthetically only so far — a real check (querying SkyBoT for field
+  451's own sky position 3 and 7 days out) confirmed *why* a real
+  multi-night same-object case is hard to find by chance: every object
+  in the field changes completely within days, since even a "slow"
+  Main Belt object outpaces a ZTF quadrant's own width in under a week.

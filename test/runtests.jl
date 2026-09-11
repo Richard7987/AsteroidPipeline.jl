@@ -1140,4 +1140,96 @@ end
         @test_throws ArgumentError mpc80_report(candidates, "I41"; trksub_prefix="TOOLONG")
     end
 
+    @testset "digest2_score" begin
+        # digest2 is a separate, external C program (not a Julia
+        # dependency) — never built as part of Pkg.test(); skip cleanly
+        # when it isn't installed, same pattern as plate_solve's
+        # ASTROMETRY_API_KEY skip below.
+        digest2_path = get(ENV, "DIGEST2_PATH", "digest2")
+        resolved = isfile(digest2_path) ? digest2_path : Sys.which(digest2_path)
+
+        candidates = Table(id=[1, 1, 1], frame=[1, 2, 3], x=[1.0, 2.0, 3.0], y=[1.0, 2.0, 3.0],
+                            ra=[150.0, 150.05, 150.10], dec=[20.0, 20.02, 20.04],
+                            epoch=[2451545.0, 2451545.04, 2451545.08])
+
+        @test_throws ArgumentError digest2_score(candidates, "XX")  # not 3 characters
+        @test_throws ArgumentError digest2_score(candidates, "I41"; digest2_path="not-a-real-digest2-binary")
+
+        if resolved === nothing
+            @test_skip "digest2 not installed"
+        else
+            scores = digest2_score(candidates, "I41"; digest2_path=resolved)
+            @test length(scores) == 1
+            @test scores.id[1] == 1
+            @test 0.0 <= scores.neo_score[1] <= 100.0  # a real score, not this test asserting a specific value
+        end
+    end
+
+    @testset "link_across_nights" begin
+        T0 = 2451545.0
+        RATE_RA, RATE_DEC = 33.83, 18.0  # arcsec/day, in the tangent plane around (150,20)
+
+        # a real object: exactly linear motion (in the tangent plane),
+        # split across 3 nights days apart. Night 2 and 3 continue the
+        # same global rate, so an independent per-night fit recovers it
+        # exactly and the cross-night extrapolation has zero residual.
+        function object_row(t)
+            dt = t - T0
+            dec = 20.0 + RATE_DEC * dt / 3600
+            ra = 150.0 + RATE_RA * dt / (cosd(20.0) * 3600)
+            return (ra=ra, dec=dec, epoch=t)
+        end
+        night1_obj = [object_row(T0 - 0.05), object_row(T0 + 0.05)]
+        night2_obj = [object_row(T0 + 4.95), object_row(T0 + 5.05)]
+        night3_obj = [object_row(T0 + 9.95), object_row(T0 + 10.05)]
+
+        # "noise" tracklets: real, self-consistent motion within their own
+        # night (so link_across_nights can fit a rate at all), but at an
+        # unrelated sky position/rate that must never match the real
+        # object's extrapolated position across nights.
+        noise(t0, ra0, dec0) = [(ra=ra0, dec=dec0, epoch=t0), (ra=ra0 + 0.01, dec=dec0 - 0.01, epoch=t0 + 0.1)]
+        night1_noise = noise(T0, 200.0, -10.0)
+        night2_noise = noise(T0 + 5.0, 44.0, 60.0)
+        night3_noise = noise(T0 + 10.0, 300.0, 0.0)
+
+        to_table(obj, noise) = Table(
+            id=vcat(fill(1, length(obj)), fill(2, length(noise))),
+            frame=vcat(1:length(obj), 1:length(noise)),
+            x=zeros(length(obj) + length(noise)), y=zeros(length(obj) + length(noise)),
+            ra=vcat([r.ra for r in obj], [r.ra for r in noise]),
+            dec=vcat([r.dec for r in obj], [r.dec for r in noise]),
+            epoch=vcat([r.epoch for r in obj], [r.epoch for r in noise]))
+
+        night_movers = [to_table(night1_obj, night1_noise), to_table(night2_obj, night2_noise),
+                         to_table(night3_obj, night3_noise)]
+
+        groups = link_across_nights(night_movers)
+        @test length(groups) == 1  # only the real object spans >= min_nights=2
+        real_group = groups[1]
+        @test length(real_group) == 3  # one tracklet per night
+        @test Set(g.night for g in real_group) == Set([1, 2, 3])
+        @test all(g.id == 1 for g in real_group)  # never picks up a noise id=2 tracklet
+
+        # min_nights: raising it above what the real object spans drops it too
+        @test isempty(link_across_nights(night_movers; min_nights=4))
+
+        # a real 3" offset from the exact extrapolation is still within
+        # the default 5" tolerance, but not a tightened 1" one
+        offset_row(t) = merge(object_row(t), (dec=object_row(t).dec + 3.0 / 3600,))
+        night2_offset = [offset_row(T0 + 4.95), offset_row(T0 + 5.05)]
+        offset_movers = [night_movers[1], to_table(night2_offset, night2_noise), night_movers[3]]
+
+        offset_groups = link_across_nights(offset_movers)
+        @test length(offset_groups) == 1
+        @test length(offset_groups[1]) == 3  # still spans all 3 nights within the default tolerance
+
+        # tightened past the 3" offset: night 2's tracklet drops out, but
+        # nights 1 and 3 (never offset, and 10 days apart is still an exact
+        # extrapolation under this exactly-linear synthetic model) still
+        # correctly link on their own
+        tight_groups = link_across_nights(offset_movers; match_radius_arcsec=1.0)
+        @test length(tight_groups) == 1
+        @test Set(g.night for g in tight_groups[1]) == Set([1, 3])
+    end
+
 end
