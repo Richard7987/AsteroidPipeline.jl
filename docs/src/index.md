@@ -70,7 +70,7 @@ nights — see [Cross-Night Linking](@ref).
 
 | Component | Validated against |
 |:--|:--|
-| `detect_sources`, `link_candidates`, WCS calibration, `crossmatch_catalog` | Synthetic (exact recovery) · real ZTF field 451 · 5 real IASC/Pan-STARRS1 fields (**9 known objects** recovered) |
+| `detect_sources`, `link_candidates`, WCS calibration, `crossmatch_catalog` | Synthetic (exact recovery) · real ZTF field 451 · 6 real IASC/Pan-STARRS1 fields, checked against per-frame SkyBoT ephemerides (all 4 recoverable known objects in the 2019 sets, plus the known 2018 LT and the unknown object reported to IASC from a 2025 set) |
 | ZOGY difference imaging (`build_reference`, `estimate_psf`, `zogy_subtract`) | 3 falsifiable synthetic checks · real ZTF field 451 |
 | `find_variable_sources` / `search_field` | Synthetic · false-positive rate calibrated on real ZTF stars across 3 independent fields · 3 real confirmed variables (ASASSN-V J183620.31, V1012 Mon, ASASSN-V J072906.85-090518.2) |
 | `fit_moffat_psf` (PSF analytic fallback) | Synthetic · PSF width calibrated on real ZTF data |
@@ -149,11 +149,19 @@ Validates `run_pipeline` against 5 real Pan-STARRS1 (PS1) IASC practice
 sets ("Practice Image Sets", 2019-08-28/09-04/09-24), each 4 exposures of
 the same field over ~40-70 min — see `examples/iasc_demo.jl` (point it at
 your own local practice/campaign FITS; IASC material isn't public, so
-unlike the ZTF demo above there is no fetch script). `run_pipeline`
-recovered **9 real, independently-catalogued objects** across the 5
-fields via `crossmatch_catalog(...; :skybot)` — including a Jupiter
-Trojan (2019 NB9) — the first end-to-end validation of this pipeline
-against real IASC-style data, not just ZTF.
+unlike the ZTF demo above there is no fetch script). This was first
+reported as **9** known objects recovered via
+`crossmatch_catalog(...; :skybot)`; re-checked against SkyBoT's
+ephemeris at *every* frame's epoch (a tracklet must follow the object,
+not just sit within 15" of it once), only **2** were real — 2009 SG135
+and the Jupiter Trojan 2019 NB9 — the other 7 were static stars that
+happened to lie within the 15" radius. A 2025 set from a live
+campaign's practice round then added external ground truth measured in
+Astrometrica, and the pipeline as it stood found neither of its two real
+moving objects. The fixes, and the configuration now in
+`examples/iasc_demo.jl`, recover all 6 real moving objects in the six
+local sets (the original configuration: 3) with ~35x fewer tracklets to
+vet — see [IASC / Pan-STARRS1 campaign validation](iasc-campaign-validation.md).
 
 Getting there surfaced four real, fixed issues — see the
 [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/iasc-campaign-validation)
@@ -178,10 +186,10 @@ for the full story of each:
 - `match_radius`, first converted from `real_data_demo.jl`'s ZTF value to
   keep the same ~10" angular tolerance, turned out far looser than PS1's
   own real astrometric precision (`PERROR`, in these headers:
-  0.20-0.23") — on the densest field this produced 10,422 tracklets,
+  0.20-0.23 pixels, ~0.06") — on the densest field this produced 10,422 tracklets,
   almost all spurious duplicates of the same real objects (distinct real
   stars within 10" of each other, or the same object matched by several
-  near-identical trial velocities). Retuned to 2" (~10x `PERROR`,
+  near-identical trial velocities). Retuned to 2" (~35x `PERROR`,
   measured from the headers, not guessed) and confirmed directly: the
   same 9 distinct known objects are still recovered in every field,
   while total tracklets across all 5 fields drop from 16,158 to 4,960

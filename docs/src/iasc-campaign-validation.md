@@ -8,10 +8,11 @@ Every real-data check so far used ZTF. `docs/src/index.md`'s "Using real
 IASC campaign data" section had stood as "not attempted" all session —
 closed by running `examples/iasc_demo.jl` against 5 real Pan-STARRS1
 (PS1) IASC practice sets (2019-08-28/09-04/09-24, 4 exposures each).
-`run_pipeline` recovered 9 real, independently-catalogued objects
-across the 5 fields via SkyBoT — including a Jupiter Trojan, 2019 NB9 —
-but getting a clean run took four real, fixed issues, found in this
-order.
+`run_pipeline` was reported to recover 9 real, independently-catalogued
+objects across the 5 fields via SkyBoT — including a Jupiter Trojan,
+2019 NB9 — and getting a clean run took four real, fixed issues, found
+in this order. (That 9 was later found to be 2: see
+[Recovered objects, re-checked](@ref) below.)
 
 ## `load_wcs` failed on every one of these real headers
 
@@ -90,15 +91,18 @@ getting cross-linked into spurious tracklets, not 10,422 real moving
 objects. The known SkyBoT objects were still correctly recovered in
 every field regardless, but rather than guess at a tighter value, PS1's
 own headers report the real number needed: `PERROR`, the astrometric
-solution's per-star positional RMS residual, measured at 0.20-0.23"
-across the fields checked here — not something assumed, read directly
-from real data. Retuned `match_radius` to 2" (~10x `PERROR`, a
-comfortable margin for real motion and centroiding noise, not the bare
+solution's per-star positional RMS residual, measured at 0.20-0.23
+*pixels* (~0.06") across the fields checked here — not something
+assumed, read directly from real data. (This page first reported it as
+0.20-0.23" — a misreading: the header's own comment says "(pixels)",
+and the separate `CERROR` keyword gives ~0.06" in arcsec, found while
+validating the first 2025 set below.) Retuned `match_radius` to 2"
+(~35x `PERROR`, a comfortable margin for real motion and centroiding noise, not the bare
 residual) and reran all 5 fields: the same 9 distinct known objects were
 recovered in every field (confirmed by name, not just by count — nothing
 dropped out), while total tracklets across all 5 fields fell from 16,158
 to 4,960 (-69%). The reduction is concentrated exactly where predicted:
-the densest field (XY42_p11) went from 10,422 to 3,478; the two
+the densest field (`XY42_p11`) went from 10,422 to 3,478; the two
 previously "26 real objects" and "13/2619" style counts were actually
 counting duplicate tracklet-rows around the same handful of real
 objects, not 26 distinct discoveries — a reporting correction as much as
@@ -107,12 +111,173 @@ here, before the retune caught it.
 
 ![Tracklet counts per field before and after retuning match_radius to PS1's real astrometric precision](assets/iasc-match-radius-retuning.png)
 
-## Recovered objects
+## Recovered objects (as first reported)
 
 | Field | Tracklets (retuned) | Known objects recovered |
 |:--|--:|:--|
-| XY14_p10 | 52 | — |
-| XY15_p01 | 132 | 2014 HO19 |
-| XY25_p10 | 567 | 4311 T-1, 2009 SG135, 2015 XJ232, 2019 PK5 |
-| XY26_p01 | 731 | 2001 SH320, 2011 SH185, 2019 NB9 (Jupiter Trojan) |
-| XY42_p11 | 3,478 | 2008 FA111 |
+| `XY14_p10` | 52 | — |
+| `XY15_p01` | 132 | 2014 HO19 |
+| `XY25_p10` | 567 | 4311 T-1, 2009 SG135, 2015 XJ232, 2019 PK5 |
+| `XY26_p01` | 731 | 2001 SH320, 2011 SH185, 2019 NB9 (Jupiter Trojan) |
+| `XY42_p11` | 3,478 | 2008 FA111 |
+
+## The first set from a live campaign's practice round (2025 data)
+
+The 2019 sets above are IASC's public "Practice Image Sets". In October
+2026 the International Asteroid Search Campaign opened with a new
+practice set, `ps1-NewPractice_3` (PS1 field `XY54_p10`, 4 × 45 s
+exposures on 2025-09-16, ~48 min apart), which every team must measure
+in Astrometrica and have checked before receiving real images. It was
+measured in Astrometrica (running under Wine) independently of this
+pipeline, giving an external ground truth for the first time — not just
+SkyBoT's known objects:
+
+- **NHU0001**, an object not in SkyBoT within 2', G ≈ 21, moving ~34"/h
+  in a straight line at constant brightness — reported to IASC as the
+  team's measurement.
+- **2018 LT**, a known Mars-crosser at G ≈ 20. It first looked ~15"
+  off its SkyBoT ephemeris — but that query was *geocentric*; this
+  close-approaching object's parallax accounts for it, and queried for
+  the observatory (`-loc F51`) SkyBoT agrees to <3". Astrometrica's own
+  known-object box for it was also displaced (~60 px), so it had to be
+  found by eye. **Always query SkyBoT topocentrically** for this kind of
+  check: `crossmatch_catalog(rows, :skybot; radius, observatory="F51")`.
+
+`examples/iasc_demo.jl` as it stood found **neither**: 117 tracklets,
+0 known objects, and every position ~7" off. Each failure had a
+separate cause, each confirmed directly before fixing.
+
+### The header WCS was off by 6.8"
+
+Matched against 38 Gaia stars, PS1's header solution was off by a
+near-constant ~26.6 px (6.8") across the whole chip — although its own
+`CERROR` keyword claims 0.06". Its `PCA*` polynomial distortion keywords
+were ruled out as the explanation: evaluated at the chip's corners they
+move a position by <0.5 px. Fixed by
+[`refine_wcs`](@ref): detect stars in the frame, find the header's error
+as one global offset by voting over all detection/catalog pairs, match,
+and fit a linear TAN solution with sigma clipping —
+Astrometrica's own "Data Reduction" approach. Against Gaia DR3
+([`gaia_reference_stars`](@ref)), all four frames refined to a 0.07-0.08"
+residual RMS, and NHU0001's positions agreed with Astrometrica's
+independently Gaia-calibrated report to 0.08-0.18" (from 7.2").
+`run_pipeline(...; refine_astrometry=true)` applies it per frame.
+
+### Linking compared pixel positions across dithered frames
+
+NHU0001 was detected in all four frames — at 5σ even on the raw
+frames — and never linked. The raw (no-`reference`) path linked each
+frame's *own* pixel positions, but PS1 dithers between exposures (up to
+(6, 9) px here), bending a straight sky track by more than the 2"
+(7.8 px) `match_radius`. Raw-path detections are now re-expressed in the
+first frame's pixel grid before linking (`_to_common_grid`), so the
+first frame's WCS applies to every row. This changes raw-path tracklet
+counts — static stars now line up perfectly and link as zero-motion
+"tracklets" (162 instead of 52 on `XY14_p10`), which is what `min_speed`
+is for.
+
+### Gaps between detector cells are filled with a constant, not flagged
+
+~14% of every frame is the gaps between PS1's cells, filled with one
+constant (160 ADU), marked neither by `BLANK` nor `NaN`.
+[`fill_value_mask`](@ref) masks any constant-valued plateau (real sky
+never repeats a value over a 3x3 block) for
+[`detect_sources`](@ref)'s new `mask` keyword — survey-agnostic, no fill
+value assumed.
+
+### Single-frame detection at 8σ can't reach G ≈ 21
+
+NHU0001 peaks at 7-9σ in each frame. Lowering `threshold` on raw frames
+drowns in stars, so [`stack_difference`](@ref) adds the numerical
+equivalent of a human's blink: each frame minus the median of the whole
+(aligned, flux-scaled) sequence, with each bright star's core *and* halo
+masked in proportion to its size — one saturated star's halo stayed 3σ
+above sky out to ~40 px, and a fixed margin left its residuals in 14 of
+16 surviving tracklets. Tracklets are then filtered by IASC's own "true
+signature" tests (straight line, constant speed, ≤1 mag variation:
+`min_speed`, `max_flux_ratio`).
+
+### Network failures that used to stop or corrupt a run
+
+Validating all this against the live services surfaced four more real
+failure modes, all fixed:
+
+- SkyBoT intermittently answered HTTP 200 with `# Flag: -1` and a
+  crashed process's backtrace, which parsed as "no known objects" —
+  every known object silently became a discovery. Now a
+  [`SkyBoTServiceError`](@ref), retried, never an empty match.
+- A catalog request hung for 30 minutes at 0% CPU with no timeout; all
+  catalog requests now have an idle timeout.
+- VizieR's TAP answered 503 for a sustained stretch, and later a TLS
+  handshake broke mid-write; catalog queries retry with backoff on any
+  service-side failure, and Gaia stars come from the ESA Gaia archive
+  with VizieR as fallback.
+- `load_wcs`'s `CNPIX1`/`CNPIX2` workaround only caught wcslib's
+  "singular" message, but the same header failed "Invalid parameter
+  value" inside a longer run — the implicit solution's fields are
+  uninitialized memory, so the message varies; the retry now keys on
+  the keywords being present, not on the message.
+
+### More junk the difference images surfaced on the 2019 sets
+
+Running the new path over the five 2019 sets as a regression check
+turned up three more kinds of spurious detection, each measured before
+being filtered:
+
+- **Noisier detector cells.** One frame-wide noise figure let a couple
+  of noisier cells produce ≈3,000 of a frame's ≈4,000 6σ detections
+  (`XY15_p01`). [`stack_difference`](@ref) now divides each difference by
+  a *local* (128 px box) noise estimate — floored at half the frame's
+  own, after one box of near-constant pixels drove a frame's normalized
+  values to about 1e15 and buried a 30σ asteroid (`XY25_p10`).
+- **Cosmic rays and hot pixels.** 94-98% of the remaining detections
+  were single-pixel spikes (neighbour/peak ratio ≈ 0, against 0.46-0.82
+  for every real object measured). `detect_sources`'s new `sharpness`
+  column and `min_sharpness=0.3` drop them.
+- **Satellite trails.** Two broad trails in `XY25_p10` fragmented into
+  rows of peaks that linked into about 240 3-frame tracklets; detections with
+  two or more neighbours within 15 px are now dropped on the difference
+  path.
+
+## Recovered objects, re-checked
+
+The table above counted a tracklet as "recovering" a known object if its
+*first* point lay within 15" of SkyBoT's position. Re-checked properly —
+SkyBoT queried topocentrically (`-loc F51`) at every frame's own epoch,
+and a single tracklet required to sit near the object's predicted
+position in at least 3 frames — most of those were static stars: the
+original configuration truly recovered **2** objects in these five
+sets, not 9. Some catalogued objects aren't recoverable from these
+frames at all: fainter than about V 21.5, off the chip after all, or
+(4311 T-1, V 19.3) in a cell gap in one frame and directly over a static
+star in the next.
+
+All six local sets, original configuration against the one now in
+`examples/iasc_demo.jl` (3" match radius for the refined positions,
+12" for the original's header-WCS ones; `XY54_p10`'s unknown object
+checked against its Astrometrica measurement). Every recovery in the
+new columns was confirmed to *move with* its ephemeris: within 1.3" of
+it in every frame, at the ephemeris's own rate to 0.1"/h.
+
+| Field | Real objects | Original (raw, threshold 8) | New, `min_frames=4` | New, `min_frames=3` (demo) |
+|:--|:--|:--|:--|:--|
+| `XY14_p10` | — | 162 tracklets | 0 | 0 |
+| `XY15_p01` | — (2 known, V ≈ 21.5, not seen) | 234 | 0 | 0 |
+| `XY25_p10` | 2009 SG135, 2015 XJ232, 2019 PK5 | 583: SG135² | 5: all 3 | 116: all 3 |
+| `XY26_p01` | 2019 NB9 (Jupiter Trojan) | 743: ✓ | 1: ✓ | 13: ✓ |
+| `XY42_p11` | — (3 known, V ≥ 20.6, not seen) | 3,528 | 1 | 25 |
+| `XY54_p10` (2025) | 2018 LT, NHU0001 | 298: 2018 LT only¹ | 1: NHU0001 only | 3: both |
+| **Total** | **6** | **5,548 tracklets, 3/6** | **8, 5/6** | **157, 6/6** |
+
+¹ With the dithered-linking fix already applied; before it, the original
+configuration found neither (117 tracklets).
+² The evaluation also credits it with 4311 T-1, but that tracklet is the
+static star the asteroid passes over (its 12" radius, sized for the
+header WCS's error, lets a star near the middle of the track count).
+
+2015 XJ232 (V 21.4) and 2019 PK5 (V 21.3) are new: the original
+configuration's "recoveries" of them were static stars, and a first run
+of this re-check missed them too — its scoring loop was written
+`for name in names, id in ids ... break`, and in Julia that `break`
+leaves *both* loops, so it stopped looking after the first object found
+per set.
