@@ -94,6 +94,48 @@ end
         @test any(d -> d.x == star.x && d.y == star.y, cleaned)
     end
 
+    @testset "stack_difference" begin
+        Random.seed!(12)
+        nx, ny = 120, 100
+        truth = WCSTransform(2; crpix=[60.0, 50.0], crval=[150.0, 20.0],
+                             cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+        stars_xy = [(30.0, 25.0), (90.0, 70.0), (55.0, 80.0), (100.0, 20.0)]
+        dithers = [(0, 0), (3, -2), (-4, 1), (2, 5)]       # whole-pixel pointing offsets
+        transparency = [1.0, 1.0, 1.0, 0.7]               # one hazier frame
+        mover = [(40.0 + 8k, 60.0 - 5k) for k in 0:3]      # frame-1 grid
+        images = Matrix{Float64}[]; wcss = WCSTransform[]
+        for k in 1:4
+            dx, dy = dithers[k]
+            w = WCSTransform(2; crpix=truth.crpix .+ [dx, dy], crval=truth.crval,
+                             cdelt=truth.cdelt, ctype=truth.ctype)
+            img = 100.0 .+ 4.0 .* randn(ny, nx)
+            add!(x, y, amp) = for j in 1:nx, i in 1:ny
+                img[i, j] += amp * exp(-((j - x)^2 + (i - y)^2) / (2 * 1.5^2))
+            end
+            for (sx, sy) in stars_xy
+                add!(sx + dx, sy + dy, 3000.0 * transparency[k])
+            end
+            add!(mover[k][1] + dx, mover[k][2] + dy, 300.0 * transparency[k])
+            push!(images, img); push!(wcss, w)
+        end
+
+        diffs, masks = stack_difference(images, wcss; bright_star_sigma=Inf)
+        for k in 1:4
+            dx, dy = dithers[k]
+            noise = std(diffs[k][.!masks[k]])
+            mx, my = round(Int, mover[k][1] + dx), round(Int, mover[k][2] + dy)
+            @test diffs[k][my, mx] > 20 * noise            # the mover survives...
+            for (sx, sy) in stars_xy                       # ...static stars don't
+                @test abs(diffs[k][round(Int, sy + dy), round(Int, sx + dx)]) < 6 * noise
+            end
+        end
+        # default bright-star masking covers each star's core and halo
+        _, masked = stack_difference(images, wcss)
+        @test all(masked[k][round(Int, sy + dithers[k][2]), round(Int, sx + dithers[k][1])]
+                  for k in 1:4, (sx, sy) in stars_xy)
+        @test_throws ArgumentError stack_difference(images[1:2], wcss[1:2])
+    end
+
     @testset "refine_wcs" begin
         Random.seed!(13)
         nx, ny = 300, 260
@@ -827,6 +869,48 @@ end
             @test by_frame[1].y ≈ y0 atol=1.0
             @test by_frame[3].x ≈ x0 + 2dx atol=1.0
             @test by_frame[3].y ≈ y0 + 2dy atol=1.0
+        end
+    end
+
+    @testset "run_pipeline links across dithered frames" begin
+        # Regression test: the raw path used to link each frame's *own*
+        # pixel positions, so pointing offsets between exposures bent a
+        # real straight-line track — a real IASC object (dithers up to
+        # (6, 9) px) was detected in every frame and never linked. Here the
+        # offsets (up to 9 px) exceed match_radius (3 px) on purpose.
+        mktempdir() do dir
+            nx, ny = 120, 90
+            crval = [150.0, 20.0]; cdelt = [-1 / 3600, 1 / 3600]
+            truth = WCSTransform(2; crpix=[60.0, 45.0], crval, cdelt, ctype=["RA---TAN", "DEC--TAN"])
+            dithers = [(0, 0), (6, 9), (-5, 4), (3, -8)]
+            track = [(30.0 + 12k, 60.0 - 7k) for k in 0:3]     # straight line, truth grid
+            mjd0 = 60000.0
+            Random.seed!(14)
+            paths = String[]
+            for k in 1:4
+                dx, dy = dithers[k]
+                raw = 100.0 .+ 5.0 .* randn(nx, ny)            # FITS-native (x, y)
+                xk, yk = track[k][1] + dx, track[k][2] + dy
+                for i in 1:nx, j in 1:ny
+                    raw[i, j] += 600.0 * exp(-((i - xk)^2 + (j - yk)^2) / (2 * 1.8^2))
+                end
+                header = FITSHeader(
+                    ["MJD-OBS", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2", "CTYPE1", "CTYPE2"],
+                    Any[mjd0 + (k - 1) * 1e-2, truth.crpix[1] + dx, truth.crpix[2] + dy, crval[1], crval[2],
+                        cdelt[1], cdelt[2], "RA---TAN", "DEC--TAN"],
+                    fill("", 9))
+                path = joinpath(dir, "frame$k.fits")
+                FITS(f -> write(f, raw; header=header), path, "w")
+                push!(paths, path)
+            end
+
+            candidates = run_pipeline(paths; threshold=5.0, match_radius=3.0)
+            @test length(unique(candidates.id)) == 1
+            @test sort(candidates.frame) == [1, 2, 3, 4]
+            for row in candidates
+                ra, dec = pix_to_world(truth, collect(track[row.frame]))
+                @test hypot((row.ra - ra) * cosd(dec), row.dec - dec) * 3600 < 0.5
+            end
         end
     end
 

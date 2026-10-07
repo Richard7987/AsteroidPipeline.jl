@@ -45,20 +45,37 @@ end
 reference_paths = readdir(joinpath(DATA_DIR, "reference"), join=true)
 isempty(reference_paths) && error("no reference frames found — run examples/fetch_data.sh first")
 
+# A known object counts as recovered only if one tracklet *follows* it:
+# every row is matched against SkyBoT at its own epoch, from ZTF's own site
+# (Palomar, MPC code I41), and the same object must match in at least
+# MIN_CONFIRMING_FRAMES of them. This replaced matching each tracklet's
+# first point within 15" — a weak test: on real IASC data most
+# "recoveries" counted that way turned out to be static stars sitting near
+# a known asteroid at one epoch. 5" leaves room for ephemeris error; ZTF's
+# own header WCS put both objects here within 1.4" in every frame.
+const MIN_CONFIRMING_FRAMES = 3
+
 function summarize(label, candidates)
     n_tracklets = length(unique(candidates.id))
     println("\n-- $label: $n_tracklets tracklet(s) from $(length(candidates)) detections --")
-    n_tracklets == 0 && return Set{Int}()
+    n_tracklets == 0 && return Set{String}()
 
-    first_rows = [first(filter(r -> r.id == id, candidates)) for id in unique(candidates.id)]
-    matches = crossmatch_catalog(first_rows, :skybot; radius=15.0)
-    known_ids = Set(matches.id)
+    # One SkyBoT request per row, not per tracklet: slower, but it is what
+    # makes the check frame-by-frame.
+    matches = crossmatch_catalog(collect(candidates), :skybot; radius=5.0, observatory="I41")
+    frames_matched = Dict{Tuple{Int,String},Int}()
     for m in matches
-        println("  id=$(m.id): $(m.name) ($(m.class), Mv=$(m.mv)), offset $(round(m.distance_arcsec, digits=1))\"")
+        frames_matched[(m.id, m.name)] = get(frames_matched, (m.id, m.name), 0) + 1
     end
-    println("  $(length(known_ids))/$(n_tracklets) match a known SkyBoT object; ",
-            "$(n_tracklets - length(known_ids)) unmatched (candidates for human vetting).")
-    return known_ids
+    known = Set{String}()
+    for ((id, name), n) in sort(collect(frames_matched))
+        n >= MIN_CONFIRMING_FRAMES || continue
+        push!(known, name)
+        println("  id=$id: $name, followed in $n frame(s)")
+    end
+    println("  $(length(known)) known object(s) confirmed frame by frame; every other tracklet ",
+            "is a candidate for human vetting.")
+    return known
 end
 
 println("Baseline: detection directly on science frames (no differencing)...")

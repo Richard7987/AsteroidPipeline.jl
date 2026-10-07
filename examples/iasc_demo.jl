@@ -53,17 +53,24 @@ const ZTF_ARCSEC_PER_PIXEL = 1.01     # real_data_demo.jl's own field, for refer
 # pixel scale, converted to keep the same ~10.1" angular tolerance — a
 # real, measured mistake: PS1's own headers report each frame's actual
 # astrometric solution quality directly (PERROR, the per-star positional
-# RMS residual — 0.20-0.23" across the fields checked here, not
-# guessed), ~50x tighter than that 10" tolerance. On the densest field
-# tested, the 10" version produced 10,422 tracklets from ~500
-# detections/frame — almost certainly distinct real stars within 10" of
-# each other getting cross-linked as spurious tracklets. 2" (~10x
-# PERROR, comfortable margin for real motion and centroiding noise, not
-# just the bare residual) is measured directly to still recover every
+# RMS residual — 0.20-0.23 *pixels* across the fields checked here, i.e.
+# ~0.06", matching the separate CERROR keyword, which states it in
+# arcsec; this comment originally misread PERROR as arcsec — the
+# header's own comment says "(pixels)"), far tighter than that 10"
+# tolerance. On the densest field tested, the 10" version produced
+# 10,422 tracklets from ~500 detections/frame — almost certainly distinct
+# real stars within 10" of each other getting cross-linked as spurious
+# tracklets. 2" (~35x PERROR, a comfortable margin for real motion and
+# centroiding noise, not just the bare residual) is measured directly
+# to still recover every
 # known object the looser radius did, at a fraction of the tracklet
 # count — see the Investigation Log for the before/after.
 const MATCH_RADIUS = 2.0 / PS1_ARCSEC_PER_PIXEL
 const MAX_SPEED = 5000.0 * ZTF_ARCSEC_PER_PIXEL / PS1_ARCSEC_PER_PIXEL
+# 3"/h, in pixels/day: slower "tracklets" are static sources matched to
+# themselves. Main-belt asteroids move ~20-40"/h, Jupiter Trojans ~10-15"/h;
+# slower solar-system objects (TNOs, ~3"/h) need this lowered.
+const MIN_SPEED = 3.0 / PS1_ARCSEC_PER_PIXEL * 24
 
 isdir(DATA_DIR) || error("no $DATA_DIR — place your own IASC practice FITS sets there first " *
                           "(one subdirectory per set, e.g. data/real/iasc/XY25_p10/*.fits)")
@@ -105,19 +112,33 @@ function clean_blank_pixels(path)
     return cleaned ? out : path
 end
 
+# A known object counts as recovered only if one tracklet *follows* it:
+# every row is matched against SkyBoT at its own epoch, from Pan-STARRS1's
+# own site (MPC code F51), and the same object must match in at least
+# MIN_CONFIRMING_FRAMES of them. This replaced matching each tracklet's
+# first point within 15", which counted static stars near a known asteroid
+# as recoveries — 7 of the 9 first reported on these sets — and, being
+# geocentric, put a nearby Mars-crosser (2018 LT) ~15" off its real track.
+const MIN_CONFIRMING_FRAMES = 3
+
 function summarize(label, candidates)
     n_tracklets = length(unique(candidates.id))
     println("-- $label: $n_tracklets tracklet(s) from $(length(candidates)) detections --")
     n_tracklets == 0 && return
 
-    first_rows = [first(filter(r -> r.id == id, candidates)) for id in unique(candidates.id)]
-    matches = crossmatch_catalog(first_rows, :skybot; radius=15.0)
-    known_ids = Set(matches.id)
+    matches = crossmatch_catalog(collect(candidates), :skybot; radius=5.0, observatory="F51")
+    frames_matched = Dict{Tuple{Int,String},Int}()
     for m in matches
-        println("  id=$(m.id): $(m.name) ($(m.class), Mv=$(m.mv)), offset $(round(m.distance_arcsec, digits=1))\"")
+        frames_matched[(m.id, m.name)] = get(frames_matched, (m.id, m.name), 0) + 1
     end
-    println("  $(length(known_ids))/$(n_tracklets) match a known SkyBoT object; ",
-            "$(n_tracklets - length(known_ids)) unmatched (candidates for human vetting).")
+    known = Set{String}()
+    for ((id, name), n) in sort(collect(frames_matched))
+        n >= MIN_CONFIRMING_FRAMES || continue
+        push!(known, name)
+        println("  id=$id: $name, followed in $n frame(s)")
+    end
+    println("  $(length(known)) known object(s) confirmed frame by frame; the other tracklets ",
+            "are candidates for human vetting (measure them in Astrometrica before reporting).")
 end
 
 for set_dir in sets
@@ -125,9 +146,20 @@ for set_dir in sets
     isempty(raw_paths) && continue
     println("\n=== $(basename(set_dir)): $(length(raw_paths)) frames ===")
     paths = clean_blank_pixels.(raw_paths)
-    # threshold=8.0 (run_pipeline's own default is 5.0), matching
-    # real_data_demo.jl's ZTF choice — a reasonable, non-arbitrary
-    # starting point for a new survey, not re-derived from scratch here.
-    candidates = run_pipeline(paths; threshold=8.0, match_radius=MATCH_RADIUS, max_speed=MAX_SPEED)
+    # The configuration validated against every local IASC set (see the
+    # IASC validation page of the docs): detect on each frame minus the
+    # sequence's median at 6σ, with fill-value gaps masked, single-pixel
+    # spikes dropped, each frame's WCS refit to Gaia DR3 (network), and
+    # tracklets held to IASC's own "true signature" tests. min_frames=3
+    # because a real object can spend one of four frames in a detector
+    # gap or masked over a star (2018 LT in XY54_p10). Against SkyBoT
+    # ephemerides at every frame's epoch, it recovered all 6 real moving
+    # objects in the six local sets — 5 known ones plus the unknown object
+    # later reported to IASC from XY54_p10 (NHU0001) — against 3 for the
+    # original threshold=8.0 raw-frame run, with 157 tracklets to vet
+    # instead of 5,548.
+    candidates = run_pipeline(paths; threshold=6.0, match_radius=MATCH_RADIUS, max_speed=MAX_SPEED,
+                              mask_fill_values=true, refine_astrometry=true, difference_stack=true,
+                              min_sharpness=0.3, min_speed=MIN_SPEED, max_flux_ratio=2.5, min_frames=3)
     summarize(basename(set_dir), candidates)
 end

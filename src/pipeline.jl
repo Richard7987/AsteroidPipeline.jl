@@ -6,7 +6,10 @@
                  match_radius::Real=2.0, min_frames::Union{Nothing,Integer}=nothing,
                  reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
                  quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
-                 photometric_outlier_threshold::Real=0.2)
+                 photometric_outlier_threshold::Real=0.2,
+                 mask_fill_values::Bool=false, difference_stack::Bool=false,
+                 refine_astrometry::Bool=false, reference_stars=nothing,
+                 min_speed::Real=0.0, max_flux_ratio::Real=Inf, min_sharpness::Real=-Inf)
 
 Run the local stages of the pipeline — detection, linking, and
 astrometric calibration — on a time-ordered sequence of FITS frames from
@@ -116,6 +119,33 @@ frame fall back to [`plate_solve`](@ref) instead of failing outright —
 see its docstring for what that involves (a live network round trip,
 polling until the frame solves or times out).
 
+These options, all off by default and all only on the raw (no-`reference`)
+path, make the pipeline usable on real IASC/Pan-STARRS1 image sets — each
+was needed on a real 2025 IASC practice set (ps1-NewPractice_3, field
+`XY54_p10`), where the defaults recovered neither of its two real moving
+objects and reported positions ~7" off:
+
+- `mask_fill_values`: mask constant-valued plateaus (the gaps between
+  detector cells; see [`fill_value_mask`](@ref)) before detection.
+- `refine_astrometry`: replace each frame's header WCS with one fitted to
+  reference stars detected in the frame ([`refine_wcs`](@ref)) — against
+  `reference_stars` if given, else Gaia DR3 stars covering the first
+  frame, fetched once ([`gaia_reference_stars`](@ref), a live network
+  request). On that set the header WCS was off by 6.8"; refined, an
+  unknown object's positions agreed with Astrometrica's to 0.08-0.18".
+- `difference_stack`: detect on each frame minus the median of the whole
+  sequence ([`stack_difference`](@ref)) instead of on the raw frame —
+  static sources cancel, so `threshold` can go much lower without
+  drowning in stars. Needs at least 3 frames. Clustered detections
+  (satellite trails, saturated-star residuals) are then dropped — see
+  [`_drop_clustered`](@ref).
+- `min_speed` (pixels per day) and `max_flux_ratio` filter tracklets
+  after linking, per IASC's own "true signature" tests (see
+  [`_filter_tracklets`](@ref)): use `max_flux_ratio=2.5` for IASC's
+  1-magnitude limit.
+- `min_sharpness`: drop single-pixel spikes — cosmic rays, hot pixels —
+  at detection (see [`detect_sources`](@ref)); `0.3` on IASC data.
+
 `fits_paths` must already be given in time order. `psf_threshold` and
 `psf_min_separation` are forwarded to `estimate_psf` for each frame's own
 PSF (only used when `reference` is given — `reference.psf` is estimated
@@ -134,15 +164,20 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        match_radius::Real=2.0, min_frames::Union{Nothing,Integer}=nothing,
                        reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
                        quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
-                       photometric_outlier_threshold::Real=0.2)
+                       photometric_outlier_threshold::Real=0.2,
+                       mask_fill_values::Bool=false, difference_stack::Bool=false,
+                       refine_astrometry::Bool=false, reference_stars=nothing,
+                       min_speed::Real=0.0, max_flux_ratio::Real=Inf, min_sharpness::Real=-Inf)
     detections_per_frame, wcs_per_frame, timestamps, n_gated = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
         reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
-        photometric_outlier_threshold)
+        photometric_outlier_threshold, mask_fill_values, difference_stack,
+        refine_astrometry, reference_stars, min_sharpness)
 
     effective_min_frames = min_frames === nothing ? length(fits_paths) - n_gated : min_frames
     tracklets = link_candidates(detections_per_frame, timestamps;
                                  max_speed, match_radius, min_frames=effective_min_frames)
+    tracklets = _filter_tracklets(tracklets, detections_per_frame, timestamps; min_speed, max_flux_ratio)
     return astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
 end
 
@@ -185,11 +220,20 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              aperture_radius::Real=3.0,
                              reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
                              quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
-                             photometric_outlier_threshold::Real=0.2)
+                             photometric_outlier_threshold::Real=0.2,
+                             mask_fill_values::Bool=false, difference_stack::Bool=false,
+                             refine_astrometry::Bool=false, reference_stars=nothing,
+                             min_sharpness::Real=-Inf)
+    reference === nothing || !(mask_fill_values || difference_stack || refine_astrometry) ||
+        throw(ArgumentError("mask_fill_values, difference_stack and refine_astrometry apply only " *
+                            "without `reference` (the ZOGY path has its own registration and masks)"))
     detections_per_frame = typeof(_empty_detections())[]
     wcs_per_frame = WCSTransform[]
     timestamps = Float64[]
     n_gated = 0
+    # difference_stack needs every frame before it can detect in any of them
+    stacked_images = Matrix{Float64}[]
+    stacked_masks = Union{Nothing,BitMatrix}[]
 
     # Computed once, not per frame: reference.image is the same every
     # iteration, and this is what zogy_subtract's astrometric-noise term
@@ -216,9 +260,30 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
             end
             gain = haskey(read_header(hdu), "GAIN") ? read_key(hdu, "GAIN")[1] : 1.0
 
+            mjd = read_key(hdu, timestamp_key)[1]
+            push!(timestamps, mjd + 2400000.5)
+
             if reference === nothing
                 image = permutedims(raw)
+                mask = mask_fill_values ? fill_value_mask(image) : nothing
+                if refine_astrometry
+                    reference_stars === nothing &&
+                        (reference_stars = _field_reference_stars(image, frame_wcs, timestamps[end]))
+                    refined = refine_wcs(image, frame_wcs, reference_stars; mask)
+                    if refined.refined
+                        frame_wcs = refined.wcs
+                    else
+                        @warn "astrometric refinement failed; keeping the header WCS" path n_matches=refined.n_matches
+                    end
+                end
                 push!(wcs_per_frame, frame_wcs)
+                if difference_stack
+                    push!(stacked_images, image)
+                    push!(stacked_masks, mask)
+                else
+                    push!(detections_per_frame,
+                          detect_sources(image; threshold, box_size, aperture_radius, gain, mask, min_sharpness))
+                end
             else
                 _, sigma_n = estimate_background(permutedims(raw);
                                                   location=SourceExtractorBackground(), rms=MADStdRMS())
@@ -255,20 +320,34 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                     image = permutedims(s_corr .* valid)
                 end
                 push!(wcs_per_frame, reference.wcs)
+                # No gain here: S_corr is already a normalized
+                # detection-significance map, not physical counts, so
+                # Poisson noise doesn't apply to it.
+                push!(detections_per_frame, detect_sources(image; threshold, box_size, aperture_radius))
             end
-            # gain only applies to the raw path: S_corr (the reference
-            # path) is already a normalized detection-significance map,
-            # not physical counts, so Poisson noise doesn't apply to it.
-            push!(detections_per_frame,
-                  detect_sources(image; threshold, box_size, aperture_radius,
-                                  gain=(reference === nothing ? gain : nothing)))
+        end
+    end
 
-            mjd = read_key(hdu, timestamp_key)[1]
-            push!(timestamps, mjd + 2400000.5)
+    if difference_stack
+        masks = all(isnothing, stacked_masks) ? nothing : stacked_masks
+        differences, diff_masks = stack_difference(stacked_images, wcs_per_frame; masks)
+        # No gain either: a difference image's noise is the frame's and the
+        # median's together, and a mover's own shot noise is negligible at
+        # the faint end this mode exists for.
+        for (diff, m) in zip(differences, diff_masks)
+            dets = detect_sources(diff; threshold, box_size, aperture_radius, mask=m, min_sharpness)
+            push!(detections_per_frame, _drop_clustered(dets, _CLUSTER_RADIUS))
         end
     end
 
     if reference === nothing && length(fits_paths) >= 2
+        detections_per_frame = _to_common_grid(detections_per_frame, wcs_per_frame)
+        wcs_per_frame = fill(wcs_per_frame[1], length(wcs_per_frame))
+    end
+
+    # Skipped for difference_stack: its detections are what *changed*
+    # between frames, so there's no ensemble of stars to compare.
+    if reference === nothing && !difference_stack && length(fits_paths) >= 2
         scales = photometric_scale(detections_per_frame)
         reference_scale = median(scales)
         for (k, path) in enumerate(fits_paths)
@@ -359,3 +438,43 @@ function search_field(fits_paths::AbstractVector{<:AbstractString};
 
     return (movers=movers, variables=variables)
 end
+
+"""
+    _to_common_grid(detections_per_frame, wcs_per_frame) -> Vector
+
+Every frame's detections re-expressed in the *first* frame's pixel grid
+(through each frame's own WCS, then the first frame's inverse), so the
+whole raw-path sequence shares one coordinate system — afterwards the
+first frame's WCS applies to every frame's detections.
+
+[`link_candidates`](@ref) and [`find_variable_sources`](@ref) both
+compare positions across frames in pixels and assume one shared grid;
+the ZOGY path gets that from reprojecting onto `reference`, but the raw
+path used to link each frame's *own* pixel positions directly. Frames
+dither between exposures, so a real object's straight-line track was
+bent by each frame's pointing offset. Found on a real IASC set (field
+`XY54_p10`, dithers up to (6, 9) px): a G≈21 object detected in all four
+frames was never linked, because those offsets exceeded the 2"
+(7.8 px) `match_radius` tuned to PS1's astrometric precision. Only
+*relative* WCS accuracy matters here — the header's 6.8" absolute error
+on that same set is common to all four frames and cancels.
+
+`x`/`y` become the transformed position rounded to whole pixels; `xcen`/`ycen`
+keep it at full precision.
+"""
+function _to_common_grid(detections_per_frame, wcs_per_frame)
+    w1 = wcs_per_frame[1]
+    return map(zip(detections_per_frame, wcs_per_frame)) do (dets, w)
+        (w === w1 || isempty(dets)) && return dets
+        pix = Matrix{Float64}(undef, 2, length(dets))
+        for (i, d) in enumerate(dets)
+            pix[1, i], pix[2, i] = _position(d)
+        end
+        common = world_to_pix(w1, pix_to_world(w, pix))
+        Table(dets; x=round.(Int, common[1, :]), y=round.(Int, common[2, :]),
+              xcen=common[1, :], ycen=common[2, :])
+    end
+end
+
+# Neighbourhood radius (pixels) for `_drop_clustered` on the difference_stack path.
+const _CLUSTER_RADIUS = 15.0
