@@ -94,6 +94,39 @@ end
         @test any(d -> d.x == star.x && d.y == star.y, cleaned)
     end
 
+    @testset "refine_wcs" begin
+        Random.seed!(13)
+        nx, ny = 300, 260
+        truth = WCSTransform(2; crpix=[150.0, 130.0], crval=[3.05, -10.74],
+                             cdelt=[-0.257 / 3600, 0.257 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+        image = 100.0 .+ 5.0 .* randn(ny, nx)
+        xy = [(20 + 260rand(), 20 + 220rand()) for _ in 1:40]
+        for (x, y) in xy, j in max(1, floor(Int, x) - 8):min(nx, ceil(Int, x) + 8),
+            i in max(1, floor(Int, y) - 8):min(ny, ceil(Int, y) + 8)
+            image[i, j] += 2000.0 * exp(-((j - x)^2 + (i - y)^2) / (2 * 1.6^2))
+        end
+        sky = [pix_to_world(truth, [x, y]) for (x, y) in xy]
+        stars = Table(ra=[s[1] for s in sky], dec=[s[2] for s in sky])
+        # a header solution off by ~26 px in y, like the real PS1 headers
+        header = WCSTransform(2; crpix=truth.crpix .+ [-1.0, 26.5], crval=truth.crval,
+                              cdelt=truth.cdelt, ctype=truth.ctype)
+
+        r = refine_wcs(image, header, stars)
+        @test r.refined
+        @test r.n_matches >= 30
+        @test r.offset_px[1] ≈ 1.0 atol=0.5          # detected minus header-predicted
+        @test r.offset_px[2] ≈ -26.5 atol=0.5
+        @test r.rms_arcsec < 0.05
+        for (x, y) in xy[1:5]
+            a, b = pix_to_world(r.wcs, [x, y]), pix_to_world(truth, [x, y])
+            @test hypot((a[1] - b[1]) * cosd(b[2]), a[2] - b[2]) * 3600 < 0.05
+        end
+
+        too_few = refine_wcs(image, header, stars[1:3])
+        @test !too_few.refined
+        @test too_few.wcs === header
+    end
+
     @testset "_filter_tracklets" begin
         dets = [Table(x=[10, 50], y=[10, 50], flux=[100.0, 100.0], xcen=[10.0, 50.0], ycen=[10.0, 50.0]),
                 Table(x=[12, 50], y=[10, 50], flux=[90.0, 100.0], xcen=[12.0, 50.0], ycen=[10.0, 50.0]),
@@ -968,6 +1001,25 @@ end
         @test !haskey(sent[], "-loc")
         @test_throws ArgumentError crossmatch_catalog([c], :vsx; radius=5.0, observatory="F51")
         @test_throws ArgumentError crossmatch_catalog([c], :skybot; radius=5.0, observatory="Palomar")
+    end
+
+    @testset "gaia_reference_stars" begin
+        @test_throws ArgumentError gaia_reference_stars(3.05, -10.74, 10.0; epoch_jd=2460934.9)
+        try
+            # The real IASC practice field (XY54_p10) refine_wcs was
+            # validated on: VizieR returned 144 Gaia DR3 stars in 0.13 deg.
+            stars = gaia_reference_stars(3.0492, -10.7441, 0.05; epoch_jd=2460934.9)
+            @test length(stars) > 5
+            @test all(s -> hypot((s.ra - 3.0492) * cosd(-10.7441), s.dec + 10.7441) < 0.051, stars)
+            @test all(s -> 12.0 <= s.gmag <= 21.0, stars)
+            # proper motion is applied: the same stars a decade earlier sit elsewhere
+            then = gaia_reference_stars(3.0492, -10.7441, 0.05; epoch_jd=2457389.0)
+            @test length(then) == length(stars)
+            @test any(i -> stars.ra[i] != then.ra[i] || stars.dec[i] != then.dec[i], eachindex(stars))
+        catch e
+            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            @test_skip "network unavailable"
+        end
     end
 
     @testset "crossmatch_catalog" begin

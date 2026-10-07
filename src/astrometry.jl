@@ -19,10 +19,19 @@ even though the header's real, complete WCS parses fine on its own.
 Confirmed directly (bisecting a real PS1 header down to the single
 offending keyword): removing just `CNPIX1`/`CNPIX2` is sufficient: the
 same header then parses cleanly, and the first (real) solution is
-unaffected. Handled here as a targeted retry — only on this specific
-error, only stripping these two keywords — rather than a general parsing
-workaround, since the failure mode and fix are both narrow and confirmed,
-not guessed.
+unaffected. Handled here as a targeted retry — only when the header
+actually carries those keywords, only stripping those two — rather than
+a general parsing workaround.
+
+The retry used to trigger only on wcslib's "singular" message, which
+turned out to be just one face of the problem: the implicit solution's
+undefined fields are whatever memory wcslib got, so the error it raises
+depends on the process's heap state. Measured on a real 2025 PS1 header:
+300 parses in a fresh process all failed "singular", but inside a longer
+`run_pipeline` call the same header failed "Invalid parameter value"
+instead — intermittently, crashing the run. Stripped of `CNPIX1`/`CNPIX2`
+the same header parsed cleanly 300 times out of 300, so any wcslib error
+on a header carrying them now gets the retry.
 
 For a frame with no WCS at all, see [`plate_solve`](@ref) — `run_pipeline`
 uses it as a fallback when given `plate_solve_api_key`.
@@ -31,7 +40,7 @@ function load_wcs(header::AbstractString)
     solutions = try
         WCS.from_header(String(header))
     catch e
-        (e isa ErrorException && occursin("singular", e.msg)) || rethrow()
+        (e isa ErrorException && _has_fits_card(header, ("CNPIX1", "CNPIX2"))) || rethrow()
         WCS.from_header(_strip_fits_cards(String(header), ("CNPIX1", "CNPIX2")))
     end
     isempty(solutions) && error("no WCS solution found in header")
@@ -104,4 +113,11 @@ function astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
     end
 
     return Table(; id, frame, x, y, ra, dec, epoch)
+end
+
+# Whether `header` has an 80-character FITS card whose keyword starts with
+# one of `keywords` (see `_strip_fits_cards`).
+function _has_fits_card(header::AbstractString, keywords)
+    ncards = length(header) ÷ 80
+    return any(i -> any(k -> startswith(header[80(i-1)+1:80i], k), keywords), 1:ncards)
 end
