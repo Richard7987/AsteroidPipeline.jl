@@ -1,7 +1,8 @@
 """
     detect_sources(image::AbstractMatrix{<:Real}; threshold::Real,
                     box_size::NTuple{2,Integer}=(5, 5), aperture_radius::Real=3.0,
-                    gain::Union{Nothing,Real}=nothing)
+                    gain::Union{Nothing,Real}=nothing,
+                    mask::Union{Nothing,AbstractMatrix{Bool}}=nothing, min_sharpness::Real=-Inf)
 
 Detect point sources in a FITS frame.
 
@@ -25,10 +26,34 @@ actual cause of a real, measured false-positive floor in
 [`find_variable_sources`](@ref)'s variability test (see the
 [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#The-centroid-fix-barely-moved-the-false-positive-floor-—-the-real-cause-was-a-systematic-error-floor)) — the refinement only affects where the aperture
 is centered, never the returned `x`/`y` (still `PeakMesh`'s own integer
-position, unchanged).
+position, unchanged). That refined position is returned separately, as
+`xcen`/`ycen`: for astrometry the integer peak alone is a real error
+source — up to half a pixel, i.e. ~0.13" at Pan-STARRS1's 0.257"/px,
+comparable to PS1's own whole astrometric solution (`CERROR` ~0.06" in
+real IASC headers). [`link_candidates`](@ref) uses `xcen`/`ycen` when a
+table has them.
+
+`mask` (same size as `image`, `true` = invalid) excludes pixels that
+carry no real sky signal: they are left out of the background/noise
+estimate and set to the background level before peak finding, so they
+can neither be detected nor bias the noise. Real IASC/Pan-STARRS1 frames
+need this — the gaps between the detector's cells are filled with one
+constant value (not `BLANK`, not `NaN`), ~14% of every frame in a real
+2025 practice set (see [`fill_value_mask`](@ref)).
+
+`sharpness` is the mean of a peak's four direct neighbours over the peak
+itself (background-subtracted): a star or asteroid spreads its light
+over several pixels (real IASC objects measured 0.46-0.82 at PS1's
+seeing), a cosmic ray or hot pixel doesn't (≈0). Peaks below
+`min_sharpness` are dropped — off by default. On a real 2019 IASC set
+(`XY14_p10`), single-pixel spikes were 94-98% of every frame's 6σ
+detections on [`stack_difference`](@ref) images, about 3,800 in its worst
+frame; `min_sharpness=0.3` removes them and keeps every real object.
 
 Returns a table with columns `x`, `y` (pixel position), `peak` (background-
-subtracted peak pixel value), `flux` (aperture sum), and `flux_err`. By
+subtracted peak pixel value), `flux` (aperture sum), `flux_err`, and
+`xcen`, `ycen` (the sub-pixel centroid, in the same sense as `x`/`y`), and
+`sharpness` (see below). By
 default (`gain=nothing`) `flux_err` is `Photometry.photometry`'s propagated
 aperture error from the uniform per-pixel `noise` used for detection alone
 — not a full per-pixel variance map, the same caveat [`light_curve`](@ref)
@@ -43,21 +68,36 @@ was ~10x the background-only estimate (0.039% vs 0.004%) — exactly where
 underestimating the error bar would most distort
 [`find_variable_sources`](@ref)'s chi-squared test. Left `nothing`
 (background noise only) for [`link_candidates`](@ref), which only uses
-`x`/`y` and has no use for a flux uncertainty at all.
+positions and has no use for a flux uncertainty at all.
 """
 function detect_sources(image::AbstractMatrix{<:Real}; threshold::Real,
                          box_size::NTuple{2,<:Integer}=(5, 5), aperture_radius::Real=3.0,
-                         gain::Union{Nothing,Real}=nothing)
-    background, noise = estimate_background(image; location=SourceExtractorBackground(), rms=MADStdRMS())
-    subtracted = image .- background
-
-    if noise <= 0
-        return Table(x=Int[], y=Int[], peak=Float64[], flux=Float64[], flux_err=Float64[])
+                         gain::Union{Nothing,Real}=nothing,
+                         mask::Union{Nothing,AbstractMatrix{Bool}}=nothing,
+                         min_sharpness::Real=-Inf)
+    if mask === nothing
+        background, noise = estimate_background(image; location=SourceExtractorBackground(), rms=MADStdRMS())
+    else
+        size(mask) == size(image) || throw(DimensionMismatch("mask must have the same size as image"))
+        valid = image[.!mask]
+        isempty(valid) && return _empty_detections()
+        background, noise = estimate_background(valid; location=SourceExtractorBackground(), rms=MADStdRMS())
     end
+    subtracted = image .- background
+    # Masked pixels sit exactly at the background level after subtraction,
+    # so they can neither produce a peak nor add flux to a nearby aperture.
+    mask === nothing || (subtracted[mask] .= 0.0)
+
+    noise <= 0 && return _empty_detections()
 
     finder = PeakMesh(box_size, threshold)
     detection_error_map = fill(noise, size(image))
     peaks = extract_sources(finder, subtracted, detection_error_map)
+    sharpness = [_sharpness(subtracted, row.y, row.x) for row in peaks]
+    if isfinite(min_sharpness)
+        keep = sharpness .>= min_sharpness   # NaN (array edge) never passes
+        peaks, sharpness = peaks[keep], sharpness[keep]
+    end
 
     # `PeakMesh` reports x/y in the standard Cartesian sense (x=column,
     # i.e. the array's 2nd dimension; y=row, the 1st — see
@@ -73,18 +113,22 @@ function detect_sources(image::AbstractMatrix{<:Real}; threshold::Real,
     # ~140x too small before this swap and matched to ~1% after it.
     # `(row.y, row.x)` here is the fix (dim1, dim2 order); `_refine_centroid`
     # takes and returns positions in that same (dim1, dim2) order.
-    apertures = [let (d1, d2) = _refine_centroid(subtracted, row.y, row.x, aperture_radius)
-                     CircularAperture(d1, d2, aperture_radius)
-                 end
-                 for row in peaks]
+    centroids = [_refine_centroid(subtracted, row.y, row.x, aperture_radius) for row in peaks]
+    apertures = [CircularAperture(d1, d2, aperture_radius) for (d1, d2) in centroids]
     photom_error_map = gain === nothing ? detection_error_map :
                         sqrt.(noise^2 .+ max.(subtracted, 0.0) ./ gain)
     photom = isempty(apertures) ? nothing : photometry(apertures, subtracted, photom_error_map)
     flux = isempty(apertures) ? Float64[] : [row.aperture_sum for row in photom]
     flux_err = isempty(apertures) ? Float64[] : [row.aperture_sum_err for row in photom]
+    xcen = Float64[d2 for (_, d2) in centroids]
+    ycen = Float64[d1 for (d1, _) in centroids]
 
-    return Table(x=peaks.x, y=peaks.y, peak=peaks.value, flux=flux, flux_err=flux_err)
+    return Table(x=peaks.x, y=peaks.y, peak=peaks.value, flux=flux, flux_err=flux_err, xcen=xcen, ycen=ycen,
+                 sharpness=sharpness)
 end
+
+_empty_detections() = Table(x=Int[], y=Int[], peak=Float64[], flux=Float64[], flux_err=Float64[],
+                            xcen=Float64[], ycen=Float64[], sharpness=Float64[])
 
 """
     _refine_centroid(subtracted, d1, d2, radius) -> (Float64, Float64)
@@ -117,4 +161,48 @@ function _refine_centroid(subtracted::AbstractMatrix{<:Real}, d1::Integer, d2::I
     (abs(delta1) <= radius && abs(delta2) <= radius) || return Float64(d1), Float64(d2)
 
     return d1 + delta1, d2 + delta2
+end
+
+"""
+    fill_value_mask(image::AbstractMatrix{<:Real}; dilate::Integer=1) -> BitMatrix
+
+Mask (`true` = invalid) of every constant-valued plateau in `image`: any
+pixel whose whole 3x3 neighbourhood shares exactly its value, plus that
+neighbourhood, grown by `dilate` more pixels. Real sky never does this —
+even a smooth background carries per-pixel noise — so a plateau is
+always something written into the frame rather than measured: a fill
+value, or a saturated star's clipped core.
+
+Real IASC/Pan-STARRS1 frames need it: the gaps between the detector's
+cells are filled with one constant value (160 ADU in a real 2025
+practice set, ~14% of every frame), marked neither with `BLANK` nor
+`NaN`, so nothing else flags them. Unmasked, each gap edge is a sharp
+step that background estimation and peak finding treat as real signal,
+and an object crossing a gap simply vanishes for those frames —
+confirmed on the same set, where the known asteroid 2018 LT's
+SkyBoT-predicted track ran through a gap. Detecting plateaus instead of
+assuming a particular fill value keeps this survey-agnostic.
+
+Pass the result to [`detect_sources`](@ref) as `mask`.
+"""
+function fill_value_mask(image::AbstractMatrix{<:Real}; dilate::Integer=1)
+    n1, n2 = size(image)
+    mask = falses(n1, n2)
+    r = 1 + dilate
+    for j in 2:n2-1, i in 2:n1-1
+        v = image[i, j]
+        all(image[i+a, j+b] == v for a in -1:1, b in -1:1) || continue
+        mask[max(1, i-r):min(n1, i+r), max(1, j-r):min(n2, j+r)] .= true
+    end
+    return mask
+end
+
+# Mean of the four direct neighbours of `(d1, d2)` over its own value;
+# NaN at the array edge or for a non-positive peak.
+function _sharpness(img::AbstractMatrix, d1::Integer, d2::Integer)
+    n1, n2 = size(img)
+    (1 < d1 < n1 && 1 < d2 < n2) || return NaN
+    v = img[d1, d2]
+    v > 0 || return NaN
+    return (img[d1 - 1, d2] + img[d1 + 1, d2] + img[d1, d2 - 1] + img[d1, d2 + 1]) / 4v
 end

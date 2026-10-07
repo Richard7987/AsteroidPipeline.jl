@@ -186,7 +186,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
                              quality_max_std::Real=1.5, plate_solve_api_key::Union{Nothing,AbstractString}=nothing,
                              photometric_outlier_threshold::Real=0.2)
-    detections_per_frame = typeof(Table(x=Int[], y=Int[], peak=Float64[], flux=Float64[], flux_err=Float64[]))[]
+    detections_per_frame = typeof(_empty_detections())[]
     wcs_per_frame = WCSTransform[]
     timestamps = Float64[]
     n_gated = 0

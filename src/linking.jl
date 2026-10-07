@@ -7,7 +7,8 @@ Match source detections across a sequence of frames by consistent linear
 motion, producing asteroid candidate tracklets.
 
 `detections_per_frame` is a vector of per-frame detection tables (as
-returned by [`detect_sources`](@ref), each with `x`, `y` columns);
+returned by [`detect_sources`](@ref), each with `x`, `y` columns — or,
+when present, the sub-pixel `xcen`, `ycen` columns, used instead);
 `timestamps` gives the observation time of each frame, in the same time
 unit as `max_speed` (pixels per unit time).
 
@@ -50,20 +51,21 @@ function link_candidates(detections_per_frame, timestamps;
     seen = Set{Vector{Point}}()
 
     for d1 in detections_per_frame[1], d2 in detections_per_frame[2]
-        dx, dy = d2.x - d1.x, d2.y - d1.y
+        (x1, y1), (x2, y2) = _position(d1), _position(d2)
+        dx, dy = x2 - x1, y2 - y1
         speed = hypot(dx, dy) / abs(dt12)
         speed > max_speed && continue
 
         vx, vy = dx / dt12, dy / dt12
-        tracklet = Point[(frame=1, x=Float64(d1.x), y=Float64(d1.y)),
-                          (frame=2, x=Float64(d2.x), y=Float64(d2.y))]
+        tracklet = Point[(frame=1, x=Float64(x1), y=Float64(y1)),
+                          (frame=2, x=Float64(x2), y=Float64(y2))]
 
         for k in 3:nframes
             dt = timestamps[k] - timestamps[1]
-            pred_x, pred_y = d1.x + vx * dt, d1.y + vy * dt
+            pred_x, pred_y = x1 + vx * dt, y1 + vy * dt
             best = _closest_detection(detections_per_frame[k], pred_x, pred_y, match_radius)
             best === nothing && continue
-            push!(tracklet, (frame=k, x=Float64(best.x), y=Float64(best.y)))
+            push!(tracklet, _point(k, best))
         end
 
         if length(tracklet) >= 3
@@ -78,6 +80,18 @@ function link_candidates(detections_per_frame, timestamps;
 end
 
 """
+    _position(d) -> (x, y)
+
+A detection's position: its sub-pixel centroid (`xcen`, `ycen`) when the
+row has one — as [`detect_sources`](@ref)'s do — else its `x`, `y`.
+"""
+_position(d) = hasproperty(d, :xcen) ? (d.xcen, d.ycen) : (d.x, d.y)
+
+_point(frame::Integer, d) = let (x, y) = _position(d)
+    (frame=Int(frame), x=Float64(x), y=Float64(y))
+end
+
+"""
     _closest_detection(detections, pred_x, pred_y, match_radius)
 
 The detection in `detections` (a table with `x`, `y` columns) closest to
@@ -86,7 +100,8 @@ The detection in `detections` (a table with `x`, `y` columns) closest to
 function _closest_detection(detections, pred_x::Real, pred_y::Real, match_radius::Real)
     best, best_dist = nothing, match_radius
     for d in detections
-        dist = hypot(d.x - pred_x, d.y - pred_y)
+        x, y = _position(d)
+        dist = hypot(x - pred_x, y - pred_y)
         if dist <= best_dist
             best, best_dist = d, dist
         end
@@ -132,8 +147,56 @@ function _refit_tracklet(tracklet, timestamps, detections_per_frame, match_radiu
         pred_x, pred_y = x0 + vx * dt, y0 + vy * dt
         best = _closest_detection(detections_per_frame[k], pred_x, pred_y, match_radius)
         best === nothing && continue
-        push!(refined, (frame=k, x=Float64(best.x), y=Float64(best.y)))
+        push!(refined, _point(k, best))
     end
 
     return refined
+end
+
+"""
+    _filter_tracklets(tracklets, detections_per_frame, timestamps;
+                      min_speed=0.0, max_flux_ratio=Inf) -> Vector
+
+Drop tracklets that fail IASC's own "true signature" tests (its
+Signature Guide: a real asteroid moves in a straight line, at constant
+speed, at fairly constant brightness — "rejected because the magnitude
+fluctuates by more than 1"). Straight line and constant speed are what
+[`link_candidates`](@ref) already enforces; this adds the other two:
+
+- `min_speed` (pixels per unit of `timestamps`): the least-squares speed
+  over the tracklet's own points must reach it. A tracklet barely moving
+  is a static source matched to itself — on a difference image, a
+  residual left by a star.
+- `max_flux_ratio`: brightest over faintest detection flux must not
+  exceed it (2.5 is IASC's 1 magnitude). Chance alignments of noise
+  peaks rarely keep a steady flux; a real object does.
+
+With both at their defaults, `tracklets` is returned unchanged.
+"""
+function _filter_tracklets(tracklets, detections_per_frame, timestamps;
+                           min_speed::Real=0.0, max_flux_ratio::Real=Inf)
+    (min_speed <= 0 && isinf(max_flux_ratio)) && return tracklets
+    return filter(tracklets) do t
+        if min_speed > 0
+            ts = [timestamps[p.frame] for p in t]
+            _, vx = _linfit(ts, [p.x for p in t])
+            _, vy = _linfit(ts, [p.y for p in t])
+            hypot(vx, vy) < min_speed && return false
+        end
+        if isfinite(max_flux_ratio)
+            fluxes = [_detection_flux(detections_per_frame[p.frame], p) for p in t]
+            all(f -> f > 0, fluxes) || return false
+            maximum(fluxes) / minimum(fluxes) > max_flux_ratio && return false
+        end
+        return true
+    end
+end
+
+# The flux of the detection a tracklet point was taken from (`NaN` if the
+# table has no flux column, or no detection at exactly that position).
+function _detection_flux(detections, p)
+    for d in detections
+        _position(d) == (p.x, p.y) && return hasproperty(d, :flux) ? Float64(d.flux) : NaN
+    end
+    return NaN
 end

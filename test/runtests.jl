@@ -61,6 +61,54 @@ end
         @test length(detect_sources(noise_only; threshold=100.0)) == 0
     end
 
+    @testset "detect_sources xcen/ycen and mask; fill_value_mask" begin
+        Random.seed!(11)
+        image = 100.0 .+ 5.0 .* randn(80, 60)   # (y, x)
+        x0, y0 = 20.3, 40.7                     # deliberately off-grid
+        for j in axes(image, 2), i in axes(image, 1)
+            image[i, j] += 800.0 * exp(-((j - x0)^2 + (i - y0)^2) / (2 * 1.5^2))
+        end
+        # a detector-gap-style constant strip, as in real IASC/PS1 frames
+        image[:, 40:45] .= 300.0
+
+        mask = fill_value_mask(image)
+        @test all(mask[:, 40:45])
+        @test !any(mask[:, 1:30])            # real noisy sky is never a plateau
+
+        masked = detect_sources(image; threshold=5.0, mask)
+        @test !any(d -> 38 <= d.x <= 47, masked)
+        star = masked[argmax(masked.peak)]
+        @test star.xcen ≈ x0 atol=0.2                     # sub-pixel, unlike x/y
+        @test star.ycen ≈ y0 atol=0.2
+        @test star.x == round(Int, x0) && star.y == round(Int, y0)
+        @test_throws DimensionMismatch detect_sources(image; threshold=5.0, mask=falses(3, 3))
+
+        # a cosmic-ray hit: one pixel, nothing in its neighbours
+        image[15, 50] += 800.0
+        all_peaks = detect_sources(image; threshold=5.0, mask)
+        cr = only(filter(d -> d.x == 50 && d.y == 15, all_peaks))
+        @test abs(cr.sharpness) < 0.1
+        @test star.sharpness > 0.5
+        cleaned = detect_sources(image; threshold=5.0, mask, min_sharpness=0.3)
+        @test !any(d -> d.x == 50 && d.y == 15, cleaned)
+        @test any(d -> d.x == star.x && d.y == star.y, cleaned)
+    end
+
+    @testset "_filter_tracklets" begin
+        dets = [Table(x=[10, 50], y=[10, 50], flux=[100.0, 100.0], xcen=[10.0, 50.0], ycen=[10.0, 50.0]),
+                Table(x=[12, 50], y=[10, 50], flux=[90.0, 100.0], xcen=[12.0, 50.0], ycen=[10.0, 50.0]),
+                Table(x=[14, 50], y=[10, 50], flux=[400.0, 100.0], xcen=[14.0, 50.0], ycen=[10.0, 50.0])]
+        ts = [0.0, 1.0, 2.0]
+        moving = [(frame=k, x=Float64(8 + 2k), y=10.0) for k in 1:3]       # 2 px/day, flux 100->400
+        static = [(frame=k, x=50.0, y=50.0) for k in 1:3]
+        tracklets = [moving, static]
+        F = AsteroidPipeline._filter_tracklets
+        @test F(tracklets, dets, ts) === tracklets
+        @test F(tracklets, dets, ts; min_speed=1.0) == [moving]
+        @test F(tracklets, dets, ts; max_flux_ratio=2.5) == [static]  # moving varies 4.4x
+        @test isempty(F(tracklets, dets, ts; min_speed=1.0, max_flux_ratio=2.5))
+    end
+
     @testset "link_candidates" begin
         frame1 = Table(x=[10.0, 50.0], y=[10.0, 20.0])
         frame2 = Table(x=[12.0, 55.0], y=[11.0, 20.0])
