@@ -9,7 +9,8 @@ const _SKYBOT_URL = "https://vo.imcce.fr/webservices/skybot/skybotconesearch_que
 const _CDS_BATCH_SIZE = 50
 
 """
-    crossmatch_catalog(candidates, catalog::Symbol; radius::Real)
+    crossmatch_catalog(candidates, catalog::Symbol; radius::Real,
+                       observatory::Union{Nothing,AbstractString}=nothing)
 
 Cross-match candidate tracklets against a known-object catalog
 (`:skybot`, `:vsx`, or `:simbad`) within `radius` arcseconds, to separate
@@ -44,10 +45,29 @@ carries variability class/magnitude/period, SIMBAD doesn't), matching
 what each catalog actually offers, but both always include `id`, `ra`,
 `dec`, and `distance_arcsec`. Candidate `id`s absent from the returned
 table have no known counterpart in `catalog`.
+
+For `:skybot`, `observatory` (a 3-character MPC observatory code, e.g.
+`"F51"` for Pan-STARRS1, `"I41"` for ZTF) makes SkyBoT compute each
+ephemeris for that site instead of the Earth's centre. Leave it unset only
+for distant objects: parallax moves a nearby one by many arcseconds — on
+a real IASC set the known Mars-crosser 2018 LT sat ~15" from its
+geocentric position, <3" from its `"F51"` one.
+
+Each candidate row is matched at its own `epoch`, so passing *every* row
+of a tracklet (not just its first) and counting matches per
+`(id, name)` checks that the tracklet actually *follows* the object
+frame by frame. Matching only one point is a weak test: on the real IASC
+sets, 7 of 9 "recoveries" counted that way were static stars that
+happened to lie within 15" of a known asteroid at one epoch.
 """
-function crossmatch_catalog(candidates, catalog::Symbol; radius::Real)
+function crossmatch_catalog(candidates, catalog::Symbol; radius::Real,
+                            observatory::Union{Nothing,AbstractString}=nothing)
+    observatory === nothing || catalog === :skybot ||
+        throw(ArgumentError("observatory only applies to :skybot"))
+    observatory === nothing || length(observatory) == 3 ||
+        throw(ArgumentError("observatory must be a 3-character MPC observatory code"))
     if catalog === :skybot
-        return _crossmatch_skybot(candidates, radius)
+        return _crossmatch_skybot(candidates, radius; observatory)
     elseif catalog === :simbad
         return _crossmatch_simbad(candidates, radius)
     elseif catalog === :vsx
@@ -62,30 +82,56 @@ end
 
 Run `query` (an ADQL string) as a synchronous TAP query against `url`,
 returning the CSV response parsed by `CSV.File`. Shared by
-`_crossmatch_simbad` and `_crossmatch_vsx`.
+`_crossmatch_simbad`, `_crossmatch_vsx` and [`gaia_reference_stars`](@ref).
 
-Retries once on `HTTP.ParseError` ("unexpected EOF while reading HTTP/1
-data"): confirmed, via repeated direct `curl` requests against the exact
-query that triggered it, to be a connection-reuse quirk on our end, not a
-real SIMBAD/VizieR outage — the service itself answered the same query
-successfully every time it was tried directly. A fresh connection (a new
-request, not a retried read of the same one) resolves it in practice.
-Any other exception, or a second `HTTP.ParseError`, still propagates —
-this is a targeted retry for one confirmed-transient failure mode, not a
-general-purpose retry loop.
+A request that stops receiving data for `_CATALOG_IDLE_TIMEOUT` seconds
+is abandoned (`HTTP.TimeoutError`) instead of waiting forever: a real
+run over the IASC practice sets sat at 0% CPU for 30 minutes on one
+catalog request that never answered, with nothing to end it.
+
+Retries — `_TAP_ATTEMPTS` tries in all, waiting 2 s then 4 s — on any
+failure of the service itself (see [`_is_service_failure`](@ref)), never
+on a 4xx answer. This began as a single retry for one case,
+`HTTP.ParseError` ("unexpected EOF while reading HTTP/1 data"), confirmed
+via repeated direct `curl` requests to be a connection-reuse quirk on our
+end, not a real outage; validating `refine_astrometry` against the IASC
+sets then hit a timeout, a 503 and a broken TLS handshake in one
+evening, so it now covers the whole class. The last failure propagates.
 """
 function _tap_query(url::AbstractString, query::AbstractString)
     make_body() = HTTP.Form(Dict(
         "REQUEST" => "doQuery", "LANG" => "ADQL", "FORMAT" => "csv", "QUERY" => query))
-    try
-        response = HTTP.post(url, [], make_body())
-        return CSV.File(response.body)
-    catch e
-        e isa HTTP.ParseError || rethrow()
-        response = HTTP.post(url, [], make_body())
-        return CSV.File(response.body)
+    for attempt in 1:_TAP_ATTEMPTS
+        try
+            return CSV.File(HTTP.post(url, [], make_body(); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+        catch e
+            (_is_service_failure(e) && attempt < _TAP_ATTEMPTS) || rethrow()
+            sleep(2.0^attempt)
+        end
     end
 end
+
+const _TAP_ATTEMPTS = 3
+
+"""
+    _is_service_failure(e) -> Bool
+
+Whether `e` is the catalog *service* failing — unreachable, reset, TLS
+or protocol trouble, a timeout, a 5xx status — which a retry (or another
+copy of the catalog) can get past, as opposed to a 4xx status, which
+means the query itself is wrong and would fail anywhere. Every one of
+the transient kinds has turned up for real while validating this
+package: a `ParseError` from connection reuse, an idle hang with no
+answer at all, a sustained VizieR 503 outage, and a TLS handshake broken
+mid-write ("Broken pipe").
+"""
+_is_service_failure(e) = e isa Base.IOError ||
+                         (e isa HTTP.HTTPError && !(e isa HTTP.StatusError && e.status < 500))
+
+# Seconds a catalog request (VizieR/SIMBAD TAP, SkyBoT) may go without
+# receiving any data before it is abandoned — an idle limit, not a total
+# one, so a large result that keeps streaming is never cut off.
+const _CATALOG_IDLE_TIMEOUT = 60
 
 """
     _cds_batch_query(select, table, ra_col, dec_col, batch, radius_deg) -> String
@@ -197,15 +243,29 @@ One SkyBoT cone-search request for a single candidate `c`. Factored out
 of [`_crossmatch_skybot`](@ref) so it can be run concurrently, one task
 per candidate — see that function's docstring for why.
 
-Retries once on any `HTTP.HTTPError` (covers `HTTP.ConnectError`,
+Retries on any `HTTP.HTTPError` (covers `HTTP.ConnectError`, the
+`_CATALOG_IDLE_TIMEOUT` `HTTP.TimeoutError`,
 `HTTP.ParseError`, etc.): confirmed real on a long real crossmatch run
 (thousands of candidates, several thousand real SkyBoT requests) — a
 "tls write failed: connection is closed" error killed the whole run
 partway through a large candidate list, after running cleanly for over
-two hours. A fresh connection on retry is enough in practice; a second
-failure still propagates.
+two hours.
+
+Also retries on a [`SkyBoTServiceError`](@ref) — SkyBoT failing
+server-side but still answering HTTP 200 (see `_parse_skybot`). Seen
+directly against the live service (2026-10): identical cone searches
+intermittently came back `# Flag: -1` with a crashed ephemeris process's
+backtrace in place of results, then succeeded on a plain resend.
+
+Up to `_SKYBOT_ATTEMPTS` tries total, with exponential backoff between
+them; the last failure propagates. `fetch` is the HTTP call itself,
+injectable so the retry logic can be tested without the network.
 """
-function _skybot_matches(c, radius_deg::Real)
+function _skybot_matches(c, radius_deg::Real;
+                         observatory::Union{Nothing,AbstractString}=nothing,
+                         fetch=query -> String(HTTP.get(_SKYBOT_URL; query=query,
+                                                       read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body),
+                         backoff_seconds::Real=1.0)
     query = Dict(
         "-ra" => string(c.ra), "-dec" => string(c.dec), "-rd" => string(radius_deg),
         # Julian Dates are ~2.4e6, which Julia's default Float64 printing
@@ -214,15 +274,39 @@ function _skybot_matches(c, radius_deg::Real)
         # silently came back empty. @sprintf forces fixed-point.
         "-ep" => @sprintf("%.6f", c.epoch), "-mime" => "text", "-output" => "object",
     )
-    try
-        response = HTTP.get(_SKYBOT_URL; query=query)
-        return _parse_skybot(String(response.body))
-    catch e
-        e isa HTTP.HTTPError || rethrow()
-        response = HTTP.get(_SKYBOT_URL; query=query)
-        return _parse_skybot(String(response.body))
+    observatory === nothing || (query["-loc"] = observatory)
+    for attempt in 1:_SKYBOT_ATTEMPTS
+        try
+            return _parse_skybot(fetch(query))
+        catch e
+            (e isa HTTP.HTTPError || e isa SkyBoTServiceError) || rethrow()
+            attempt == _SKYBOT_ATTEMPTS && rethrow()
+            sleep(backoff_seconds * 2^(attempt - 1))
+        end
     end
 end
+
+# Total tries per candidate (first request + retries) in _skybot_matches.
+# SkyBoT's server-side failures seen so far cleared on the first resend;
+# 4 tries with 1/2/4 s backoff rides out a short burst of them without
+# stalling a large crossmatch for long on a real outage.
+const _SKYBOT_ATTEMPTS = 4
+
+"""
+    SkyBoTServiceError(message)
+
+SkyBoT answered, but with a server-side failure instead of a result — a
+`# Flag:` status other than `1` (objects found) or `0` (none found), or
+no status line at all. Thrown by [`crossmatch_catalog`](@ref)`(...;
+:skybot)` once retries are exhausted, rather than reporting the
+candidate as having no known counterpart: a silently empty match would
+make every known object look like a new discovery.
+"""
+struct SkyBoTServiceError <: Exception
+    message::String
+end
+
+Base.showerror(io::IO, e::SkyBoTServiceError) = print(io, "SkyBoTServiceError: ", e.message)
 
 # Concurrent SkyBoT requests per crossmatch_catalog call. SkyBoT (unlike
 # :vsx/:simbad's CDS TAP services, batched in a single request — see
@@ -240,7 +324,7 @@ end
 const _SKYBOT_CONCURRENCY = 20
 
 """
-    _crossmatch_skybot(candidates, radius) -> Table
+    _crossmatch_skybot(candidates, radius; observatory=nothing) -> Table
 
 Query SkyBoT once per candidate, concurrently (up to
 `_SKYBOT_CONCURRENCY` requests in flight at a time via Julia
@@ -251,7 +335,8 @@ results does not depend on request completion order: each candidate's
 matches are collected into their own slot and the final table is built
 from those slots in `candidates`' original order, not arrival order.
 """
-function _crossmatch_skybot(candidates, radius::Real)
+function _crossmatch_skybot(candidates, radius::Real;
+                            observatory::Union{Nothing,AbstractString}=nothing)
     radius_deg = radius / 3600
     candidates_vec = collect(candidates)
     per_candidate = Vector{Vector{NamedTuple}}(undef, length(candidates_vec))
@@ -261,7 +346,7 @@ function _crossmatch_skybot(candidates, radius::Real)
         @async begin
             Base.acquire(semaphore)
             try
-                per_candidate[i] = _skybot_matches(c, radius_deg)
+                per_candidate[i] = _skybot_matches(c, radius_deg; observatory)
             finally
                 Base.release(semaphore)
             end
@@ -290,7 +375,28 @@ function _crossmatch_skybot(candidates, radius::Real)
     return Table(; id, name, ra, dec, class, mv, distance_arcsec)
 end
 
+"""
+    _parse_skybot(text) -> Vector{NamedTuple}
+
+Parse one SkyBoT text-mode cone-search response. Its first line is a
+status, `# Flag: <n>`: `1` means a result table follows, `0` means no
+object in the field (verified against the live service: a short "No
+solar system object was found" message, still HTTP 200). Anything else
+— `-1`, or no status line — is SkyBoT failing server-side, and throws a
+[`SkyBoTServiceError`](@ref): before this check, a `-1` response's body
+(a crash backtrace, no `|`-delimited rows) parsed as zero matches, so an
+outage looked exactly like an empty field.
+"""
 function _parse_skybot(text::AbstractString)
+    m = match(r"^#\s*Flag:\s*(-?\d+)", lstrip(text))
+    flag = m === nothing ? nothing : parse(Int, m[1])
+    if flag != 0 && flag != 1
+        detail = first(strip(text), 200)
+        throw(SkyBoTServiceError(flag === nothing ?
+            "response has no '# Flag:' status line: $(repr(detail))" :
+            "server reported Flag $flag: $(repr(detail))"))
+    end
+
     matches = NamedTuple[]
     for line in eachline(IOBuffer(text))
         (isempty(line) || startswith(line, '#')) && continue

@@ -879,6 +879,49 @@ end
         end
     end
 
+    @testset "SkyBoT response status / retry" begin
+        # No network: real response shapes captured from the live service
+        # (2026-10). Flag -1 is SkyBoT crashing server-side behind HTTP 200
+        # — it used to parse as zero matches, so an outage looked exactly
+        # like an empty field and every known object like a discovery.
+        header = "# Flag: 1\n# Ticket: 1\n# Num | Name | RA(h) | DE(deg) | Class | Mv | Err(arcsec) | d(arcsec) \n"
+        found = header * " - | 2018 LT | 00 12 10.1460 | -10 46 56.759 | Mars-Crosser | 20.0 | 2.974 | 140.155 \n"
+        none = "# Flag: 0\n# Ticket: 2\nNo solar system object was found in the requested FOV: ...\n"
+        crashed = "# Flag: -1\n# Ticket: 3\nSkyBoT asteroid conesearch -> numIntAstromJ2000_para[1]: computeEphemeris: \n" *
+                  "Program received signal SIGBUS: Access to an undefined portion of a memory object.\n"
+
+        @test only(AsteroidPipeline._parse_skybot(found)).name == "2018 LT"
+        @test isempty(AsteroidPipeline._parse_skybot(none))
+        @test_throws SkyBoTServiceError AsteroidPipeline._parse_skybot(crashed)
+        @test_throws SkyBoTServiceError AsteroidPipeline._parse_skybot("")
+        @test_throws SkyBoTServiceError AsteroidPipeline._parse_skybot("<html>502 Bad Gateway</html>")
+
+        c = (id=1, ra=3.0492, dec=-10.7441, epoch=2460934.9349)
+        # transient: two crashes, then a real answer — retried, not dropped
+        responses = [crashed, crashed, found]
+        calls = Ref(0)
+        flaky = _ -> (calls[] += 1; responses[calls[]])
+        matches = AsteroidPipeline._skybot_matches(c, 0.12; fetch=flaky, backoff_seconds=0)
+        @test calls[] == 3
+        @test only(matches).name == "2018 LT"
+
+        # persistent: gives up after _SKYBOT_ATTEMPTS and throws, never empty
+        calls[] = 0
+        always_down = _ -> (calls[] += 1; crashed)
+        @test_throws SkyBoTServiceError AsteroidPipeline._skybot_matches(c, 0.12; fetch=always_down, backoff_seconds=0)
+        @test calls[] == AsteroidPipeline._SKYBOT_ATTEMPTS
+
+        # observatory -> topocentric ephemerides (SkyBoT's -loc); unset -> geocentric
+        sent = Ref{Dict}()
+        capture = q -> (sent[] = q; found)
+        AsteroidPipeline._skybot_matches(c, 0.12; observatory="F51", fetch=capture)
+        @test sent[]["-loc"] == "F51"
+        AsteroidPipeline._skybot_matches(c, 0.12; fetch=capture)
+        @test !haskey(sent[], "-loc")
+        @test_throws ArgumentError crossmatch_catalog([c], :vsx; radius=5.0, observatory="F51")
+        @test_throws ArgumentError crossmatch_catalog([c], :skybot; radius=5.0, observatory="Palomar")
+    end
+
     @testset "crossmatch_catalog" begin
         @test_throws ArgumentError crossmatch_catalog([], :unknown_catalog; radius=5.0)
 
