@@ -134,6 +134,17 @@ end
         @test all(masked[k][round(Int, sy + dithers[k][2]), round(Int, sx + dithers[k][1])]
                   for k in 1:4, (sx, sy) in stars_xy)
         @test_throws ArgumentError stack_difference(images[1:2], wcss[1:2])
+
+        # sub-pixel alignment: same contract, mover still found
+        sp, spm = stack_difference(images, wcss; bright_star_sigma=Inf, subpixel=true)
+        for k in 1:4
+            mx, my = round(Int, mover[k][1] + dithers[k][1]), round(Int, mover[k][2] + dithers[k][2])
+            @test sp[k][my, mx] > 10 * std(sp[k][.!spm[k]])
+        end
+        B = AsteroidPipeline._bilinear
+        A = [1.0 2.0; 3.0 4.0]
+        @test B(A, nothing, 1.5, 1.5) ≈ 2.5 && B(A, nothing, 1.0, 2.0) ≈ 2.0
+        @test isnan(B(A, nothing, 2.5, 1.0)) && isnan(B(A, BitMatrix([0 0; 0 1]), 1.5, 1.5))
     end
 
     @testset "refine_wcs" begin
@@ -182,6 +193,12 @@ end
         @test F(tracklets, dets, ts; min_speed=1.0) == [moving]
         @test F(tracklets, dets, ts; max_flux_ratio=2.5) == [static]  # moving varies 4.4x
         @test isempty(F(tracklets, dets, ts; min_speed=1.0, max_flux_ratio=2.5))
+        bent = [(frame=1, x=50.0, y=50.0), (frame=2, x=52.0, y=55.0), (frame=3, x=54.0, y=50.0)]
+        @test AsteroidPipeline._line_residual(moving, ts) < 1e-9                  # exactly straight
+        # a fourth frame both miss: both partial, so the bent one (~2.4 px RMS) goes
+        dets4, ts4 = vcat(dets, [dets[1]]), [ts; 3.0]
+        @test F([moving, bent], dets4, ts4; max_residual=1.0) == [moving]
+        @test F([bent], dets, ts; max_residual=1.0) == [bent]                    # complete: left alone
     end
 
     @testset "link_candidates" begin
@@ -233,6 +250,33 @@ end
         @test length(under_tracklets) == 1
         @test length(under_tracklets[1]) == 3
         @test under_tracklets[1][2].x == 14.0 && under_tracklets[1][2].y == 7.6  # unrefit seed point kept
+    end
+
+    @testset "link_candidates seeds from any frame pair; _merge_clusters" begin
+        # an object missing from frame 1 (detector gap, masked over a star):
+        # seeding only from frames 1-2 could never link it, even at min_frames=3
+        ts = [0.0, 1.0, 2.0, 3.0]
+        frames = [Table(x=[500], y=[500]),                      # frame 1: just an unrelated source
+                  Table(x=[12], y=[20]), Table(x=[14], y=[20]), Table(x=[16], y=[20])]
+        @test isempty(link_candidates(frames, ts; match_radius=0.5))           # all 4 required
+        found = link_candidates(frames, ts; match_radius=0.5, min_frames=3)
+        @test length(found) == 1
+        @test [p.frame for p in only(found)] == [2, 3, 4]
+
+        # a fast object's trail, fragmented into three peaks, becomes one
+        # detection at their flux-weighted centre; a satellite-length chain
+        # is dropped; a lone detection passes untouched
+        dets = Table(x=[100, 108, 116, 400, 412, 424, 436, 448, 460, 472, 900],
+                     y=fill(50, 11), peak=fill(10.0, 11),
+                     flux=[100.0, 200.0, 100.0, fill(50.0, 7)..., 300.0], flux_err=fill(5.0, 11),
+                     xcen=Float64[100, 108, 116, 400, 412, 424, 436, 448, 460, 472, 900], ycen=fill(50.0, 11),
+                     sharpness=fill(0.6, 11))
+        merged = AsteroidPipeline._merge_clusters(dets, 15.0, 60.0)
+        @test length(merged) == 2
+        trail = only(filter(d -> d.flux == 400.0, collect(merged)))
+        @test trail.xcen ≈ 108.0 && trail.flux_err ≈ sqrt(3) * 5.0
+        @test any(d -> d.xcen == 900.0 && d.flux == 300.0, merged)            # the lone one
+        @test !any(d -> 390 <= d.xcen <= 480, merged)                          # 72 px chain: dropped
     end
 
     @testset "find_variable_sources" begin
@@ -1123,6 +1167,67 @@ end
         @test frame_epoch(no_date) ≈ 2460000.75                           # falls back to MJD-OBS
         @test frame_epoch(FITSHeader(["DATE-OBS"], Any["2020-01-01"], [""]); exptime_key=nothing) ≈ 2458849.5
         @test_throws ArgumentError frame_epoch(FITSHeader(["DATE-OBS"], Any["yesterday"], [""]))
+    end
+
+    @testset "calibrated photometry / inject_movers / injection_recovery" begin
+        # three synthetic frames of one star field: 40 catalog stars rendered
+        # with a zero point of exactly 25, a known WCS, real-looking headers
+        Random.seed!(15)
+        nx, ny = 320, 280
+        truth_wcs = WCSTransform(2; crpix=[160.0, 140.0], crval=[3.05, -10.74],
+                                 cdelt=[-0.257 / 3600, 0.257 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+        star_xy = [(15 + 290rand(), 15 + 250rand()) for _ in 1:40]
+        gmag = 16.0 .+ 3.0 .* rand(40)
+        sky = [pix_to_world(truth_wcs, [x, y]) for (x, y) in star_xy]
+        catalog = Table(ra=first.(sky), dec=last.(sky), gmag=gmag)
+        zp, σ = 25.0, 1.5
+        mktempdir() do dir
+            paths = String[]
+            for k in 1:3
+                raw = 100.0 .+ 5.0 .* randn(nx, ny)                         # FITS-native (x, y)
+                for ((x, y), g) in zip(star_xy, gmag), i in max(1, floor(Int, x) - 8):min(nx, ceil(Int, x) + 8),
+                    j in max(1, floor(Int, y) - 8):min(ny, ceil(Int, y) + 8)
+                    raw[i, j] += 10^(-0.4 * (g - zp)) / (2π * σ^2) * exp(-((i - x)^2 + (j - y)^2) / (2σ^2))
+                end
+                mjd = 60000.0 + (k - 1) * 0.01
+                header = FITSHeader(
+                    ["MJD-OBS", "EXPTIME", "GAIN", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2", "CTYPE1", "CTYPE2"],
+                    Any[mjd, 45.0, 1.0, 160.0, 140.0, 3.05, -10.74, -0.257 / 3600, 0.257 / 3600, "RA---TAN", "DEC--TAN"],
+                    fill("", 11))
+                path = joinpath(dir, "f$k.fits")
+                FITS(f -> write(f, raw; header=header), path, "w")
+                push!(paths, path)
+            end
+
+            image = permutedims(FITS(f -> Float64.(read(f[1])), paths[1]))
+            z = photometric_zeropoint(image, truth_wcs, catalog)
+            @test z.n_stars >= 20
+            @test z.zeropoint ≈ zp atol=0.05      # 5 px aperture holds ~99.6% of a σ=1.5 px star
+
+            injected, truth = inject_movers(paths, joinpath(dir, "inj"); n=4, mag_range=(17.0, 17.5),
+                                            speed_range=(20.0, 40.0), rng=Xoshiro(3),
+                                            reference_stars=catalog, margin=60)
+            @test length(truth) == 4 * 3
+            @test all(isfile, injected)
+            @test truth.epoch[truth.frame .== 1][1] ≈ 2400000.5 + 60000.0 + 22.5 / 86400 atol=1e-8
+
+            candidates = run_pipeline(injected; threshold=5.0, match_radius=8.0, mask_fill_values=true,
+                                      refine_astrometry=true, reference_stars=catalog, difference_stack=true,
+                                      min_sharpness=0.3)
+            rec = injection_recovery(candidates, truth; radius=1.0)
+            # bright and clear of the field edges, but placed at random: one
+            # can still land on a star or another synthetic object and be
+            # masked out — a real loss, which is what this machinery measures
+            @test count(rec.recovered) >= 3
+            # and measured at the brightness they were injected with
+            for r in filter(r -> r.recovered, collect(rec))
+                rows = filter(c -> c.id == r.tracklet, collect(candidates))
+                mags = candidate_magnitudes(injected, Table(rows); reference_stars=catalog)
+                @test median(filter(isfinite, mags)) ≈ r.mag atol=0.15
+            end
+            # a run that finds nothing recovers nothing
+            @test !any(injection_recovery(candidates[candidates.id .== -1], truth).recovered)
+        end
     end
 
     @testset "crossmatch_catalog" begin

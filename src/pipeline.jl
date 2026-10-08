@@ -9,8 +9,9 @@
                  photometric_outlier_threshold::Real=0.2,
                  mask_fill_values::Bool=false, difference_stack::Bool=false,
                  refine_astrometry::Bool=false, reference_stars=nothing,
-                 min_speed::Real=0.0, max_flux_ratio::Real=Inf, min_sharpness::Real=-Inf,
-                 exptime_key::Union{Nothing,AbstractString}="EXPTIME")
+                 min_speed::Real=0.0, max_flux_ratio::Real=Inf, max_residual::Real=Inf,
+                 min_sharpness::Real=-Inf, exptime_key::Union{Nothing,AbstractString}="EXPTIME",
+                 subpixel_alignment::Bool=false)
 
 Run the local stages of the pipeline — detection, linking, and
 astrometric calibration — on a time-ordered sequence of FITS frames from
@@ -141,11 +142,12 @@ objects and reported positions ~7" off:
 - `difference_stack`: detect on each frame minus the median of the whole
   sequence ([`stack_difference`](@ref)) instead of on the raw frame —
   static sources cancel, so `threshold` can go much lower without
-  drowning in stars. Needs at least 3 frames. Clustered detections
-  (satellite trails, saturated-star residuals) are then dropped — see
-  [`_drop_clustered`](@ref).
-- `min_speed` (pixels per day) and `max_flux_ratio` filter tracklets
-  after linking, per IASC's own "true signature" tests (see
+  drowning in stars. Needs at least 3 frames. Groups of detections are
+  then resolved — a fast object's trail merged into one detection,
+  satellite trails and saturated-star residuals dropped — see
+  [`_merge_clusters`](@ref).
+- `min_speed` (pixels per day), `max_flux_ratio` and `max_residual`
+  (pixels) filter tracklets after linking, per IASC's own "true signature" tests (see
   [`_filter_tracklets`](@ref)): use `max_flux_ratio=2.5` for IASC's
   1-magnitude limit.
 - `min_sharpness`: drop single-pixel spikes — cosmic rays, hot pixels —
@@ -172,18 +174,19 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        photometric_outlier_threshold::Real=0.2,
                        mask_fill_values::Bool=false, difference_stack::Bool=false,
                        refine_astrometry::Bool=false, reference_stars=nothing,
-                       min_speed::Real=0.0, max_flux_ratio::Real=Inf, min_sharpness::Real=-Inf,
-                       exptime_key::Union{Nothing,AbstractString}="EXPTIME")
+                       min_speed::Real=0.0, max_flux_ratio::Real=Inf, max_residual::Real=Inf,
+                       min_sharpness::Real=-Inf, exptime_key::Union{Nothing,AbstractString}="EXPTIME",
+                       subpixel_alignment::Bool=false)
     detections_per_frame, wcs_per_frame, timestamps, n_gated = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
         reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
         photometric_outlier_threshold, mask_fill_values, difference_stack,
-        refine_astrometry, reference_stars, min_sharpness, exptime_key)
+        refine_astrometry, reference_stars, min_sharpness, exptime_key, subpixel_alignment)
 
     effective_min_frames = min_frames === nothing ? length(fits_paths) - n_gated : min_frames
     tracklets = link_candidates(detections_per_frame, timestamps;
                                  max_speed, match_radius, min_frames=effective_min_frames)
-    tracklets = _filter_tracklets(tracklets, detections_per_frame, timestamps; min_speed, max_flux_ratio)
+    tracklets = _filter_tracklets(tracklets, detections_per_frame, timestamps; min_speed, max_flux_ratio, max_residual)
     return astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
 end
 
@@ -230,7 +233,8 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              mask_fill_values::Bool=false, difference_stack::Bool=false,
                              refine_astrometry::Bool=false, reference_stars=nothing,
                              min_sharpness::Real=-Inf,
-                             exptime_key::Union{Nothing,AbstractString}="EXPTIME")
+                             exptime_key::Union{Nothing,AbstractString}="EXPTIME",
+                             subpixel_alignment::Bool=false)
     reference === nothing || !(mask_fill_values || difference_stack || refine_astrometry) ||
         throw(ArgumentError("mask_fill_values, difference_stack and refine_astrometry apply only " *
                             "without `reference` (the ZOGY path has its own registration and masks)"))
@@ -336,13 +340,13 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
 
     if difference_stack
         masks = all(isnothing, stacked_masks) ? nothing : stacked_masks
-        differences, diff_masks = stack_difference(stacked_images, wcs_per_frame; masks)
+        differences, diff_masks = stack_difference(stacked_images, wcs_per_frame; masks, subpixel=subpixel_alignment)
         # No gain either: a difference image's noise is the frame's and the
         # median's together, and a mover's own shot noise is negligible at
         # the faint end this mode exists for.
         for (diff, m) in zip(differences, diff_masks)
             dets = detect_sources(diff; threshold, box_size, aperture_radius, mask=m, min_sharpness)
-            push!(detections_per_frame, _drop_clustered(dets, _CLUSTER_RADIUS))
+            push!(detections_per_frame, _merge_clusters(dets, _CLUSTER_RADIUS, _MAX_TRAIL_EXTENT))
         end
     end
 
@@ -482,5 +486,8 @@ function _to_common_grid(detections_per_frame, wcs_per_frame)
     end
 end
 
-# Neighbourhood radius (pixels) for `_drop_clustered` on the difference_stack path.
+# Grouping radius and widest trail (pixels) for `_merge_clusters` on the
+# difference_stack path. 60 px is ~15" at PS1's scale: an object moving
+# ~1200"/h trails that far in a 45 s IASC exposure.
 const _CLUSTER_RADIUS = 15.0
+const _MAX_TRAIL_EXTENT = 60.0

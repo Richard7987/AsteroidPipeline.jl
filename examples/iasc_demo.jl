@@ -43,7 +43,8 @@ regression tests (see the Investigation Log):
   reaches `run_pipeline`.
 =#
 using AsteroidPipeline
-using FITSIO, Statistics
+using FITSIO, Statistics, Printf, Dates
+using TypedTables: Table
 
 const DATA_DIR = joinpath(@__DIR__, "..", "data", "real", "iasc")
 const PS1_ARCSEC_PER_PIXEL = 0.2563   # measured from these sets' own CDELT1 (~7.118e-5 deg/px)
@@ -124,7 +125,7 @@ const MIN_CONFIRMING_FRAMES = 3
 function summarize(label, candidates)
     n_tracklets = length(unique(candidates.id))
     println("-- $label: $n_tracklets tracklet(s) from $(length(candidates)) detections --")
-    n_tracklets == 0 && return
+    n_tracklets == 0 && return Set{Int}()
 
     matches = crossmatch_catalog(collect(candidates), :skybot; radius=5.0, observatory="F51")
     frames_matched = Dict{Tuple{Int,String},Int}()
@@ -132,13 +133,70 @@ function summarize(label, candidates)
         frames_matched[(m.id, m.name)] = get(frames_matched, (m.id, m.name), 0) + 1
     end
     known = Set{String}()
+    known_ids = Set{Int}()
     for ((id, name), n) in sort(collect(frames_matched))
         n >= MIN_CONFIRMING_FRAMES || continue
         push!(known, name)
+        push!(known_ids, id)
         println("  id=$id: $name, followed in $n frame(s)")
     end
     println("  $(length(known)) known object(s) confirmed frame by frame; the other tracklets ",
             "are candidates for human vetting (measure them in Astrometrica before reporting).")
+    return known_ids
+end
+
+const REPORT_DIR = joinpath(@__DIR__, "..", "data", "real", "iasc_reports")
+
+# Every tracklet not confirmed as a known object, as an MPC 80-column report
+# with Gaia-calibrated magnitudes (the format IASC's submission portal takes)
+# — for vetting, never for submitting unchecked. If an Astrometrica report
+# for the same set sits next to the set's directory
+# (`<set>_MPCReport_astrometrica.txt`), every object in it is compared line
+# by line with the pipeline's nearest measurement at the same epoch.
+function report_candidates(set_dir, paths, candidates, known_ids)
+    set = basename(set_dir)
+    unknown = Table(filter(r -> !(r.id in known_ids), collect(candidates)))
+    isempty(unknown) && return
+    unknown = Table(unknown; mag=candidate_magnitudes(paths, unknown))
+    mkpath(REPORT_DIR)
+    out = joinpath(REPORT_DIR, "$(set)_pipeline_MPCReport.txt")
+    write(out, mpc80_report(unknown, "F51"; trksub_prefix="P"))
+    println("  wrote $(length(unique(unknown.id))) candidate tracklet(s) to $(relpath(out))")
+
+    if Sys.which("digest2") !== nothing
+        scores = digest2_score(unknown, "F51"; trksub_prefix="P")
+        for sc in sort(collect(scores), by=sc -> -sc.neo_score)[1:min(end, 5)]
+            @printf("  digest2: tracklet %d  NEO %3.0f  (RMS %.2f\")\n", sc.id, sc.neo_score, sc.rms)
+        end
+    end
+
+    astro_file = joinpath(dirname(set_dir), "$(set)_MPCReport_astrometrica.txt")
+    isfile(astro_file) && compare_with_astrometrica(astro_file, unknown)
+end
+
+function compare_with_astrometrica(astro_file, measured)
+    println("  vs Astrometrica ($(basename(astro_file))):")
+    for line in eachline(astro_file)
+        line = rstrip(line, ['\r'])
+        (length(line) == 80 && occursin(r"^\d{4} \d\d \d\d\.\d+$", line[16:32])) || continue
+        y, mo, d = parse.(Float64, split(line[16:32]))
+        jd = datetime2julian(DateTime(Int(y), Int(mo), 1)) + d - 1
+        h, m, sec = parse.(Float64, split(line[33:44]))
+        ra = 15 * (h + m / 60 + sec / 3600)
+        sign = line[45] == '-' ? -1 : 1
+        dd, dm, ds = parse.(Float64, split(line[46:56]))
+        dec = sign * (dd + dm / 60 + ds / 3600)
+        mag = tryparse(Float64, strip(line[66:70]))
+        same_time = filter(r -> abs(r.epoch - jd) < 30 / 86400, collect(measured))
+        if isempty(same_time)
+            println("    $(strip(line[6:12])) $(line[16:32]): no pipeline detection at this epoch")
+            continue
+        end
+        sep(r) = hypot((r.ra - ra) * cosd(dec), r.dec - dec) * 3600
+        best = argmin(sep, same_time)
+        @printf("    %s %s: pipeline tracklet %d is %.2f\" away, mag %.1f vs %s\n", strip(line[6:12]),
+                line[16:32], best.id, sep(best), best.mag, mag === nothing ? "-" : string(mag))
+    end
 end
 
 for set_dir in sets
@@ -153,13 +211,15 @@ for set_dir in sets
     # tracklets held to IASC's own "true signature" tests. min_frames=3
     # because a real object can spend one of four frames in a detector
     # gap or masked over a star (2018 LT in XY54_p10). Against SkyBoT
-    # ephemerides at every frame's epoch, it recovered all 6 real moving
-    # objects in the six local sets — 5 known ones plus the unknown object
-    # later reported to IASC from XY54_p10 (NHU0001) — against 3 for the
-    # original threshold=8.0 raw-frame run, with 157 tracklets to vet
-    # instead of 5,548.
+    # ephemerides at every frame's epoch, it recovers 7 real moving objects
+    # in the six local sets — 6 known ones plus the unknown object later
+    # reported to IASC from XY54_p10 (NHU0001) — against 3 for the original
+    # threshold=8.0 raw-frame run, with 95 tracklets to vet instead of
+    # 5,548. max_residual applies to tracklets missing a frame only (see
+    # run_pipeline); examples/injection_test.jl measures completeness.
     candidates = run_pipeline(paths; threshold=6.0, match_radius=MATCH_RADIUS, max_speed=MAX_SPEED,
                               mask_fill_values=true, refine_astrometry=true, difference_stack=true,
-                              min_sharpness=0.3, min_speed=MIN_SPEED, max_flux_ratio=2.5, min_frames=3)
-    summarize(basename(set_dir), candidates)
+                              min_sharpness=0.3, min_speed=MIN_SPEED, max_flux_ratio=2.5, max_residual=1.0, min_frames=3)
+    known_ids = summarize(basename(set_dir), candidates)
+    report_candidates(set_dir, paths, candidates, known_ids)
 end

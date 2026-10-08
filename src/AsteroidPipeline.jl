@@ -16,6 +16,7 @@ using FFTW
 using LsqFit
 using Distributed
 using Dates: DateTime, datetime2julian
+using Random: AbstractRNG, default_rng
 
 include("detection.jl")
 include("linking.jl")
@@ -26,6 +27,7 @@ include("platesolve.jl")
 include("crossmatch.jl")
 include("astrometric_refinement.jl")
 include("calibrated_photometry.jl")
+include("injection.jl")
 include("reference.jl")
 include("psf.jl")
 include("zogy.jl")
@@ -41,6 +43,7 @@ export detect_sources, fill_value_mask, link_candidates, load_wcs, pix_to_sky,
        recover_rotation_period, plate_solve, search_field, find_variable_sources,
        variability_chi2, photometric_scale, ades_psv, mpc80_report, julian_date_to_iso8601,
        digest2_score, link_across_nights, gaia_reference_stars, refine_wcs, stack_difference,
-       aperture_flux, photometric_zeropoint, candidate_magnitudes, frame_epoch
+       aperture_flux, photometric_zeropoint, candidate_magnitudes, frame_epoch,
+       inject_movers, injection_recovery
 
 end # module AsteroidPipeline
