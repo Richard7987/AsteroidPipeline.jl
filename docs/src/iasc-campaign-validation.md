@@ -271,6 +271,10 @@ it in every frame, at the ephemeris's own rate to 0.1"/h.
 
 ¹ With the dithered-linking fix already applied; before it, the original
 configuration found neither (117 tracklets).
+
+These columns are the configuration as of that check; it has since been
+improved to 7 real objects with 95 tracklets — see
+[Completeness, measured by injecting synthetic asteroids](@ref).
 ² The evaluation also credits it with 4311 T-1, but that tracklet is the
 static star the asteroid passes over (its 12" radius, sized for the
 header WCS's error, lets a star near the middle of the track count).
@@ -281,3 +285,86 @@ of this re-check missed them too — its scoring loop was written
 `for name in names, id in ids ... break`, and in Julia that `break`
 leaves *both* loops, so it stopped looking after the first object found
 per set.
+
+## Reports, epochs, photometry and completeness
+
+### The pipeline's own MPC report, checked against Astrometrica's
+
+`examples/iasc_demo.jl` now writes an 80-column MPC report for every
+candidate that isn't a confirmed known object, with Gaia-calibrated
+magnitudes ([`candidate_magnitudes`](@ref): each frame's WCS refined and
+zero point fitted against Gaia DR3 — 23-27 stars per `XY54_p10` frame,
+0.02-0.05 mag scatter), and compares it line by line with an
+Astrometrica report of the same set when one is present. The first
+comparison failed outright — no pipeline measurement at any of
+Astrometrica's four epochs — and found two epoch errors:
+
+- PS1's `MJD-OBS` is the shutter time in **TAI**: 37 s after
+  `DATE-OBS`, "UTC start of exposure", in every IASC header checked
+  (2019 and 2025), although the same header says `TIMESYS = 'UTC'`.
+- Both PS1 and ZTF stamp the exposure's *start*; MPC reports need its
+  *middle* (22.5 s later on PS1).
+
+[`frame_epoch`](@ref) now reads `DATE-OBS` when present and adds half
+of `EXPTIME`. Re-run, the pipeline's report for NHU0001 matched
+Astrometrica's at all four epochs, **0.13-0.18" apart** in position;
+magnitudes differed by 0.1-0.9 mag (21.4/21.4/21.7/21.8 against
+21.2/21.0/21.6/20.9, at S/N 4-8 per frame). `digest2`, now built and on
+`PATH` (see [MPC digest2 Scoring](@ref)), gives it NEO score 2: a
+main-belt object, consistent with its ~34"/h motion.
+
+### Completeness, measured by injecting synthetic asteroids
+
+Six real moving objects can't trace a completeness curve, so
+[`inject_movers`](@ref) adds synthetic ones to real frames — true sky
+positions through each frame's refined WCS, true brightness through its
+own zero point, the frame's measured PSF, Poisson noise, and the trail a
+moving object leaves during the exposure — and
+[`injection_recovery`](@ref) scores a run against them
+(`examples/injection_test.jl`). On `XY54_p10` (180 main-belt-like
+objects, 18-23 mag, 5-100"/h; 80 fast ones, 100-1000"/h):
+
+| G mag | 18-22 | 22.0-22.5 | 22.5-23 |
+|:--|:--|:--|:--|
+| recovered | ~80% (plateau) | 16% | 0% |
+
+The plateau's missing ~20% is the field itself: detector-cell gaps cover
+~14% of every frame, and bright stars' cores and halos are masked. The
+50% limit is G ≈ 22.1.
+
+Injection found two real weaknesses, both fixed:
+
+- **Fast objects' trails broke into several peaks**, which the cluster
+  filter removed as junk: 300-700"/h objects were recovered 1 time in
+  20. Compact groups are now merged into one detection at the trail's
+  centre; only groups longer than a trail (satellite streaks) are
+  dropped ([`_merge_clusters`](@ref AsteroidPipeline._merge_clusters)).
+- **`link_candidates` only seeded from frames 1 and 2**, even with
+  `min_frames=3`: an object missing from either — in a gap, over a star,
+  or out of the field — could never be linked. Any frame pair now seeds
+  when a frame may be missing.
+
+Fast objects went from 8/80 to 22/80 recovered (44% up to 400"/h);
+above ~500"/h most simply cross the 10' chip within one or two frames.
+The extra seeds also produced more chance 3-frame alignments, so
+partial tracklets must now lie on a straight line to within 1.0 px RMS
+(`max_residual`; real objects measured 0.12-0.31 px, spurious ones a
+median 2.6 px). Complete tracklets are exempt: faint real objects
+reached 1.40 px.
+
+Re-checked against SkyBoT ephemerides on all six sets, the configuration
+in `examples/iasc_demo.jl` now recovers **7 real moving objects** — the
+6 above plus 2008 FA111 (V 20.6, in `XY42_p11`), found for the first
+time — with **95** tracklets to vet across the six sets.
+
+Known limits, measured but not solved: slow objects (5-10"/h, 50%)
+partly subtract themselves, since they overlap their own positions in
+the median of a ~50 min set — only a deeper reference from other nights
+(the ZOGY path) avoids that; and an object passing over a bright star is
+masked out in that frame.
+
+Sub-pixel alignment for [`stack_difference`](@ref) (`subpixel_alignment`
+in [`run_pipeline`](@ref)) was measured the same way — 180 injected
+objects in each of two sets — and is a trade-off, so it is left off:
+it halved spurious tracklets on the star-heavy `XY25_p10` (356 tracklets
+in all to 182) but recovered 5-9% fewer objects.

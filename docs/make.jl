@@ -60,6 +60,7 @@ makedocs(;
             "Variable Stars" => "api/variables.md",
             "Astrometry & Plate-Solving" => "api/astrometry.md",
             "Cross-Matching" => "api/crossmatch.md",
+            "Photometry & Completeness" => "api/photometry-injection.md",
             "Reference & ZOGY Differencing" => "api/reference-zogy.md",
             "Pipeline" => "api/pipeline.md",
             "Rotation Period" => "api/rotation.md",
