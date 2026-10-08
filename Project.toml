@@ -5,6 +5,7 @@ authors = ["Alejandro <ale_bnes@nezzontli.xyz>"]
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 FITSIO = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
@@ -22,6 +23,7 @@ WCS = "15f3aee2-9e10-537f-b834-a6fb8bdb944d"
 
 [compat]
 CSV = "0.10.16"
+Dates = "1.11.0"
 Distributed = "1.11.0"
 FFTW = "1.10.0"
 FITSIO = "0.17.5"

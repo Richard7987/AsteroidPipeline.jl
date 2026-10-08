@@ -895,10 +895,10 @@ end
                     raw[i, j] += 600.0 * exp(-((i - xk)^2 + (j - yk)^2) / (2 * 1.8^2))
                 end
                 header = FITSHeader(
-                    ["MJD-OBS", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2", "CTYPE1", "CTYPE2"],
-                    Any[mjd0 + (k - 1) * 1e-2, truth.crpix[1] + dx, truth.crpix[2] + dy, crval[1], crval[2],
+                    ["MJD-OBS", "EXPTIME", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2", "CTYPE1", "CTYPE2"],
+                    Any[mjd0 + (k - 1) * 1e-2, 60.0, truth.crpix[1] + dx, truth.crpix[2] + dy, crval[1], crval[2],
                         cdelt[1], cdelt[2], "RA---TAN", "DEC--TAN"],
-                    fill("", 9))
+                    fill("", 10))
                 path = joinpath(dir, "frame$k.fits")
                 FITS(f -> write(f, raw; header=header), path, "w")
                 push!(paths, path)
@@ -910,7 +910,11 @@ end
             for row in candidates
                 ra, dec = pix_to_world(truth, collect(track[row.frame]))
                 @test hypot((row.ra - ra) * cosd(dec), row.dec - dec) * 3600 < 0.5
+                # epochs are mid-exposure (EXPTIME=60 s -> +30 s), as MPC reports need
+                @test row.epoch ≈ mjd0 + (row.frame - 1) * 1e-2 + 30 / 86400 + 2400000.5 atol=1e-7
             end
+            starts = run_pipeline(paths; threshold=5.0, match_radius=3.0, exptime_key=nothing)
+            @test first(starts).epoch ≈ first(candidates).epoch - 30 / 86400 atol=1e-7
         end
     end
 
@@ -1104,6 +1108,21 @@ end
             e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
             @test_skip "network unavailable"
         end
+    end
+
+    @testset "frame_epoch" begin
+        # Pan-STARRS1-shaped header: DATE-OBS is UTC, MJD-OBS the same instant in TAI (+37 s)
+        utc_start = 2460934.5 + (10 * 3600 + 1 * 60 + 53.966548) / 86400     # 2025-09-16T10:01:53.966548
+        h = FITSHeader(["DATE-OBS", "MJD-OBS", "EXPTIME"],
+                       Any["2025-09-16T10:01:53.966548", utc_start - 2400000.5 + 37 / 86400, 45.0],
+                       fill("", 3))
+        @test frame_epoch(h) ≈ utc_start + 22.5 / 86400 atol=1e-8        # DATE-OBS, mid-exposure
+        @test frame_epoch(h; exptime_key=nothing) ≈ utc_start atol=1e-8
+        @test frame_epoch(h; timestamp_key="MJD-OBS") ≈ utc_start + (37 + 22.5) / 86400 atol=1e-8
+        no_date = FITSHeader(["MJD-OBS"], Any[60000.25], [""])
+        @test frame_epoch(no_date) ≈ 2460000.75                           # falls back to MJD-OBS
+        @test frame_epoch(FITSHeader(["DATE-OBS"], Any["2020-01-01"], [""]); exptime_key=nothing) ≈ 2458849.5
+        @test_throws ArgumentError frame_epoch(FITSHeader(["DATE-OBS"], Any["yesterday"], [""]))
     end
 
     @testset "crossmatch_catalog" begin
@@ -1331,6 +1350,18 @@ end
         @test strip(line1[6:12]) == uppercase(string(1; base=36))  # temp designation from id=1
         @test line1[15] == 'C'                                     # note2 default (CCD)
         @test line1[78:80] == "I41"
+        @test line1[66:71] == " "^6                               # no mag column -> blank
+
+        # with magnitudes: one decimal in 66-70, band in 71, exactly as
+        # IASC's Astrometrica reports write them ("21.2 G")
+        with_mag = Table(candidates; mag=[21.2345, NaN, 19.0])
+        mlines = split(chomp(mpc80_report(with_mag, "F51")), "\n")
+        @test all(l -> length(l) == 80, mlines)
+        @test mlines[1][66:71] == "21.2 G"
+        @test mlines[2][66:71] == " "^6                            # NaN -> blank
+        @test mlines[3][66:71] == "19.0 G"
+        @test split(chomp(mpc80_report(with_mag, "F51"; band='V')), "\n")[1][71] == 'V'
+        @test mlines[1][1:65] == split(chomp(mpc80_report(candidates, "F51")), "\n")[1][1:65]
 
         # date/RA/Dec: parse the formatted fields back to numbers and
         # compare against the input, within the format's own precision

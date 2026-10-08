@@ -197,7 +197,10 @@ function _fit_tan(matches, crval, clip_sigma::Real)
         all_std = [_gnomonic(p[3], p[4], crval) for p in matches]
         resid = hypot.(all_X * a .- first.(all_std), all_X * b .- last.(all_std)) .* 3600
         rms = sqrt(mean(resid[keep] .^ 2))
-        new_keep = resid .<= max(clip_sigma * rms, 1e-3)
+        # Monotone: a rejected match never comes back, so each pass drops at
+        # least one or stops. Re-admitting them could oscillate forever on
+        # near-noiseless data, where residuals sit right at the threshold.
+        new_keep = keep .& (resid .<= max(clip_sigma * rms, 1e-3))
         (new_keep == keep || count(new_keep) < 3) && break
         keep = new_keep
     end

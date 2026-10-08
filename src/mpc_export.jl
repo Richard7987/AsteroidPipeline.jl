@@ -185,7 +185,8 @@ end
 
 """
     mpc80_report(candidates, station::AbstractString; note1::AbstractChar=' ',
-                 note2::AbstractChar='C', trksub_prefix::AbstractString="") -> String
+                 note2::AbstractChar='C', trksub_prefix::AbstractString="",
+                 band::AbstractChar='G') -> String
 
 Format `candidates` (an [`astrometric_calibrate`](@ref) table, same
 shape [`ades_psv`](@ref) takes) as the legacy MPC1992 fixed-width
@@ -211,13 +212,18 @@ field this shares a slot with doesn't get the eighth column ADES adds).
 Built the same way as `ades_psv`'s `trkSub`: each tracklet's own `id`,
 base-36 encoded and optionally prefixed via `trksub_prefix`.
 
-Three real gaps, same as `ades_psv`'s (deliberately not guessed at):
-no discovery asterisk (column 13 always blank — this pipeline doesn't
-track which observation of a tracklet was reported first), no
-magnitude/band (columns 66-71 always blank — no photometric zeropoint
-is calibrated against a reference catalog; a submission without
-magnitudes is valid, same as for ADES), and `note1`/`note2` are fixed
-per call rather than derived per detection. `note2` defaults to `'C'`
+Magnitudes: if `candidates` has a `mag` column (e.g. added from
+[`candidate_magnitudes`](@ref): `Table(candidates; mag=mags)`), each
+finite value is written to columns 66-70 with one decimal — the
+precision IASC's own Astrometrica reports use, `"21.2 "` — and `band`
+(default `'G'`, the Gaia-calibrated band `candidate_magnitudes` gives)
+to column 71; a missing or `NaN` magnitude leaves both blank, which the
+format allows.
+
+Two real gaps remain (deliberately not guessed at): no discovery
+asterisk (column 13 always blank — this pipeline doesn't track which
+observation of a tracklet was reported first), and `note1`/`note2` are
+fixed per call rather than derived per detection. `note2` defaults to `'C'`
 (CCD), matching how ZTF (and most modern digital-sensor surveys)
 report; see the MPC spec for the full note2 code table if submitting
 from a different observing mode.
@@ -228,7 +234,8 @@ point, same granularity as `ades_psv`. Returns the report content as a
 (e.g. `write("submission.txt", mpc80_report(candidates, "I41"))`).
 """
 function mpc80_report(candidates, station::AbstractString; note1::AbstractChar=' ',
-                       note2::AbstractChar='C', trksub_prefix::AbstractString="")
+                       note2::AbstractChar='C', trksub_prefix::AbstractString="",
+                       band::AbstractChar='G')
     length(station) == 3 || throw(ArgumentError("station must be a 3-character MPC observatory code"))
 
     lines = String[]
@@ -239,10 +246,17 @@ function mpc80_report(candidates, station::AbstractString; note1::AbstractChar='
 
         line = " "^5 * rpad(trksub, 7) * ' ' * note1 * note2 *
                _mpc_date(row.epoch) * _mpc_ra(row.ra) * _mpc_dec(row.dec) *
-               " "^9 * " "^6 * " "^6 * station
+               " "^9 * _mpc_mag(row, band) * " "^6 * station
         @assert length(line) == 80
         push!(lines, line)
     end
 
     return join(lines, "\n") * "\n"
+end
+
+# Columns 66-71: magnitude to one decimal, left-justified in 66-70, then
+# the band — or six blanks when the row has no finite `mag`.
+function _mpc_mag(row, band::AbstractChar)
+    hasproperty(row, :mag) && isfinite(row.mag) || return " "^6
+    return rpad(@sprintf("%.1f", row.mag), 5) * band
 end

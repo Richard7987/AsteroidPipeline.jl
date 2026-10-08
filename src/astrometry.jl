@@ -121,3 +121,42 @@ function _has_fits_card(header::AbstractString, keywords)
     ncards = length(header) ÷ 80
     return any(i -> any(k -> startswith(header[80(i-1)+1:80i], k), keywords), 1:ncards)
 end
+
+"""
+    frame_epoch(header::FITSHeader; timestamp_key=nothing, exptime_key="EXPTIME") -> Float64
+
+A frame's observation epoch as a UTC Julian Date at **mid-exposure** — what
+MPC reports require, and what Astrometrica writes into IASC reports.
+
+`timestamp_key` names the header keyword holding the time: a number is read
+as a Modified Julian Date, a string as an ISO-8601 date-time (fractional
+seconds kept). Left `nothing`, it is `DATE-OBS` when the header has one, else
+`MJD-OBS`. That default matters for Pan-STARRS1: its `MJD-OBS` is the shutter
+time in **TAI**, not UTC — 37 s later than `DATE-OBS` ("UTC start of
+exposure") in every real IASC header checked, 2019 and 2025 alike, despite
+the same header's `TIMESYS = 'UTC'` (its `SHUTOPEN` card, labelled TAI, is
+the same instant as `MJD-OBS`). Reading `MJD-OBS` put every epoch 37 s late —
+caught by comparing this pipeline's MPC report for a real object with
+Astrometrica's. ZTF's `OBSMJD` is UTC; pass it explicitly as
+`timestamp_key="OBSMJD"` there.
+
+If the header has `exptime_key` (seconds), half of it is added: both surveys
+stamp the *start* of the exposure. `exptime_key=nothing` skips that, for a
+timestamp that already marks mid-exposure.
+"""
+function frame_epoch(header::FITSHeader; timestamp_key::Union{Nothing,AbstractString}=nothing,
+                     exptime_key::Union{Nothing,AbstractString}="EXPTIME")
+    key = timestamp_key === nothing ? (haskey(header, "DATE-OBS") ? "DATE-OBS" : "MJD-OBS") : timestamp_key
+    value = header[key]
+    jd = if value isa AbstractString
+        m = match(r"^(\d{4}-\d\d-\d\d(?:T\d\d:\d\d:\d\d)?)(\.\d+)?", strip(value))
+        m === nothing && throw(ArgumentError("$key = $(repr(value)) is not an ISO-8601 date-time"))
+        datetime2julian(DateTime(m[1])) + (m[2] === nothing ? 0.0 : parse(Float64, m[2])) / 86400
+    else
+        Float64(value) + 2400000.5
+    end
+    if exptime_key !== nothing && haskey(header, exptime_key)
+        jd += header[exptime_key] / 2 / 86400
+    end
+    return jd
+end

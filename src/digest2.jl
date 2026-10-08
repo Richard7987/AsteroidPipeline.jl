@@ -16,8 +16,10 @@ anything trained or guessed at here.
 build it yourself (`make` in its `digest2/` directory; see
 [MPC digest2 Scoring](@ref) for exact steps) and either put the
 resulting `digest2` executable on `PATH` or pass its path via
-`digest2_path`. `config_dir` defaults to `dirname(digest2_path)` (its own
-documented "same directory as the executable" layout) and must contain
+`digest2_path`. `config_dir` defaults to the directory of the *real*
+executable — symlinks resolved, so a link on `PATH` (say `~/.local/bin`)
+to a build tree still finds that tree's files: `digest2`'s own documented
+"same directory as the executable" layout — and must contain
 `digest2.model.csv`, `digest2.obscodes`, and an `MPC.config` — all three
 ship with the `digest2` repository itself and are used unmodified here
 (this pipeline supplies none of its own: `digest2`'s upstream `MPC.config`
@@ -92,7 +94,7 @@ function digest2_score(candidates, station::AbstractString;
     resolved === nothing && throw(ArgumentError(
         "digest2 executable not found at or on PATH as \"$digest2_path\" — build it " *
         "from https://github.com/Smithsonian/digest2 and pass its path via digest2_path"))
-    dir = config_dir === nothing ? dirname(abspath(resolved)) : config_dir
+    dir = config_dir === nothing ? dirname(realpath(resolved)) : config_dir
 
     sorted = sort(candidates; by=row -> (row.id, row.epoch))
     input = mpc80_report(sorted, station; trksub_prefix=trksub_prefix)

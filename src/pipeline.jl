@@ -1,6 +1,6 @@
 """
     run_pipeline(fits_paths::AbstractVector{<:AbstractString};
-                 timestamp_key::AbstractString="MJD-OBS",
+                 timestamp_key::Union{Nothing,AbstractString}=nothing,
                  threshold::Real=5.0, box_size::NTuple{2,<:Integer}=(5, 5),
                  aperture_radius::Real=3.0, max_speed::Real=Inf,
                  match_radius::Real=2.0, min_frames::Union{Nothing,Integer}=nothing,
@@ -9,7 +9,8 @@
                  photometric_outlier_threshold::Real=0.2,
                  mask_fill_values::Bool=false, difference_stack::Bool=false,
                  refine_astrometry::Bool=false, reference_stars=nothing,
-                 min_speed::Real=0.0, max_flux_ratio::Real=Inf, min_sharpness::Real=-Inf)
+                 min_speed::Real=0.0, max_flux_ratio::Real=Inf, min_sharpness::Real=-Inf,
+                 exptime_key::Union{Nothing,AbstractString}="EXPTIME")
 
 Run the local stages of the pipeline — detection, linking, and
 astrometric calibration — on a time-ordered sequence of FITS frames from
@@ -17,8 +18,12 @@ the same field.
 
 For each frame: the primary image is read; the primary header supplies the
 WCS solution (via [`load_wcs`](@ref)) and the observation epoch, taken
-from the `timestamp_key` keyword as a Modified Julian Date and converted
-to Julian Date. Detections are then linked across frames with
+as a UTC Julian Date at mid-exposure, by [`frame_epoch`](@ref) with this
+call's `timestamp_key` and `exptime_key` — see it for why the default
+reads PS1's `DATE-OBS` rather than its `MJD-OBS` (TAI, 37 s off), and why
+half the exposure time is added (both surveys stamp the start; on a real
+IASC set that left every epoch 22.5 s early against Astrometrica's report
+of the same object). Detections are then linked across frames with
 [`link_candidates`](@ref) and calibrated to sky coordinates with
 [`astrometric_calibrate`](@ref).
 
@@ -158,7 +163,7 @@ Returns the candidate table from `astrometric_calibrate` (columns `id`,
 it requires network access and a choice of catalog and radius.
 """
 function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
-                       timestamp_key::AbstractString="MJD-OBS",
+                       timestamp_key::Union{Nothing,AbstractString}=nothing,
                        threshold::Real=5.0, box_size::NTuple{2,<:Integer}=(5, 5),
                        aperture_radius::Real=3.0, max_speed::Real=Inf,
                        match_radius::Real=2.0, min_frames::Union{Nothing,Integer}=nothing,
@@ -167,12 +172,13 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        photometric_outlier_threshold::Real=0.2,
                        mask_fill_values::Bool=false, difference_stack::Bool=false,
                        refine_astrometry::Bool=false, reference_stars=nothing,
-                       min_speed::Real=0.0, max_flux_ratio::Real=Inf, min_sharpness::Real=-Inf)
+                       min_speed::Real=0.0, max_flux_ratio::Real=Inf, min_sharpness::Real=-Inf,
+                       exptime_key::Union{Nothing,AbstractString}="EXPTIME")
     detections_per_frame, wcs_per_frame, timestamps, n_gated = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
         reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
         photometric_outlier_threshold, mask_fill_values, difference_stack,
-        refine_astrometry, reference_stars, min_sharpness)
+        refine_astrometry, reference_stars, min_sharpness, exptime_key)
 
     effective_min_frames = min_frames === nothing ? length(fits_paths) - n_gated : min_frames
     tracklets = link_candidates(detections_per_frame, timestamps;
@@ -215,7 +221,7 @@ didn't measurably change this function's own real-data timing; see
 [Design refinements](https://richard7987.github.io/AsteroidPipeline.jl/dev/design-refinements).
 """
 function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
-                             timestamp_key::AbstractString="MJD-OBS",
+                             timestamp_key::Union{Nothing,AbstractString}=nothing,
                              threshold::Real=5.0, box_size::NTuple{2,<:Integer}=(5, 5),
                              aperture_radius::Real=3.0,
                              reference=nothing, psf_threshold::Real=20.0, psf_min_separation::Real=40.0,
@@ -223,7 +229,8 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              photometric_outlier_threshold::Real=0.2,
                              mask_fill_values::Bool=false, difference_stack::Bool=false,
                              refine_astrometry::Bool=false, reference_stars=nothing,
-                             min_sharpness::Real=-Inf)
+                             min_sharpness::Real=-Inf,
+                             exptime_key::Union{Nothing,AbstractString}="EXPTIME")
     reference === nothing || !(mask_fill_values || difference_stack || refine_astrometry) ||
         throw(ArgumentError("mask_fill_values, difference_stack and refine_astrometry apply only " *
                             "without `reference` (the ZOGY path has its own registration and masks)"))
@@ -260,8 +267,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
             end
             gain = haskey(read_header(hdu), "GAIN") ? read_key(hdu, "GAIN")[1] : 1.0
 
-            mjd = read_key(hdu, timestamp_key)[1]
-            push!(timestamps, mjd + 2400000.5)
+            push!(timestamps, frame_epoch(read_header(hdu); timestamp_key, exptime_key))
 
             if reference === nothing
                 image = permutedims(raw)
@@ -401,7 +407,7 @@ return for the same arguments; `variables` is ready for
 remains the right entry point when only movers are needed.
 """
 function search_field(fits_paths::AbstractVector{<:AbstractString};
-                       timestamp_key::AbstractString="MJD-OBS",
+                       timestamp_key::Union{Nothing,AbstractString}=nothing,
                        threshold::Real=5.0, box_size::NTuple{2,<:Integer}=(5, 5),
                        aperture_radius::Real=3.0, max_speed::Real=Inf,
                        match_radius::Real=2.0, min_frames::Union{Nothing,Integer}=nothing,
