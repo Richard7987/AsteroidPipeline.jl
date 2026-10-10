@@ -1277,6 +1277,32 @@ end
         end
     end
 
+    @testset "detector-fixed and bright-background filters; set_quality" begin
+        P = AsteroidPipeline
+        det(xs, ys) = Table(x=round.(Int, xs), y=round.(Int, ys), peak=fill(10.0, length(xs)), flux=fill(100.0, length(xs)),
+                            flux_err=fill(5.0, length(xs)), xcen=Float64.(xs), ycen=Float64.(ys), sharpness=fill(0.6, length(xs)))
+        # a hot pixel at (40, 40) in every frame's own grid; a mover elsewhere
+        frames = [det([40.0, 100.0 + 10k], [40.0, 60.0]) for k in 1:4]
+        kept = P._drop_detector_fixed(frames, 2.0)
+        @test all(f -> !any(d -> d.xcen == 40.0, f), kept)
+        @test all(length.(kept) .== 1)
+        # only twice: could be chance, kept
+        twice = [det([40.0], [40.0]), det([40.0], [40.0]), det([70.0], [70.0]), det([90.0], [90.0])]
+        @test length.(P._drop_detector_fixed(twice, 2.0)) == [1, 1, 1, 1]
+
+        Random.seed!(16)
+        img = 100.0 .+ 5.0 .* randn(120, 120)
+        for i in 1:120, j in 1:120                       # a bright star's halo around (90, 90)
+            img[i, j] += 400.0 * exp(-hypot(i - 90, j - 90) / 15)
+        end
+        d = det([30.0, 85.0], [30.0, 85.0])               # clean sky; inside the halo
+        @test [x for x in P._drop_on_bright_background(d, img, nothing, 1.0).xcen] == [30.0]
+        @test length(P._drop_on_bright_background(d, img, nothing, Inf)) == 2
+
+        @test P._check_frame_quality("ok.fits", 900, 170) < 30
+        @test (@test_logs (:warn,) P._check_frame_quality("bad.fits", 160_000, 170)) > 30
+    end
+
     @testset "crossmatch_catalog" begin
         @test_throws ArgumentError crossmatch_catalog([], :unknown_catalog; radius=5.0)
 
