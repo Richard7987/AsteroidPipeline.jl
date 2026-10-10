@@ -75,8 +75,11 @@ const MIN_SPEED = 3.0 / PS1_ARCSEC_PER_PIXEL * 24
 
 isdir(DATA_DIR) || error("no $DATA_DIR — place your own IASC practice FITS sets there first " *
                           "(one subdirectory per set, e.g. data/real/iasc/XY25_p10/*.fits)")
-sets = sort(filter(isdir, readdir(DATA_DIR, join=true)))
+# All set subdirectories by default, or just the ones named on the command
+# line: julia --project=. examples/iasc_demo.jl XY72_p01 XY73_p00
+sets = isempty(ARGS) ? sort(filter(isdir, readdir(DATA_DIR, join=true))) : joinpath.(DATA_DIR, ARGS)
 isempty(sets) && error("no set subdirectories found in $DATA_DIR")
+foreach(s -> isdir(s) || error("no set directory $s"), sets)
 
 const CLEANED_DIR = joinpath(@__DIR__, "..", "data", "real", "iasc_cleaned")
 
@@ -122,15 +125,27 @@ end
 # geocentric, put a nearby Mars-crosser (2018 LT) ~15" off its real track.
 const MIN_CONFIRMING_FRAMES = 3
 
+# The MPC's own current orbits, as Astrometrica uses them: a recently
+# re-linked object (2019 UA185 on a 2026-10-04 set) can be degrees off in
+# SkyBoT. Two-body propagation from MPCORB's epoch is only good for recent
+# data, so both catalogues are checked. Set MPCORB_DAT to use another copy.
+const MPCORB_PATH = get(ENV, "MPCORB_DAT",
+                        joinpath(homedir(), ".wine-astrometrica", "drive_c", "Astrometrica", "Catalogs", "MPCORB.DAT"))
+const MPCORB = isfile(MPCORB_PATH) ? read_mpcorb(MPCORB_PATH) : nothing
+
 function summarize(label, candidates)
     n_tracklets = length(unique(candidates.id))
     println("-- $label: $n_tracklets tracklet(s) from $(length(candidates)) detections --")
     n_tracklets == 0 && return Set{Int}()
 
-    matches = crossmatch_catalog(collect(candidates), :skybot; radius=5.0, observatory="F51")
+    rows = collect(candidates)
     frames_matched = Dict{Tuple{Int,String},Int}()
-    for m in matches
-        frames_matched[(m.id, m.name)] = get(frames_matched, (m.id, m.name), 0) + 1
+    sources = [("SkyBoT", crossmatch_catalog(rows, :skybot; radius=5.0, observatory="F51"))]
+    MPCORB === nothing ||
+        push!(sources, ("MPCORB", crossmatch_catalog(rows, :mpcorb; radius=15.0, mpcorb=MPCORB, observatory="F51")))
+    for (src, matches) in sources, m in matches
+        key = (m.id, "$(m.name) [$src]")
+        frames_matched[key] = get(frames_matched, key, 0) + 1
     end
     known = Set{String}()
     known_ids = Set{Int}()
@@ -140,7 +155,7 @@ function summarize(label, candidates)
         push!(known_ids, id)
         println("  id=$id: $name, followed in $n frame(s)")
     end
-    println("  $(length(known)) known object(s) confirmed frame by frame; the other tracklets ",
+    println("  $(length(known_ids)) tracklet(s) confirmed as known objects, frame by frame; the other tracklets ",
             "are candidates for human vetting (measure them in Astrometrica before reporting).")
     return known_ids
 end
@@ -219,7 +234,16 @@ for set_dir in sets
     # run_pipeline); examples/injection_test.jl measures completeness.
     candidates = run_pipeline(paths; threshold=6.0, match_radius=MATCH_RADIUS, max_speed=MAX_SPEED,
                               mask_fill_values=true, refine_astrometry=true, difference_stack=true,
-                              min_sharpness=0.3, min_speed=MIN_SPEED, max_flux_ratio=2.5, max_residual=1.0, min_frames=3)
+                              min_sharpness=0.3, min_speed=MIN_SPEED, max_flux_ratio=2.5, max_residual=1.0, min_frames=3,
+                              max_background_excess=1.0, detector_artifact_radius=2.0)
     known_ids = summarize(basename(set_dir), candidates)
-    report_candidates(set_dir, paths, candidates, known_ids)
+    # A set full of detector defects (a real 2026-10-04 set, XY73_p00, gave 26
+    # spurious tracklets) gets no candidate report: say so instead.
+    quality = set_quality(paths)
+    if quality.reliable
+        report_candidates(set_dir, paths, candidates, known_ids)
+    else
+        println("  SET UNRELIABLE: up to $(round(Int, maximum(quality.ratios))) sources per reference star ",
+                "(detector defects?) — no candidate report written; check this set by eye in Astrometrica.")
+    end
 end
