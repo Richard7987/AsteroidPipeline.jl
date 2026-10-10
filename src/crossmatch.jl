@@ -10,7 +10,7 @@ const _CDS_BATCH_SIZE = 50
 
 """
     crossmatch_catalog(candidates, catalog::Symbol; radius::Real,
-                       observatory::Union{Nothing,AbstractString}=nothing)
+                       observatory::Union{Nothing,AbstractString}=nothing, mpcorb=nothing)
 
 Cross-match candidate tracklets against a known-object catalog
 (`:skybot`, `:vsx`, or `:simbad`) within `radius` arcseconds, to separate
@@ -46,7 +46,12 @@ what each catalog actually offers, but both always include `id`, `ra`,
 `dec`, and `distance_arcsec`. Candidate `id`s absent from the returned
 table have no known counterpart in `catalog`.
 
-For `:skybot`, `observatory` (a 3-character MPC observatory code, e.g.
+`:mpcorb` matches against the Minor Planet Center's own orbits in an
+`MPCORB.DAT` file (`mpcorb`: its path, or [`read_mpcorb`](@ref)'s result),
+propagated to each row's epoch — see [`_crossmatch_mpcorb`](@ref) for why
+that is needed beside SkyBoT. It returns the same columns as `:skybot`.
+
+For `:skybot` and `:mpcorb`, `observatory` (a 3-character MPC observatory code, e.g.
 `"F51"` for Pan-STARRS1, `"I41"` for ZTF) makes SkyBoT compute each
 ephemeris for that site instead of the Earth's centre. Leave it unset only
 for distant objects: parallax moves a nearby one by many arcseconds — on
@@ -61,19 +66,22 @@ sets, 7 of 9 "recoveries" counted that way were static stars that
 happened to lie within 15" of a known asteroid at one epoch.
 """
 function crossmatch_catalog(candidates, catalog::Symbol; radius::Real,
-                            observatory::Union{Nothing,AbstractString}=nothing)
-    observatory === nothing || catalog === :skybot ||
-        throw(ArgumentError("observatory only applies to :skybot"))
+                            observatory::Union{Nothing,AbstractString}=nothing, mpcorb=nothing)
+    observatory === nothing || catalog in (:skybot, :mpcorb) ||
+        throw(ArgumentError("observatory only applies to :skybot and :mpcorb"))
     observatory === nothing || length(observatory) == 3 ||
         throw(ArgumentError("observatory must be a 3-character MPC observatory code"))
     if catalog === :skybot
         return _crossmatch_skybot(candidates, radius; observatory)
+    elseif catalog === :mpcorb
+        mpcorb === nothing && throw(ArgumentError(":mpcorb needs `mpcorb`, a path to MPCORB.DAT or read_mpcorb's result"))
+        return _crossmatch_mpcorb(candidates, radius; mpcorb, observatory)
     elseif catalog === :simbad
         return _crossmatch_simbad(candidates, radius)
     elseif catalog === :vsx
         return _crossmatch_vsx(candidates, radius)
     else
-        throw(ArgumentError("unknown catalog $(repr(catalog)); expected :skybot, :vsx, or :simbad"))
+        throw(ArgumentError("unknown catalog $(repr(catalog)); expected :skybot, :mpcorb, :vsx, or :simbad"))
     end
 end
 

@@ -8,6 +8,7 @@ using Test
 using Statistics
 using Reproject
 using Distributed
+using Dates: DateTime, datetime2julian
 
 # Loads .env (repo root, gitignored) into ENV for local test runs — e.g.
 # ASTROMETRY_API_KEY, which enables the live plate_solve round-trip test
@@ -1227,6 +1228,52 @@ end
             end
             # a run that finds nothing recovers nothing
             @test !any(injection_recovery(candidates[candidates.id .== -1], truth).recovered)
+        end
+    end
+
+    @testset "MPCORB orbits and :mpcorb crossmatch" begin
+        P = AsteroidPipeline
+        @test P._unpack_mpc_epoch("K2669") ≈ datetime2julian(DateTime(2026, 6, 9))
+        @test P._unpack_mpc_epoch("J9611") ≈ datetime2julian(DateTime(1996, 1, 1))
+        @test P._unpack_mpc_epoch("K26A1") ≈ datetime2julian(DateTime(2026, 10, 1))
+        @test P._unpack_mpc_epoch("X2669") === nothing
+
+        # a circular, ecliptic, 1 AU orbit: starts on the x axis, a quarter
+        # period later sits on the ecliptic y axis (tilted into equatorial)
+        circ = (packed="T", name="T", H=10.0, G=0.15, epoch=2451545.0, M=0.0, peri=0.0, node=0.0,
+                incl=0.0, e=0.0, a=1.0, n=0.9856076686)
+        @test all(isapprox.(P._heliocentric_equatorial(circ, 2451545.0), (1.0, 0.0, 0.0); atol=1e-9))
+        ε = deg2rad(P._OBLIQUITY_J2000)
+        q = P._heliocentric_equatorial(circ, 2451545.0 + 90 / 0.9856076686)
+        @test all(isapprox.(q, (0.0, cos(ε), sin(ε)); atol=1e-9))
+
+        # a real MPCORB.DAT line (2019 UA185, MPC orbit of 2026-10-04) + header + junk
+        line = "K19UI5A 19.38  0.15 K2669 342.15513  316.67443   41.65155    2.91030  0.1379969  " *
+               "0.27806787   2.3247103  0 E2026-T35    39   7 2005-2026 1.03 M-v 3Ek MPCORBFIT  0000" *
+               "          2019 UA185         20261004"
+        mktempdir() do dir
+            path = joinpath(dir, "MPCORB.DAT")
+            write(path, "MINOR PLANET CENTER ORBIT DATABASE (MPCORB)\n" * "-"^160 * "\n" * line * "\nshort line\n")
+            orbits = read_mpcorb(path)
+            @test length(orbits) == 1
+            o = only(orbits)
+            @test o.name == "2019 UA185" && o.packed == "K19UI5A"
+            @test o.a ≈ 2.3247103 && o.e ≈ 0.1379969 && o.incl ≈ 2.91030 && o.H ≈ 19.38
+            @test_throws ArgumentError crossmatch_catalog([(id=1, ra=0.0, dec=0.0, epoch=2461317.9)], :mpcorb; radius=5.0)
+            try
+                # Astrometrica's measurement of it on a real IASC frame (XY72_p01,
+                # 2026-10-04 10:17:00.6 UTC, mid-exposure): SkyBoT and JPL, on older
+                # orbits, put it degrees away; this orbit, ~4" (two-body from June)
+                ra, dec = 15 * (1 + 35 / 60 + 44.183 / 3600), 7 + 31 / 60 + 33.29 / 3600
+                m = crossmatch_catalog([(id=7, ra=ra, dec=dec, epoch=2461317.928479)], :mpcorb;
+                                       radius=15.0, mpcorb=orbits, observatory="F51")
+                @test only(m).name == "2019 UA185" && only(m).id == 7
+                @test only(m).distance_arcsec < 10
+                @test 19 < only(m).mv < 23
+            catch e
+                e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+                @test_skip "network unavailable"
+            end
         end
     end
 
