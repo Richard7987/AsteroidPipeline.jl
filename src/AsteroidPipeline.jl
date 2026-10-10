@@ -27,6 +27,7 @@ include("platesolve.jl")
 include("crossmatch.jl")
 include("astrometric_refinement.jl")
 include("calibrated_photometry.jl")
+include("mpcorb.jl")
 include("injection.jl")
 include("reference.jl")
 include("psf.jl")
@@ -44,6 +45,6 @@ export detect_sources, fill_value_mask, link_candidates, load_wcs, pix_to_sky,
        variability_chi2, photometric_scale, ades_psv, mpc80_report, julian_date_to_iso8601,
        digest2_score, link_across_nights, gaia_reference_stars, refine_wcs, stack_difference,
        aperture_flux, photometric_zeropoint, candidate_magnitudes, frame_epoch,
-       inject_movers, injection_recovery
+       inject_movers, injection_recovery, read_mpcorb, set_quality
 
 end # module AsteroidPipeline

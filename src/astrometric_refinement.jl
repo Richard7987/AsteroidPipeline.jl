@@ -61,7 +61,7 @@ const _GAIA_ARCHIVE_TAP_URL = "https://gea.esac.esa.int/tap-server/tap/sync"
 """
     refine_wcs(image, wcs, stars; threshold=10.0, mask=nothing, max_offset=60.0,
                match_radius=2.0, min_matches=6, clip_sigma=3.0)
-        -> (wcs, refined, n_matches, rms_arcsec, offset_px)
+        -> (wcs, refined, n_matches, rms_arcsec, offset_px, n_detections)
 
 Re-derive a frame's astrometric solution from reference stars actually
 detected in it, rather than trusting the header's — the same job
@@ -96,13 +96,16 @@ tangent point at `wcs`'s own `crval`), `refined` (`false` if fewer than
 `min_matches` stars matched — `wcs` is then the input, unchanged — so a
 caller can warn instead of failing outright), `n_matches`, `rms_arcsec`
 (the fit's residual RMS; `NaN` if not refined), and `offset_px` (the
-global `(dx, dy)` offset found, detected minus predicted).
+global `(dx, dy)` offset found, detected minus predicted), and `n_detections`
+(sources detected at `threshold` — compared with the catalog's star count it
+flags frames full of detector defects; see [`run_pipeline`](@ref)).
 """
 function refine_wcs(image::AbstractMatrix{<:Real}, wcs::WCSTransform, stars;
                     threshold::Real=10.0, mask::Union{Nothing,AbstractMatrix{Bool}}=nothing,
                     max_offset::Real=60.0, match_radius::Real=2.0,
                     min_matches::Integer=6, clip_sigma::Real=3.0)
-    unrefined(n, offset) = (wcs=wcs, refined=false, n_matches=n, rms_arcsec=NaN, offset_px=offset)
+    unrefined(n, offset) = (wcs=wcs, refined=false, n_matches=n, rms_arcsec=NaN, offset_px=offset,
+                            n_detections=length(detections))
 
     detections = detect_sources(image; threshold, mask)
     det_xy = [(d.xcen, d.ycen) for d in detections]
@@ -123,7 +126,8 @@ function refine_wcs(image::AbstractMatrix{<:Real}, wcs::WCSTransform, stars;
     crval = (wcs.crval[1], wcs.crval[2])
     fit = _fit_tan(matches, crval, clip_sigma)
     fit.n < min_matches && return unrefined(fit.n, offset)
-    return (wcs=fit.wcs, refined=true, n_matches=fit.n, rms_arcsec=fit.rms_arcsec, offset_px=offset)
+    return (wcs=fit.wcs, refined=true, n_matches=fit.n, rms_arcsec=fit.rms_arcsec, offset_px=offset,
+            n_detections=length(detections))
 end
 
 """

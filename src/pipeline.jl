@@ -11,7 +11,8 @@
                  refine_astrometry::Bool=false, reference_stars=nothing,
                  min_speed::Real=0.0, max_flux_ratio::Real=Inf, max_residual::Real=Inf,
                  min_sharpness::Real=-Inf, exptime_key::Union{Nothing,AbstractString}="EXPTIME",
-                 subpixel_alignment::Bool=false)
+                 subpixel_alignment::Bool=false, max_background_excess::Real=Inf,
+                 detector_artifact_radius::Real=0.0)
 
 Run the local stages of the pipeline — detection, linking, and
 astrometric calibration — on a time-ordered sequence of FITS frames from
@@ -125,6 +126,10 @@ frame fall back to [`plate_solve`](@ref) instead of failing outright —
 see its docstring for what that involves (a live network round trip,
 polling until the frame solves or times out).
 
+With `refine_astrometry`, a frame whose detections far outnumber the
+reference stars in its field gets a warning that the set is unreliable
+([`_check_frame_quality`](@ref)).
+
 These options, all off by default and all only on the raw (no-`reference`)
 path, make the pipeline usable on real IASC/Pan-STARRS1 image sets — each
 was needed on a real 2025 IASC practice set (ps1-NewPractice_3, field
@@ -150,6 +155,14 @@ objects and reported positions ~7" off:
   (pixels) filter tracklets after linking, per IASC's own "true signature" tests (see
   [`_filter_tracklets`](@ref)): use `max_flux_ratio=2.5` for IASC's
   1-magnitude limit.
+- `detector_artifact_radius` (pixels; difference path): drop a detection
+  that recurs at the same *detector* pixel, within this radius, in two or
+  more other frames — a hot pixel or bad column moves only with the
+  telescope's dithers (see [`_drop_detector_fixed`](@ref)).
+- `max_background_excess` (σ; difference path): drop a detection whose
+  surroundings in the raw frame sit more than this far above the sky — the
+  halo, ghost or diffraction spike of a bright star (see
+  [`_drop_on_bright_background`](@ref)).
 - `min_sharpness`: drop single-pixel spikes — cosmic rays, hot pixels —
   at detection (see [`detect_sources`](@ref)); `0.3` on IASC data.
 
@@ -176,12 +189,14 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        refine_astrometry::Bool=false, reference_stars=nothing,
                        min_speed::Real=0.0, max_flux_ratio::Real=Inf, max_residual::Real=Inf,
                        min_sharpness::Real=-Inf, exptime_key::Union{Nothing,AbstractString}="EXPTIME",
-                       subpixel_alignment::Bool=false)
+                       subpixel_alignment::Bool=false, max_background_excess::Real=Inf,
+                       detector_artifact_radius::Real=0.0)
     detections_per_frame, wcs_per_frame, timestamps, n_gated = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
         reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
         photometric_outlier_threshold, mask_fill_values, difference_stack,
-        refine_astrometry, reference_stars, min_sharpness, exptime_key, subpixel_alignment)
+        refine_astrometry, reference_stars, min_sharpness, exptime_key, subpixel_alignment,
+        max_background_excess, detector_artifact_radius)
 
     effective_min_frames = min_frames === nothing ? length(fits_paths) - n_gated : min_frames
     tracklets = link_candidates(detections_per_frame, timestamps;
@@ -234,7 +249,8 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              refine_astrometry::Bool=false, reference_stars=nothing,
                              min_sharpness::Real=-Inf,
                              exptime_key::Union{Nothing,AbstractString}="EXPTIME",
-                             subpixel_alignment::Bool=false)
+                             subpixel_alignment::Bool=false, max_background_excess::Real=Inf,
+                             detector_artifact_radius::Real=0.0)
     reference === nothing || !(mask_fill_values || difference_stack || refine_astrometry) ||
         throw(ArgumentError("mask_fill_values, difference_stack and refine_astrometry apply only " *
                             "without `reference` (the ZOGY path has its own registration and masks)"))
@@ -285,6 +301,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                     else
                         @warn "astrometric refinement failed; keeping the header WCS" path n_matches=refined.n_matches
                     end
+                    _check_frame_quality(path, refined.n_detections, length(reference_stars))
                 end
                 push!(wcs_per_frame, frame_wcs)
                 if difference_stack
@@ -344,10 +361,15 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
         # No gain either: a difference image's noise is the frame's and the
         # median's together, and a mover's own shot noise is negligible at
         # the faint end this mode exists for.
-        for (diff, m) in zip(differences, diff_masks)
-            dets = detect_sources(diff; threshold, box_size, aperture_radius, mask=m, min_sharpness)
-            push!(detections_per_frame, _merge_clusters(dets, _CLUSTER_RADIUS, _MAX_TRAIL_EXTENT))
+        per_frame = [_merge_clusters(detect_sources(diff; threshold, box_size, aperture_radius, mask=m, min_sharpness),
+                                     _CLUSTER_RADIUS, _MAX_TRAIL_EXTENT)
+                     for (diff, m) in zip(differences, diff_masks)]
+        detector_artifact_radius > 0 && (per_frame = _drop_detector_fixed(per_frame, detector_artifact_radius))
+        if isfinite(max_background_excess)
+            per_frame = [_drop_on_bright_background(d, img, m, max_background_excess)
+                         for (d, img, m) in zip(per_frame, stacked_images, stacked_masks)]
         end
+        append!(detections_per_frame, per_frame)
     end
 
     if reference === nothing && length(fits_paths) >= 2
@@ -491,3 +513,100 @@ end
 # ~1200"/h trails that far in a 45 s IASC exposure.
 const _CLUSTER_RADIUS = 15.0
 const _MAX_TRAIL_EXTENT = 60.0
+
+"""
+    _drop_detector_fixed(per_frame, radius) -> Vector
+
+Each frame's detections (own pixel grid) minus those with a detection at
+the same pixel, within `radius`, in two or more other frames. A moving
+object can't sit on one detector pixel for three exposures; a hot pixel or
+bad column does, and only seems to move on the sky because the telescope
+dithers between exposures — so the difference images don't cancel it.
+Found on a real IASC set (`XY72_p01`, 2026-10-04): a 4-frame "candidate"
+that stayed within 2 px of detector pixel (1420, 2370) in every frame.
+"""
+function _drop_detector_fixed(per_frame, radius::Real)
+    xy = [[_position(d) for d in dets] for dets in per_frame]
+    return map(enumerate(per_frame)) do (k, dets)
+        keep = map(xy[k]) do p
+            others = count(j -> j != k && any(q -> hypot(q[1] - p[1], q[2] - p[2]) <= radius, xy[j]), eachindex(xy))
+            others < 2
+        end
+        dets[keep]
+    end
+end
+
+"""
+    _drop_on_bright_background(detections, image, mask, max_excess) -> table
+
+`detections` minus those whose surroundings in the raw `image` — the median
+of an 8-20 px annulus, in units of the frame's own sky noise — sit more
+than `max_excess` above the sky. Real moving objects are found on clean
+sky; what a difference image leaves near a very bright star is its halo,
+an optical ghost, or a diffraction spike that turns between exposures, all
+of which can move just plausibly enough to link. On the real IASC sets of
+2026-10-04, two such false candidates (a ghost and a rotating spike) had
+1.7σ and 2.4σ of background around them; 14 real objects -0.07 to +0.12σ,
+and spurious tracklets of other kinds under 0.2σ.
+"""
+function _drop_on_bright_background(detections, image, mask, max_excess::Real)
+    valid = mask === nothing ? vec(image) : image[.!mask]
+    sky = median(valid)
+    σ = 1.4826 * median(abs.(valid .- sky))
+    σ > 0 || return detections
+    n1, n2 = size(image)
+    keep = map(detections) do d
+        x, y = round(Int, d.xcen), round(Int, d.ycen)
+        ring = Float64[]
+        for i in max(1, y - 20):min(n1, y + 20), j in max(1, x - 20):min(n2, x + 20)
+            (mask === nothing || !mask[i, j]) || continue
+            8 <= hypot(i - y, j - x) <= 20 && push!(ring, image[i, j])
+        end
+        isempty(ring) || (median(ring) - sky) / σ <= max_excess
+    end
+    return detections[keep]
+end
+
+"""
+    _check_frame_quality(path, n_detections, n_reference_stars) -> Float64
+
+Warn when a frame holds far more sources at [`refine_wcs`](@ref)'s
+threshold (10σ) than reference stars in its field — the signature of
+defective detector cells (speckled noise, gradients) rather than a crowded
+field. A real IASC set (`XY73_p00`, 2026-10-04) had 20,000-167,000 such
+sources per frame for 169 Gaia stars and produced 26 spurious tracklets,
+where good sets show a few hundred to ~900. Returns the ratio.
+"""
+function _check_frame_quality(path, n_detections::Integer, n_reference_stars::Integer)
+    ratio = n_detections / max(n_reference_stars, 1)
+    ratio > _MAX_DETECTIONS_PER_REFERENCE_STAR &&
+        @warn "frame has far more sources than reference stars: likely detector defects; treat this set's candidates as unreliable" path n_detections n_reference_stars
+    return ratio
+end
+
+const _MAX_DETECTIONS_PER_REFERENCE_STAR = 30
+
+"""
+    set_quality(fits_paths; reference_stars=nothing) -> (reliable, ratios)
+
+Whether a same-field set is clean enough to trust its candidates: each
+frame's count of 10σ sources (fill-value gaps masked) over the number of
+reference stars in its field — Gaia DR3 stars from
+[`gaia_reference_stars`](@ref) if `reference_stars` isn't given (a live
+request). `reliable` is `false` if any frame exceeds
+`_MAX_DETECTIONS_PER_REFERENCE_STAR` (see [`_check_frame_quality`](@ref),
+whose warning [`run_pipeline`](@ref) emits on the same test). A cheap
+check to run before reporting a set's candidates.
+"""
+function set_quality(fits_paths::AbstractVector{<:AbstractString}; reference_stars=nothing)
+    ratios = map(fits_paths) do path
+        image, header, hdr = FITS(path, "r") do f
+            permutedims(Float64.(read(f[1]))), read_header(f[1], String), read_header(f[1])
+        end
+        mask = fill_value_mask(image)
+        reference_stars === nothing &&
+            (reference_stars = _field_reference_stars(image, load_wcs(header), frame_epoch(hdr)))
+        length(detect_sources(image; threshold=10.0, mask)) / max(length(reference_stars), 1)
+    end
+    return (reliable=all(<=(_MAX_DETECTIONS_PER_REFERENCE_STAR), ratios), ratios=ratios)
+end

@@ -368,3 +368,72 @@ in [`run_pipeline`](@ref)) was measured the same way — 180 injected
 objects in each of two sets — and is a trade-off, so it is left off:
 it halved spurious tracklets on the star-heavy `XY25_p10` (356 tracklets
 in all to 182) but recovered 5-9% fewer objects.
+
+## A blind test on four live campaign sets (2026-10-04)
+
+The four sets of the 2026-10-04 delivery (`XY72_p01`, `XY72_p11`,
+`XY73_p00`, `XY73_p01`) were run through the pipeline *before* being
+vetted by hand in Astrometrica. The vetting found no new object in any of
+them, and the pipeline missed nothing real: it linked 9 known asteroids,
+plus one SkyBoT didn't place. But each of its "new" candidates was false,
+for one of four reasons, and four changes now remove all of them.
+
+### A known object SkyBoT didn't know where to find
+
+One candidate in `XY72_p01` turned out to be **2019 UA185**. SkyBoT, and
+JPL's Horizons, placed it far from where it was: both still used an older
+orbit, while the MPC's own orbit file, updated the same day (MPEC
+2026-T35), put it within ~4". Astrometrica, which reads that file
+(`MPCORB.DAT`), identified it at once.
+
+[`crossmatch_catalog`](@ref) now takes `:mpcorb`, with the orbits from
+[`read_mpcorb`](@ref): each orbit is propagated (two-body, with
+light-time) to the candidate's epoch, as seen from the observatory, whose
+position comes from Horizons. A two-body orbit carried months from its
+epoch is only good to arcseconds, and for archival data years away from
+it, not even that — so `examples/iasc_demo.jl` asks *both* SkyBoT (5")
+and `MPCORB.DAT` (15"), and either one identifies an object.
+
+### A hot pixel, linked as a slow mover
+
+Another candidate in `XY72_p01`, a "slow object", was a single hot pixel:
+fixed on the detector, it moved across the sky with the telescope's small
+dithers between exposures, and the linker saw a mover. Real objects
+measured moved ≥32 px on the detector across a set; this one, 0.
+`detector_artifact_radius` (2 px in the demo) drops any detection that
+recurs at the same *detector* pixel in two or more other frames
+([`_drop_detector_fixed`](@ref AsteroidPipeline._drop_detector_fixed)).
+
+### Ghosts and diffraction spikes of bright stars
+
+`XY72_p11` gave a candidate on a bright star's internal reflection (a
+ghost), and `XY73_p01` one on a saturated star's diffraction spikes,
+which rotate with the telescope from frame to frame and so survive the
+difference stack. Both sit on light that a real faint object lacks: the
+median of an 8-20 px annulus around them, in the raw frame, stood 1.72σ
+(ghost) and 2.44σ (spike) above the sky, against −0.07 to 0.12σ for every
+real object measured. `max_background_excess` (1.0σ in the demo) drops
+those ([`_drop_on_bright_background`](@ref AsteroidPipeline._drop_on_bright_background)).
+
+### A set that was not worth reducing
+
+`XY73_p00` gave 26 tracklets, all junk from defective detector cells: in
+its frames, 10σ detections outnumber the Gaia stars of the field
+137-1126 to 1, where on every other set, good or merely difficult, the
+ratio is 0.6-5.4. The astrometric refinement now warns when it exceeds
+30, and [`set_quality`](@ref) tells a script whether to trust a set at
+all; the demo then writes no candidate report for it, and says so.
+
+### Effect
+
+On the four new sets, the demo now writes no false candidate:
+`XY72_p01`, `XY72_p11` and `XY73_p01` end with every tracklet identified
+as a known object (2019 UA185 through `MPCORB.DAT`), and `XY73_p00` is
+reported as unreliable. `XY54_p10`'s NHU0001 is still found.
+
+Re-checked against SkyBoT on all ten sets, the two filters cost no real
+object: 14 known objects recovered with or without them, with 125
+tracklets instead of 133. On injected objects (`XY54_p10`, as above)
+they cost 2 of 180 main-belt objects (110 → 108, both at V 19.5-20.5)
+and none of the 80 fast ones (22 → 22).
+`set_quality` flags none of the nine other sets.
