@@ -1,0 +1,45 @@
+# Variable stars and light curves
+
+The same detections that find moving objects also find sources that stay put
+and change brightness.
+
+## Find variables
+
+```julia
+r = search_field(paths; timestamp_key="OBSMJD", threshold=60.0)
+r.movers        # what run_pipeline would return
+r.variables     # stationary sources whose flux isn't constant
+```
+
+[`find_variable_sources`](@ref) matches sources by position across frames
+and keeps those whose fluxes are inconsistent with a constant one,
+by [`variability_chi2`](@ref) (reduced χ² against the mean, threshold 10).
+
+Every flux measurement has a systematic error the photon noise doesn't
+cover (flat-fielding, PSF changes); without allowing for it, bright stars
+look variable. `systematic_error_fraction` (default 3%) adds it. The default
+was chosen on three real fields, each with a confirmed variable star:
+
+![False-positive rate and the confirmed variables' signal, against the systematic error allowed](../assets/systematic-error-floor-sweep.png)
+
+At 3%, 0.6–2% of constant stars are flagged, and all three real variables
+stay above the threshold; at 5%, none are flagged, but two of the three real
+variables are lost too. Confirm a variable candidate (a catalogue match, a
+period) before trusting it.
+
+## Light curves and periods
+
+For a source at a known position, over a dedicated series of exposures:
+
+```julia
+times, flux, flux_err = light_curve(paths, ra, dec)
+p = recover_rotation_period(times, flux; minimum_period=0.02, maximum_period=1.0)
+p.period, p.false_alarm_probability
+```
+
+[`recover_rotation_period`](@ref) runs a Lomb–Scargle periodogram
+([LombScargle.jl](https://github.com/JuliaAstro/LombScargle.jl)). Bracket the
+periods that make physical sense for the object, and cover more than one
+full period: on real data, a light curve covering a third of a 0.32-day
+period gave a highly significant — and wrong — 0.5-day period
+([Validation: a variable star](../validation/variable-star.md)).

@@ -1,11 +1,7 @@
-# Design refinements
+# Design decisions
 
-Part of this project's [Investigation Log](investigation-log.md) —
-split onto its own page since these aren't bugs found on one specific
-real dataset the way the other pages here are: two are design decisions
-revisited to see if they could be improved without abandoning the choice
-behind them, and the rest are validation/performance investigations that
-don't belong to any single dataset-specific page.
+Design choices revisited after they were first made — what was measured, what
+changed, and what was tried and rejected. Each section stands alone.
 
 ## `estimate_psf`'s empirical-vs-fallback split was a hard binary
 
@@ -225,7 +221,7 @@ more independent real datasets. `systematic_error_fraction`'s default
 moved from 2% to 3% on this evidence; 0% remains achievable only by
 accepting that cost, which is why it isn't the target.
 
-![False-positive rate and each field's own real confirmed variable's reduced chi², swept across systematic_error_fraction, for three independent real ZTF fields](assets/systematic-error-floor-sweep.png)
+![False-positive rate and each field's own real confirmed variable's reduced chi², swept across systematic_error_fraction, for three independent real ZTF fields](../assets/systematic-error-floor-sweep.png)
 
 ## Looking for another `build_reference`-sized win — profiled, and mostly not found
 
@@ -302,8 +298,8 @@ than decided on general reputation:
   nova.astrometry.net dependency) — rejected. `solve-field` isn't in
   nixpkgs, and needs multiple GB of scale-specific index files even
   once built, to replace something that already works.
-- **`digest2` NEO/orbit-class scoring** — built (`digest2_score`, [MPC
-  digest2 Scoring](@ref)). Real verification against real ZTF field 451
+- **`digest2` NEO/orbit-class scoring** — built (`digest2_score`, [Follow-up
+  tools](../guides/follow-up.md)). Real verification against real ZTF field 451
   candidates surfaced a genuinely useful, non-obvious finding: `digest2`
   correctly scored the field's 2 real known objects (Main Belt) low on
   `neo_score`, while 131 of the other 133 tracklets — bogus links of
@@ -312,7 +308,7 @@ than decided on general reputation:
   Not a bug in `digest2_score`; a real lesson about what it can and
   can't tell apart, written up in full on its own page.
 - **Cross-night tracklet linking** — built (`link_across_nights`,
-  [Cross-Night Linking](@ref)). Genuinely greenfield (no night/session
+  [Follow-up tools](../guides/follow-up.md)). Genuinely greenfield (no night/session
   concept existed anywhere in `src/` before this). Validated
   synthetically only so far — a real check (querying SkyBoT for field
   451's own sky position 3 and 7 days out) confirmed *why* a real

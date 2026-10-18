@@ -1,18 +1,16 @@
-# Validating against real IASC (Pan-STARRS1) campaign data
+# Pan-STARRS1 working notes
 
-Part of this project's [Investigation Log](investigation-log.md) —
-split onto its own page since it's a self-contained validation story
-against a different survey (Pan-STARRS1) than the ZTF narrative there.
+The detailed record behind [Validation: Pan-STARRS1](../validation/pan-starrs1.md),
+in the order things were found: every failure on real Pan-STARRS1 images, how it
+was diagnosed and what fixed it. The images were the public practice sets and
+campaign sets of the International Astronomical Search Collaboration (IASC).
 
-Every real-data check so far used ZTF. `docs/src/index.md`'s "Using real
-IASC campaign data" section had stood as "not attempted" all session —
-closed by running `examples/iasc_demo.jl` against 5 real Pan-STARRS1
-(PS1) IASC practice sets (2019-08-28/09-04/09-24, 4 exposures each).
-`run_pipeline` was reported to recover 9 real, independently-catalogued
-objects across the 5 fields via SkyBoT — including a Jupiter Trojan,
-2019 NB9 — and getting a clean run took four real, fixed issues, found
-in this order. (That 9 was later found to be 2: see
-[Recovered objects, re-checked](@ref) below.)
+
+The first run, on five 2019 practice sets (four exposures each), reported 9
+catalogued objects recovered via SkyBoT — including a Jupiter Trojan,
+2019 NB9. That 9 was later found to be 2 (see
+[Recovered objects, re-checked](@ref) below). Getting a clean run took four
+fixes, found in this order.
 
 ## `load_wcs` failed on every one of these real headers
 
@@ -57,7 +55,7 @@ about.
 ## `crossmatch_catalog(...; :skybot)` was too slow, and not resilient, at real scale
 
 Unlike `:vsx`/`:simbad` (batched via CDS TAP — see the
-[Investigation Log](investigation-log.md)), SkyBoT has no batch mode, so
+[Investigation Log](ztf-investigation.md)), SkyBoT has no batch mode, so
 `_crossmatch_skybot` queried one candidate per request, fully
 sequentially. Fine for a handful of candidates; not for hundreds to
 thousands of real tracklets. A full 5-field run of `examples/iasc_demo.jl`
@@ -109,7 +107,7 @@ objects, not 26 distinct discoveries — a reporting correction as much as
 a code fix, worth noting since the inflated number was reported once,
 here, before the retune caught it.
 
-![Tracklet counts per field before and after retuning match_radius to PS1's real astrometric precision](assets/iasc-match-radius-retuning.png)
+![Tracklet counts per field before and after retuning match_radius to PS1's real astrometric precision](../assets/iasc-match-radius-retuning.png)
 
 ## Recovered objects (as first reported)
 
@@ -310,7 +308,7 @@ of `EXPTIME`. Re-run, the pipeline's report for NHU0001 matched
 Astrometrica's at all four epochs, **0.13-0.18" apart** in position;
 magnitudes differed by 0.1-0.9 mag (21.4/21.4/21.7/21.8 against
 21.2/21.0/21.6/20.9, at S/N 4-8 per frame). `digest2`, now built and on
-`PATH` (see [MPC digest2 Scoring](@ref)), gives it NEO score 2: a
+`PATH` (see [Follow-up tools](../guides/follow-up.md)), gives it NEO score 2: a
 main-belt object, consistent with its ~34"/h motion.
 
 ### Completeness, measured by injecting synthetic asteroids

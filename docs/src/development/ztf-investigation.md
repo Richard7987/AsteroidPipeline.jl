@@ -1,18 +1,10 @@
-# Investigation log
+# ZTF investigation log
 
-Chronological record of what real-data testing found and how each finding
-was diagnosed — kept separate from the main wiki pages so those stay
-focused references rather than narratives. Cross-referenced from
-`docs/src/index.md`'s Known Limitations section and from the relevant
-docstrings.
-
-This page covers the original ZTF field 451 investigation, chronologically
-first. Later validation work against other real datasets got large enough
-to split onto their own pages:
-
-- [Validating `search_field` against a real, independently-confirmed variable star](variable-star-validation.md)
-- [Validating against real IASC (Pan-STARRS1) campaign data](iasc-campaign-validation.md)
-- [Design refinements](design-refinements.md)
+The detailed, chronological record of the first real-data tests (ZTF field 451):
+each finding, how it was diagnosed, and what was changed. The results are
+summarised in [Validation: ZTF field 451](../validation/ztf.md); this page
+is for anyone who wants the evidence behind them, or is changing the code
+they concern.
 
 ## Real ZTF data surfaced four bugs no synthetic test or code review caught
 
@@ -317,7 +309,7 @@ chosen because it's a standard number in forced-photometry pipelines, not
 because it was shown to be optimal. With a real positive control now in
 hand (ASASSN-V J183620.31, recovered by `find_variable_sources` earlier
 this session — see its own
-[validation page](variable-star-validation.md)), the floor could finally
+[validation page](../validation/variable-star.md)), the floor could finally
 be checked from *both* sides of the tradeoff at once, not just the
 false-positive side: sweeping `systematic_error_fraction` against the
 same 152 real, matched, high-S/N stationary stars from ZTF field 451 (a
@@ -341,11 +333,11 @@ detections, not the smallest false-positive rate achievable.
 This 2% default rested on field 451 alone — later cross-validated
 against two more real, independent confirmed variables in two more real
 fields, which moved the default to 3%; see
-[Design refinements](design-refinements.md) for the full three-field
+[Design refinements](design-decisions.md) for the full three-field
 sweep and figure.
 
 ## See also
 
-- [Validating `search_field` against a real, independently-confirmed variable star](variable-star-validation.md)
-- [Validating against real IASC (Pan-STARRS1) campaign data](iasc-campaign-validation.md)
-- [Design refinements](design-refinements.md)
+- [Validating `search_field` against a real, independently-confirmed variable star](../validation/variable-star.md)
+- [Validating against real IASC (Pan-STARRS1) campaign data](pan-starrs1-notes.md)
+- [Design refinements](design-decisions.md)
