@@ -21,8 +21,9 @@ const navTemp = {
   nav: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
 }
 
+// The pages are all in the sidebar; the top bar keeps only the version
+// picker (and search), not a second copy of the page list.
 const nav = [
-  ...navTemp.nav,
   {
     component: 'VersionPicker'
   }

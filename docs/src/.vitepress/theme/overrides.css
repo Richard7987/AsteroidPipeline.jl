@@ -1,0 +1,19 @@
+/* Loaded after DocumenterVitepress's own style.css: these rules win. */
+
+/* Figures: centred, never wider than the text column. */
+.vp-doc img {
+  display: block;
+  margin: 1.75rem auto;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Tables: centred; a table wider than the column scrolls instead of
+   overflowing the page. */
+.vp-doc table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 1.75rem auto;
+  overflow-x: auto;
+}

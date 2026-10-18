@@ -1,3 +1,11 @@
+```@raw html
+---
+next:
+  text: Getting started
+  link: /getting-started
+---
+```
+
 # AsteroidPipeline.jl
 
 **Find moving objects in astronomical images.** AsteroidPipeline.jl takes a
