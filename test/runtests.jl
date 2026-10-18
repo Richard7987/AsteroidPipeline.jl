@@ -1303,6 +1303,155 @@ end
         @test (@test_logs (:warn,) P._check_frame_quality("bad.fits", 160_000, 170)) > 30
     end
 
+    @testset "image sets, MPC reports and their checks" begin
+        P = AsteroidPipeline
+        # packed designations, as Astrometrica wrote them in real reports
+        @test pack_designation("2016 SB115") == "K16SB5B"
+        @test pack_designation("2019 UA185") == "K19UI5A"
+        @test pack_designation("(656932) 2016 FA12") == "~09bg"
+        @test pack_designation("(550107) 2012 AZ30") == "t0107"
+        @test pack_designation("433") == "00433"
+        @test pack_designation("2016 SX110") == "K16SB0X"
+        @test pack_designation("2008 EK13") == "K08E13K"
+        @test pack_designation("4311 T-1") == "T1S4311"
+        @test pack_designation("Hasslacher") === nothing
+
+        cfg = IASC_PS1_CONFIG
+        @test cfg.match_radius ≈ 2.0 / 0.2563
+        @test pipeline_config(1.0).match_radius ≈ 2.0 && pipeline_config(1.0).min_speed ≈ 72.0
+
+        header = mpc_report_header("F51"; observers="J. Bulger", measurers="A. Name", telescope="1.8-m",
+                                   net="Gaia DR3", ack_time=DateTime(2026, 10, 18, 12, 57, 58))
+        @test header == ["COD F51", "OBS J. Bulger", "MEA A. Name", "TEL 1.8-m",
+                         "ACK MPCReport file updated 2026.10.18 12:57:58", "NET Gaia DR3"]
+        @test_throws ArgumentError mpc_report_header("F5")
+        blank = blank_mpc_report("F51")
+        @test startswith(blank, "COD F51\nACK ") && endswith(blank, "----- end -----\n")
+        rows = [(id=2, frame=k, ra=183.0 + k / 1000, dec=-10.7, epoch=2460934.9 + k / 100, mag=21.4) for k in 1:3]
+        rep = mpc_report(rows, "F51"; trksub_prefix="P")
+        obs = filter(l -> startswith(l, "     P2"), split(rep, '\n'))
+        @test length(obs) == 3 && all(length.(obs) .== 80)
+        @test mpc_report(rows[1:0], "F51") |> r -> !occursin("P2", r)
+
+        # the reports of a real campaign day (2026-10-18), and what was wrong with them
+        line_sb115 = "     K16SB5B  C2026 10 05.53420201 27 04.617-04 38 46.72         19.6 G      F51"
+        line_fa12 = "~09bg         C2026 10 05.54588701 27 40.068-04 54 40.86         19.0 G      F51"
+        p = P._parse_mpc80_line(line_fa12)
+        @test p.number == "~09bg" && p.station == "F51"
+        @test p.ra ≈ 15 * (1 + 27 / 60 + 40.068 / 3600) && p.dec ≈ -(4 + 54 / 60 + 40.86 / 3600)
+        @test p.jd ≈ datetime2julian(DateTime(2026, 10, 5)) + 0.545887
+        good = join([header; "----- end -----"], "\n")
+        c = check_mpc_report(good; observatory="F51")
+        @test c.ok && isempty(c.issues)
+        c = check_mpc_report("ACK MPCReport file updated 2026.10.18 12:33:05\n----- end -----\n"; observatory="F51")
+        @test !c.ok && [i.code for i in c.issues] == [:missing_cod]
+        @test startswith(c.cleaned, "COD F51\nACK")
+        c = check_mpc_report(replace(good, "COD F51" => "COD XXX"); observatory="F51")
+        @test !c.ok && only(c.issues).code == :wrong_code && only(c.issues).detail == "XXX"
+        with_obs = join([header; line_sb115; line_fa12; "----- end -----"], "\n")
+        c = check_mpc_report(with_obs; observatory="F51", known=[(name="(656932) 2016 FA12", packed="~09bg")])
+        @test c.ok
+        @test [(i.code, i.line) for i in c.issues] == [(:single_observation, 7), (:known_object, 8)]
+        @test occursin("K16SB5B", c.cleaned) && !occursin("~09bg", c.cleaned)
+        # same exposures, another chip: the time can't tell, the footprint can
+        c = check_mpc_report(with_obs; observatory="F51", epochs=[2461319.0342, 2461319.5459],
+                             field=(ra, dec) -> ra > 21.9)
+        @test !c.ok && count(i -> i.code == :other_set, c.issues) == 2
+        @test check_mpc_report(""; observatory="F51").issues[1].code == :empty
+        @test any(i -> i.code == :missing_end, check_mpc_report("COD F51\n"; observatory="F51").issues)
+        @test any(i -> i.code == :malformed_line, check_mpc_report("COD F51\nhello\n"; observatory="F51").issues)
+
+        mktempdir() do dir
+            settings = joinpath(dir, "PS1.cfg")
+            write(settings, "[Settings]\r\nCatalog=10\r\n[ObservingSite]\r\nMPCCode=F51\r\nObserver=J. Bulger, T. Lowe\r\n" *
+                            "Measurer=T. Vorobjov\r\nTelescope=1.8-m f/4.4 Ritchey-Chretien + CCD\r\n")
+            s = astrometrica_settings(settings)
+            @test s.code == "F51" && s.observers == "J. Bulger, T. Lowe" && s.net == "Gaia DR1"
+            @test s.telescope == "1.8-m f/4.4 Ritchey-Chretien + CCD"
+
+            # a .zip of FITS frames with a folder inside, BLANK pixels, and a stray file
+            src = mkpath(joinpath(dir, "src", "XY99_p00"))
+            for k in 1:3
+                FITS(joinpath(src, "frame$k.fits"), "w") do f
+                    img = fill(Int16(100 + k), 20, 10); img[1, 1] = Int16(-32768)
+                    write(f, img)
+                    write_key(f[1], "BLANK", -32768)   # FITSIO drops it from a header passed to write
+                end
+            end
+            write(joinpath(src, "notes.txt"), "not a frame")
+            zip = joinpath(dir, "ps1-20990101_9_XY99_p00.zip")
+            run(pipeline(`$(P.p7zip_jll.p7zip()) a -tzip $zip $src`; stdout=devnull))
+            set = extract_set(zip, joinpath(dir, "out"))
+            @test set.name == "XY99_p00" && basename.(set.paths) == ["frame1.fits", "frame2.fits", "frame3.fits"]
+            @test isempty(filter(n -> startswith(n, ".extract-"), readdir(joinpath(dir, "out"))))
+            @test extract_set(zip, joinpath(dir, "out")).paths == set.paths       # reused, not re-extracted
+            cleaned = clean_blank_pixels(set.paths[1]; outdir=joinpath(dir, "clean"))
+            @test cleaned != set.paths[1] && FITS(f -> read(f[1])[1, 1], cleaned) ≈ 101
+
+            # an old orbit file is kept when the MPC can't be reached
+            old = joinpath(dir, "MPCORB.DAT"); write(old, "old copy\n")
+            touch(old); mtime_before = mtime(old)
+            @test (@test_logs (:warn,) match_mode=:any download_mpcorb(old; max_age_hours=0,
+                                                                      url="http://127.0.0.1:9/nothing.gz")) == old
+            @test read(old, String) == "old copy\n" && !isfile(old * ".part")
+            @test download_mpcorb(old; max_age_hours=24) == old
+        end
+
+        w = WCSTransform(2; ctype=["RA---TAN", "DEC--TAN"], crval=[30.0, 0.0], crpix=[50.0, 50.0],
+                         cdelt=[-1 / 3600, 1 / 3600])
+        on = frame_footprint([w], (100, 100))
+        @test on(30.0, 0.0) && !on(30.1, 0.0)
+        @test P._pixel_scale_arcsec(w, (100, 100)) ≈ 1.0 atol = 1e-6
+    end
+
+    @testset "motion of a tracklet, and known objects near a candidate" begin
+        P = AsteroidPipeline
+        # 36"/h due west (PA 270°), on the equator, every 15 minutes
+        line = [(id=1, ra=10.0 - k * 9 / 3600, dec=0.0, epoch=2461000.5 + k / 96) for k in 0:3]
+        m = tracklet_motion(line)
+        @test m.rate_arcsec_h ≈ 36 rtol = 1e-6
+        @test m.pa_deg ≈ 270 atol = 1e-6
+        @test m.rms_arcsec < 1e-6
+        bent = [merge(p, (dec=p.dec + (k == 2) * 2 / 3600,)) for (k, p) in enumerate(line)]
+        @test tracklet_motion(bent).rms_arcsec > 0.5
+        @test tracklet_motion(line[1:1]).rate_arcsec_h == 0
+
+        # the same object displaced along its track (an orbit's timing error)
+        # agrees; across it, or moving otherwise, doesn't
+        pred = (rate_arcsec_h=36.0, pa_deg=270.0)
+        @test P._same_motion(m, pred, (-120.0, 0.0))          # 2' ahead, westward
+        @test !P._same_motion(m, pred, (0.0, 60.0))           # 1' north: across
+        @test !P._same_motion(m, (rate_arcsec_h=30.0, pa_deg=270.0), (-120.0, 0.0))
+        @test !P._same_motion(m, (rate_arcsec_h=36.0, pa_deg=262.0), (-120.0, 0.0))
+
+        # with no catalogue to ask, every candidate is new
+        c = nearby_known_objects(line; observatory="F51", skybot=false)
+        @test c.checks[1].verdict === :new && isempty(c.checks[1].objects)
+        @test isempty(nearby_known_objects(line[1:0]; observatory="F51", skybot=false).checks)
+
+        # live: 2019 UA185 on a real 2026-10-04 IASC frame (see the MPCORB testset),
+        # measured where its MPC orbit puts it, and 2' further along its track
+        orbit = (packed="K19UI5A", name="2019 UA185", H=19.38, G=0.15, epoch=P._unpack_mpc_epoch("K2669"),
+                 M=342.15513, peri=316.67443, node=41.65155, incl=2.91030, e=0.1379969, a=2.3247103, n=0.27806787)
+        try
+            epochs = [2461317.928479 + k * 0.0122 for k in 0:3]
+            obs = P._observer_heliocentric(epochs, "F51")
+            at = [P._mpcorb_radec(orbit, e, o) for (e, o) in zip(epochs, obs)]
+            measured = [(id=7, ra=q.ra, dec=q.dec, epoch=e) for (q, e) in zip(at, epochs)]
+            c = nearby_known_objects(measured; observatory="F51", mpcorb=[orbit], skybot=false)
+            @test c.checks[7].verdict === :known && only(c.checks[7].objects).agreement === :position
+            mo = tracklet_motion(measured)
+            ahead = [merge(p, (ra=p.ra + 120 * sind(mo.pa_deg) / 3600 / cosd(p.dec),
+                               dec=p.dec + 120 * cosd(mo.pa_deg) / 3600)) for p in measured]
+            c = nearby_known_objects(ahead; observatory="F51", mpcorb=[orbit], skybot=false)
+            @test c.checks[7].verdict === :possibly_known
+            @test only(c.checks[7].objects).separation_arcsec ≈ 120 atol = 5
+        catch e
+            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            @test_skip "network unavailable"
+        end
+    end
+
     @testset "crossmatch_catalog" begin
         @test_throws ArgumentError crossmatch_catalog([], :unknown_catalog; radius=5.0)
 
