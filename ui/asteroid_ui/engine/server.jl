@@ -15,7 +15,7 @@ Commands (every one carries an `id`, echoed in its events):
         -> {"event": "progress", "stage": "refine", "fraction": 0.12}, ...
         -> {"event": "result", "path": "/cache/set/result.json"}
     {"cmd": "build_report", "id": 2, "result": "/cache/set/result.json",
-     "tracklets": [3, 7], "header": {...}}
+     "tracklets": [3, 7], "header": {...}, "designations": {"3": "NHU0002"}}
         -> {"event": "report", "text": "COD F51..."}
     {"cmd": "check_report", "id": 3, "text": "COD F51...", "observatory": "F51",
      "result": "/cache/set/result.json"}
@@ -165,6 +165,7 @@ function analyze(id, msg)
         stamp = joinpath("stamps", "tracklet_$tid.fits")
         write_stamps(images, r.wcs, r.epochs, pts, joinpath(out, stamp))
         check = get(r.nearby, tid, nothing)
+        neocp = get(r.neocp, tid, nothing)
         push!(tracklets, Dict{String,Any}(
             "id" => tid, "label" => label(tid), "known" => get(r.known, tid, nothing),
             "speed_arcsec_h" => motion.rate_arcsec_h, "pa_deg" => motion.pa_deg, "rms_arcsec" => motion.rms_arcsec,
@@ -174,6 +175,12 @@ function analyze(id, msg)
                 "objects" => [Dict("name" => o.name, "source" => o.source, "separation_arcsec" => o.separation_arcsec,
                                    "mag" => o.mag, "rate_arcsec_h" => o.rate_arcsec_h, "pa_deg" => o.pa_deg,
                                    "agreement" => string(o.agreement)) for o in check.objects]),
+            "neocp" => neocp === nothing ? nothing : Dict(
+                "verdict" => string(neocp.verdict),
+                "objects" => [Dict("designation" => o.designation, "score" => o.score,
+                                   "separation_arcsec" => o.separation_arcsec, "rate_arcsec_h" => o.rate_arcsec_h,
+                                   "pa_deg" => o.pa_deg, "uncertain" => o.uncertain,
+                                   "agreement" => string(o.agreement)) for o in neocp.objects]),
             "points" => [Dict("frame" => p.frame, "ra" => p.ra, "dec" => p.dec, "epoch" => p.epoch,
                               "mag" => isfinite(p.mag) ? p.mag : nothing,
                               "x" => px(p.ra, p.dec)[1], "y" => px(p.ra, p.dec)[2]) for p in pts]))
@@ -213,8 +220,11 @@ function build_report(id, msg)
              epoch=Float64(p["epoch"]), mag=p["mag"] === nothing ? NaN : Float64(p["mag"]))
             for t in res["tracklets"] if Int(t["id"]) in wanted for p in t["points"]]
     header = report_header(get(msg, "header", nothing))
+    given = get(msg, "designations", nothing)       # {"<tracklet id>": "NHU0002", ...}
+    designations = given === nothing || isempty(given) ? nothing :
+        Dict(id => get(given, string(id), "P" * uppercase(string(id; base=36))) for id in wanted)
     text = isempty(rows) ? blank_mpc_report(res["observatory"]; header...) :
-           mpc_report(Table(rows), res["observatory"]; trksub_prefix="P", header...)
+           mpc_report(Table(rows), res["observatory"]; trksub_prefix="P", designations, header...)
     emit(; id, event="report", text)
 end
 

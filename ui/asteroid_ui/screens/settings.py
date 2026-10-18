@@ -22,6 +22,9 @@ FIELDS = [
     ("downloads", "Folder with your image-set .zip files (its subfolders are searched too)", ""),
     ("measurers", "Report header, MEA: who measures — you and your team (required)", "e.g. A. Name, Team Name"),
     ("contact", "Report header, CON: contact name and e-mail (optional)", "e.g. A. Name [name@example.org]"),
+    ("designation_prefix", "Your designations for new candidates: a prefix of up to 5 letters or digits "
+                           "(empty: the program's own, P2…)", "e.g. NHU"),
+    ("next_designation", "The next number to give (the next report's first candidate gets it)", "e.g. 2"),
     ("fps", "Animation speed, images per second (0.5 to 3)", ""),
 ]
 
@@ -100,11 +103,21 @@ class SettingsScreen(Screen):
         if not Path(values["downloads"]).expanduser().is_dir():
             self.app.notify(f"The folder {values['downloads']} doesn't exist.", severity="error")
             return
+        from asteroid_ui.designations import valid_prefix
+
+        if not valid_prefix(values["designation_prefix"]):
+            self.app.notify("The prefix: up to 5 letters or digits, nothing else.", severity="error")
+            return
+        if not values["next_designation"].isdigit() or int(values["next_designation"]) < 1:
+            self.app.notify("The next number must be a whole number, 1 or more.", severity="error")
+            return
         if not values["measurers"]:
             self.app.notify("Say who measures: it goes in every report.", severity="error")
             return
         config.downloads, config.measurers, config.contact = values["downloads"], values["measurers"], values["contact"]
         config.title = values["title"] or "NEO Hunters"
+        config.designation_prefix = values["designation_prefix"].upper()
+        config.next_designation = int(values["next_designation"])
         config.fps = fps
         config.save()
         self.app.notify("Settings saved.")
