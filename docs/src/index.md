@@ -46,7 +46,7 @@ print(result.report)      # the MPC report (blank if nothing new was found)
 
 ## Status
 
-Version 0.2. Every stage has been run on real telescope data and checked
+Version 0.2.1. Every stage has been run on real telescope data and checked
 against independent results — catalogued asteroids, another program's
 measurements, and synthetic asteroids injected into real images. See the
 [validation summary](validation/summary.md). Limits are listed in

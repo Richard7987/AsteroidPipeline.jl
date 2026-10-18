@@ -24,7 +24,7 @@ comparable to a typical PSF scale, that alone changes how much flux a
 fixed aperture encloses, frame to frame, for no real reason. This was the
 actual cause of a real, measured false-positive floor in
 [`find_variable_sources`](@ref)'s variability test (see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#The-centroid-fix-barely-moved-the-false-positive-floor-—-the-real-cause-was-a-systematic-error-floor)) — the refinement only affects where the aperture
+[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/ztf-investigation#The-centroid-fix-barely-moved-the-false-positive-floor-—-the-real-cause-was-a-systematic-error-floor)) — the refinement only affects where the aperture
 is centered, never the returned `x`/`y` (still `PeakMesh`'s own integer
 position, unchanged). That refined position is returned separately, as
 `xcen`/`ycen`: for astrometry the integer peak alone is a real error

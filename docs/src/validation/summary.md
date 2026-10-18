@@ -18,9 +18,9 @@ images, or synthetic asteroids added to real images.
 | Question | Answer | Measured on |
 |:--|:--|:--|
 | Are the positions right? | within 0.13–0.19″ of an independent reduction | Pan-STARRS1, 4 frames |
-| Are catalogued asteroids found? | 14 of the 31 predicted on the frames; of the 17 missed, 5 are in the one damaged set and most others fainter than V≈21.5 (one bright miss, V 17.6, is unexplained) | 10 Pan-STARRS1 sets |
+| Are catalogued asteroids found? | 17 of the 30 predicted on the frames; of the 13 missed, 5 are in the one damaged set, 7 are fainter than V≈21, and one crosses a cell gap and a star | 10 Pan-STARRS1 sets |
 | How faint? | ~80% found to V≈21.5, 16% at 22–22.5 | 180 injected asteroids |
-| How many false candidates? | 125 tracklets to look at across 10 sets (was 5,548 for 6) | Pan-STARRS1 |
+| How many false candidates? | 107 tracklets to look at across the 9 good sets (5,548 for 6 at first) | Pan-STARRS1 |
 | Are damaged sets recognised? | the one damaged set flagged; none of the other nine | Pan-STARRS1 |
 | Variable stars? | all 3 confirmed variables found; 0.6–2% of constant stars flagged | ZTF |
 

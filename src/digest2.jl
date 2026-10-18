@@ -72,7 +72,7 @@ correctly, on input that was never a real tracklet to begin with.
 **The actionable lesson**: don't sort by `neo_score` on raw
 [`link_candidates`](@ref) output as a "most interesting first" filter —
 tighten `match_radius` to the survey's own real astrometric precision
-first (`iasc-campaign-validation.md` already established this exact
+first (the Pan-STARRS1 working notes already established this exact
 principle from PS1's `PERROR`), or otherwise vet tracklets for genuine,
 consistent motion, before scoring; `digest2_score` is a real, valuable
 tool for classifying the dynamical class of an *already-plausible*

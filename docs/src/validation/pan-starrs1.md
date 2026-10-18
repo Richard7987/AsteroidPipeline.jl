@@ -3,9 +3,10 @@
 ## Summary
 
 On ten real Pan-STARRS1 image sets, the pipeline's positions agree with an
-independent reduction to 0.13–0.19″; it recovers 14 catalogued asteroids and
-an uncatalogued one confirmed by hand, finds ~80% of injected asteroids down
-to V≈21.5, and leaves 125 tracklets to check across the ten sets. In a
+independent reduction to 0.13–0.19″; it recovers 17 of the 30 catalogued
+asteroids predicted on the frames (every miss explained) and an uncatalogued
+one confirmed by hand, finds ~80% of injected asteroids down to V≈21.5, and
+leaves 107 tracklets to check across the nine good sets. In a
 blind test on four sets, it missed no real object, and each of its false
 candidates led to a filter that now removes that kind.
 
@@ -79,12 +80,32 @@ differed by 0.1–0.9 mag, at signal-to-noise 4–8 per frame.
 |:--|--:|--:|:--|
 | raw frames, 8σ, header astrometry | 6 | 5,548 | 3 of 6 |
 | difference images, refitted astrometry | 6 | 157 | 6 of 6 |
-| + artifact filters ([`pipeline_config`](@ref)) | 10 | 125 | 14 catalogued + 1 uncatalogued |
+| + artifact filters | 10 | 125 | 14 catalogued + 1 uncatalogued |
+| + line test scaled to the astrometry ([`pipeline_config`](@ref)) | 9 good + 1 damaged | 107 + 84 | 17 catalogued + 1 uncatalogued |
 
 The six objects of the first two rows are the detectable ones in those sets:
 2009 SG135, 2015 XJ232, 2019 PK5, 2019 NB9 (a Jupiter Trojan), 2018 LT and
 the uncatalogued one. The artifact filters cost no catalogued asteroid
 (14 recovered with or without them) and removed 8 false tracklets.
+
+**A bright asteroid missed — and why.** (13014) Hasslacher, V 17.4, crossed
+`XY72_p01` and was never reported, though it is one of the brightest objects
+in the set. It was detected in three frames (the fourth puts it in a cell
+gap) and linked — then dropped by the straight-line test: its three points
+lay 1.5 px from a line, and partial tracklets had to be within 1 px. The
+asteroid wasn't off: the frames' astrometry was. That field has few Gaia
+stars (9–14 matched per frame) and its solutions have 0.08–0.23″ residuals,
+so no line could be checked to 1 px (0.26″). The test now allows three times
+the frames' astrometric residual, at most 2 px. Hasslacher and 2017 DY33
+(V 21.7) are found; across the nine good sets four more tracklets appear,
+two of them these asteroids. On the damaged set, which [`analyze_set`](@ref)
+doesn't search, the count rises from 22 to 84.
+
+Of the 13 catalogued objects still missed, 5 are in the damaged set, 7 are
+fainter than V≈21 (the depth of these images), and one, 4311 T-1, crosses a
+cell gap in one frame and a star in the next. Two more that a first count
+placed in the field are 30–90 px off the chip once the astrometry is
+corrected.
 
 ### Completeness
 

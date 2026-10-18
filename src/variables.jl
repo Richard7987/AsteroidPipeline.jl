@@ -237,7 +237,7 @@ What the chi2 test is discriminating against depends on how
   zero and is never detected in `S_corr` at all, so a matched stationary
   group is already a variable/transient by construction; the chi2 test
   here is a second filter against the known subtraction-residual failure
-  mode at bright stars (see the [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#PSF-timing-and-astrometric-noise-bugs-behind-ZOGY's-excess-detections)), not the primary
+  mode at bright stars (see the [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/ztf-investigation#PSF-timing-and-astrometric-noise-bugs-behind-ZOGY's-excess-detections)), not the primary
   discriminant. `normalize`/`photometric_scale` do not apply meaningfully
   here, since `S_corr` isn't on a physical flux scale to begin with —
   pass `normalize=false` on this path.

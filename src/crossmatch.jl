@@ -25,7 +25,7 @@ queried directly against their own CDS TAP service (ADQL cone search),
 batched `_CDS_BATCH_SIZE` (50) candidates per request instead of the
 single batched request the old CDS X-Match service used to offer
 (replaced since X-Match itself became unreliable — extended, total
-outages; see the [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#Batching-crossmatch_catalog...;-:vsx/...;-:simbad) — while the underlying SIMBAD and
+outages; see the [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/ztf-investigation#Batching-crossmatch_catalog...;-:vsx/...;-:simbad) — while the underlying SIMBAD and
 VizieR TAP services stayed up). A real TAP `UPLOAD`-based batch (one
 request for *any* N) was tried first and rejected: verified directly
 against both services that it doesn't work simply here — SIMBAD accepts
