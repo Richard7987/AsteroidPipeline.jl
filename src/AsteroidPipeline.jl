@@ -32,6 +32,7 @@ include("astrometric_refinement.jl")
 include("calibrated_photometry.jl")
 include("mpcorb.jl")
 include("campaign.jl")
+include("observatories.jl")
 include("known_nearby.jl")
 include("injection.jl")
 include("reference.jl")
@@ -54,7 +55,7 @@ export detect_sources, fill_value_mask, link_candidates, load_wcs, pix_to_sky,
        extract_set, clean_blank_pixels, download_mpcorb, default_mpcorb_path, astrometrica_settings,
        mpc_report_header, blank_mpc_report, mpc_report, pack_designation, check_mpc_report,
        known_objects_in_field, frame_footprint, analyze_set, pipeline_config, IASC_PS1_CONFIG,
-       tracklet_motion,
+       read_obscodes, download_obscodes, frame_site, observatory_candidates, tracklet_motion,
        nearby_known_objects
 
 end # module AsteroidPipeline

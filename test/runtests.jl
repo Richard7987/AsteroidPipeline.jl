@@ -1404,6 +1404,44 @@ end
         @test P._pixel_scale_arcsec(w, (100, 100)) ≈ 1.0 atol = 1e-6
     end
 
+    @testset "observatory from the frames' headers" begin
+        mktempdir() do dir
+            # lines of the MPC's ObsCodes.html, as published (2026-10)
+            path = joinpath(dir, "ObsCodes.html")
+            write(path, "<pre>\nCode  Long.   cos      sin    Name\n" *
+                        "250                           Hubble Space Telescope\n" *
+                        "644 243.140220.836325+0.546877Palomar Mountain/NEAT\n" *
+                        "675 243.137460.836357+0.546831Palomar Mountain\n" *
+                        "F51 203.744090.936241+0.351543Pan-STARRS 1, Haleakala\n" *
+                        "F52 203.744090.936239+0.351545Pan-STARRS 2, Haleakala\n" *
+                        "I41 243.140220.836322+0.546875Palomar Mountain--ZTF\n" *
+                        "T05 203.744440.936241+0.351543ATLAS-HKO, Haleakala\n</pre>\n")
+            codes = read_obscodes(path)
+            @test [c.code for c in codes] == ["644", "675", "F51", "F52", "I41", "T05"]   # Hubble: no site
+            @test codes[3].lon ≈ 203.74409 && codes[3].rho_cos ≈ 0.936241 && codes[3].name == "Pan-STARRS 1, Haleakala"
+
+            # Pan-STARRS's own keywords: west longitude in hours
+            ps1 = FITSHeader(["TELESCOP", "INSTRUME", "ORIGIN", "FPA.LONGITUDE", "FPA.LATITUDE", "FPA.ELEVATION"],
+                             Any["PS1", "gpc1", "PS1", 10.4170602777931, 20.7070994446013, 3048.0], fill("", 6))
+            s = frame_site(ps1)
+            @test s.telescope == "PS1" && isapprox(s.lon, -156.2559; atol=1e-4) && isapprox(s.lat, 20.7071; atol=1e-4)
+            best = observatory_candidates(s, codes)
+            @test best[1].code == "F51" && best[1].distance_km < 0.1    # F52 is 10 m away; the name decides
+            @test Set(c.code for c in best) == Set(["F51", "F52", "T05"])
+            # ZTF's: east longitude in degrees, names spelled out
+            ztf = FITSHeader(["TELESCOP", "INSTRUME", "ORIGIN", "OBSERVAT", "OBSLON", "OBSLAT", "OBSALT"],
+                             Any["Palomar 48-inch", "ZTF/MOSAIC", "Zwicky Transient Facility", "Palomar Observatory",
+                                 -116.8598, 33.3573, 1668.0], fill("", 7))
+            @test observatory_candidates(frame_site(ztf), codes)[1].code == "I41"
+            # sexagesimal strings, and no site at all: names alone
+            @test frame_site(FITSHeader(["SITELONG", "SITELAT"], Any["-116 51 35.3", "+33:21:26"], ["", ""])).lon ≈
+                  -(116 + 51 / 60 + 35.3 / 3600)
+            nosite = frame_site(FITSHeader(["TELESCOP"], Any["PS1"], [""]))
+            @test nosite.lon === nothing && observatory_candidates(nosite, codes)[1].code == "F51"
+            @test isempty(observatory_candidates(frame_site(FITSHeader(["X"], Any[1], [""])), codes))
+        end
+    end
+
     @testset "motion of a tracklet, and known objects near a candidate" begin
         P = AsteroidPipeline
         # 36"/h due west (PA 270°), on the equator, every 15 minutes
