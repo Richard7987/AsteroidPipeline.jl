@@ -1,0 +1,62 @@
+# The terminal application: one installable program with the Julia library
+# inside it (the wheel bundles src/ and Project.toml as
+# asteroid_ui/julia/AsteroidPipeline). The interface's own code is ui/; the
+# analysis is all AsteroidPipeline.jl, set up on first run (see
+# ui/asteroid_ui/engine/__init__.py).
+#
+#   pip install asteroidpipeline       (or: pipx install asteroidpipeline)
+#   asteroidpipeline
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "asteroidpipeline"
+dynamic = ["version"]
+description = "Find moving objects in astronomical image sets, check them, and write MPC reports — a terminal app on AsteroidPipeline.jl"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Alejandro" }]
+keywords = ["astronomy", "asteroids", "minor planets", "MPC", "FITS", "astrometry", "terminal"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    "textual>=8.0",
+    "textual-image>=0.13",
+    "pillow>=10.1",
+    "pyfiglet>=1.0",
+    # Downloads Julia only when none is installed; see the engine module.
+    "juliapkg>=0.1.13",
+]
+
+[project.urls]
+Documentation = "https://richard7987.github.io/AsteroidPipeline.jl/dev/"
+Source = "https://github.com/Richard7987/AsteroidPipeline.jl"
+
+[project.scripts]
+asteroidpipeline = "asteroid_ui.app:main"
+
+[tool.hatch.version]
+path = "ui/asteroid_ui/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ui/asteroid_ui"]
+exclude = ["**/__pycache__"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src" = "asteroid_ui/julia/AsteroidPipeline/src"
+"Project.toml" = "asteroid_ui/julia/AsteroidPipeline/Project.toml"
+"LICENSE" = "asteroid_ui/julia/AsteroidPipeline/LICENSE"
+
+[tool.hatch.build.targets.sdist]
+include = ["/ui/asteroid_ui", "/src", "/Project.toml", "/LICENSE", "/README.md", "/pyproject.toml"]
+exclude = ["**/__pycache__"]
