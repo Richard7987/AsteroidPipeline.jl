@@ -1,355 +1,47 @@
 # AsteroidPipeline.jl
 
-An open-source Julia pipeline for asteroid search campaigns, developed for
-use with the [International Astronomical Search Collaboration
-(IASC)](https://iasc.cosmosearch.org/).
+**Find moving objects in astronomical images.** AsteroidPipeline.jl takes a
+short sequence of images of one patch of sky — a few exposures taken minutes
+apart — and finds the asteroids (and comets) moving through it: it calibrates
+the images against the Gaia catalogue, detects what changes from one image to
+the next, links detections that move along straight lines, identifies the
+ones that are already known, and writes the observations of the rest in the
+format the Minor Planet Center (MPC) accepts.
 
-## Purpose
+![The pipeline's stages, from an image set to an MPC report](assets/pipeline-overview.png)
 
-The pipeline processes sequences of FITS frames from a survey field to:
+It works with the FITS images of any telescope that come with an astrometric
+solution (a WCS) in their headers, or can be given one. It has been tested on
+real data from Pan-STARRS1 and the Zwicky Transient Facility.
 
-1. **Difference** each science frame against a deep, static-sky reference
-   stack (`build_reference`, `estimate_psf`, `zogy_subtract`), extending
-   detection below the single-frame noise floor — optional; skipped if no
-   reference is supplied.
-2. **Detect** point sources in each frame (`detect_sources`) — on the
-   difference image if step 1 ran, on the raw science frame otherwise.
-3. **Link** detections across frames by consistent linear motion to form
-   asteroid candidate tracklets (`link_candidates`).
-4. **Calibrate** tracklet pixel positions to sky coordinates using each
-   frame's WCS astrometric solution (`load_wcs`, `pix_to_sky`,
-   `astrometric_calibrate`).
-5. **Cross-match** candidates against known-object catalogs — SkyBoT, VSX,
-   SIMBAD — to separate previously cataloged objects from candidates that
-   warrant human verification (`crossmatch_catalog`).
+## In a few lines
 
-`run_pipeline` runs steps 1-4 end to end on a sequence of FITS file paths,
-returning a candidate table ready for `crossmatch_catalog`.
+```julia
+using AsteroidPipeline
 
-`find_variable_sources` searches the same per-frame detections for
-**stationary**, flux-varying sources — variable stars and transients,
-as opposed to `link_candidates`'s moving-object search — matching
-positions across frames instead of a linear motion model, then filtering
-by `variability_chi2` against a constant-flux null hypothesis.
-`search_field` runs both searches from a single shared detection pass
-over `fits_paths` (avoiding the cost of detecting twice), returning
-`(movers, variables)`; use `run_pipeline` alone when only asteroid
-candidates are needed.
+result = analyze_set("images.zip"; observatory="F51", workdir="work")
 
-For a confirmed discovery, `light_curve` (forced aperture photometry at a
-fixed sky position across a dedicated follow-up sequence) and
-`recover_rotation_period` (a Lomb-Scargle periodogram over that light
-curve, via `LombScargle.jl`) recover a rotation period — a separate,
-optional follow-up step, not part of `run_pipeline` itself. The same
-periodogram applies directly to a `find_variable_sources` candidate's own
-`(frame, flux)` points, for periodic variables.
+result.unknown_ids        # tracklets no catalogue knows: candidates
+result.expected           # known asteroids predicted in the field
+print(result.report)      # the MPC report (blank if nothing new was found)
+```
 
-`ades_psv` formats a candidate table as an ADES PSV observation table —
-the format the Minor Planet Center currently requires for astrometric
-submissions — so a real discovery's candidates can go straight from
-`run_pipeline`'s output to a submittable file, `id`-per-tracklet mapped
-directly to ADES's own `trkSub` tracking-designation field. `mpc80_report`
-does the same for the legacy fixed-width 80-column format, still
-required by some programs (e.g. IASC, as of 2026) even though the MPC's
-own submissions now prefer ADES.
+## Where to go next
 
-`digest2_score` scores tracklets against real solar-system orbit
-classes via the Minor Planet Center's own external `digest2` classifier
-— see [MPC digest2 Scoring](@ref), including a real finding about what
-it can and can't tell apart. `link_across_nights` extends
-`link_candidates`'s within-night linking across multiple observing
-nights — see [Cross-Night Linking](@ref).
+| If you want to… | Read |
+|:--|:--|
+| try it on your own images | [Getting started](getting-started.md) |
+| do a specific task (reports, known objects, another telescope…) | the [Guides](guides/image-sets.md) |
+| understand how it decides what is real | [How it works](concepts/pipeline.md) |
+| know how well it works, and where it doesn't | [Validation](validation/summary.md) |
+| look up a function | the [Reference](reference/sets.md) |
 
 ## Status
 
-!!! note "Early development, but validated end to end against real data"
-    Every stage below has run against real telescope data at least once —
-    not just synthetic tests — including three independent surveys (ZTF,
-    Pan-STARRS1) and a real, independently-confirmed variable star. See
-    [Real-data validation](@ref) for the full story of each row.
+Version 0.2. Every stage has been run on real telescope data and checked
+against independent results — catalogued asteroids, another program's
+measurements, and synthetic asteroids injected into real images. See the
+[validation summary](validation/summary.md). Limits are listed in
+[Limitations](concepts/limitations.md).
 
-| Component | Validated against |
-|:--|:--|
-| `detect_sources`, `link_candidates`, WCS calibration, `crossmatch_catalog` | Synthetic (exact recovery) · real ZTF field 451 · 6 real IASC/Pan-STARRS1 fields, checked against per-frame SkyBoT ephemerides (all 4 recoverable known objects in the 2019 sets, plus the known 2018 LT and the unknown object reported to IASC from a 2025 set) |
-| ZOGY difference imaging (`build_reference`, `estimate_psf`, `zogy_subtract`) | 3 falsifiable synthetic checks · real ZTF field 451 |
-| `find_variable_sources` / `search_field` | Synthetic · false-positive rate calibrated on real ZTF stars across 3 independent fields · 3 real confirmed variables (ASASSN-V J183620.31, V1012 Mon, ASASSN-V J072906.85-090518.2) |
-| `fit_moffat_psf` (PSF analytic fallback) | Synthetic · PSF width calibrated on real ZTF data |
-| `plate_solve` | Live nova.astrometry.net service |
-| `crossmatch_catalog` (`:skybot`/`:vsx`/`:simbad`) | Live services, real positive controls |
-| `digest2_score` | Real, locally-built `digest2` binary · real ZTF field 451 candidates (see [MPC digest2 Scoring](@ref) for a real, non-obvious finding) |
-| `link_across_nights` | Synthetic exact-recovery only — no real multi-night same-object case found yet, see [Cross-Night Linking](@ref) |
-
-Not yet run on a live IASC search campaign (as opposed to practice data)
-— see [Using real IASC campaign data](@ref) for what that would involve.
-
-## Real-data validation
-
-### ZTF: `examples/real_data_demo.jl`
-
-Runs the pipeline against real ZTF (Zwicky Transient Facility) frames
-both with and without ZOGY differencing, and cross-matches both against
-SkyBoT — a controlled comparison, not just a demonstration. Fetch the
-data first (public, no authentication required):
-
-```
-examples/fetch_data.sh
-julia --project=. examples/real_data_demo.jl
-```
-
-Building the reference stack (30 frames, each individually reprojected)
-is the slow part — tens of minutes on a laptop, one-time per run.
-Profiled directly, not just described as slow: the real cost is
-`Reproject.reproject` itself (~24s/frame), not the per-pixel combine
-step after it (a real, fixed 2x, but ~1s total either way) — see
-[Design refinements](https://richard7987.github.io/AsteroidPipeline.jl/dev/design-refinements)
-for that investigation, including a real multi-threading attempt that
-had to be reverted after it crashed inside `wcslib`.
-
-On field 451 (2019-10-23), the undifferenced baseline finds 133
-tracklets and recovers both known objects in the field (2002 UY45, 1997
-KO3); ZOGY also recovers both, at consistent sky offsets (confirming the
-subtraction is correctly calibrated), but finds 667 tracklets total and
-no *additional* known object — both known objects here are bright enough
-that the baseline already recovers them trivially, so this dataset
-doesn't exercise ZOGY's actual advantage (recovering objects below a
-single frame's noise floor). The raw tracklet-count gap is not a clean
-read on ZOGY's noise properties; see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#The-quality-gate's-combinatorial-side-effect-on-tracklet-count)
-for why, and for the full record of every real bug this project's
-real-data testing has surfaced, all fixed with regression tests.
-
-`find_variable_sources`/`search_field` and `fit_moffat_psf` were also
-calibrated against this same field — photometric normalization, S/N
-floor, `chi2_threshold` default, and recovered PSF width — see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#detect_sources's-flux-has-been-silently-wrong-since-the-beginning:-a-transposed-aperture),
-including a real bug in `detect_sources`'s own flux measurement this
-calibration work found and fixed.
-
-### Variable stars: `examples/variable_star_demo.jl`
-
-Validates `search_field` end to end against a real,
-independently-confirmed variable star — ZTF field 487/CCD 12/quadrant
-1/zr, night 2019-06-10, containing ASASSN-V J183620.31 (VSX: type EW,
-period 0.322 d). See the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/variable-star-validation)
-for the full run.
-
-The target was recovered (crossmatched against VSX at a 1.7" offset)
-among 22 variable candidates from 638 detections. A Lomb-Scargle period
-fit to that single partial night (only ~32% of one 0.322 d period) found
-a real, highly significant periodic signal (FAP ≈ 0) but at 0.5 d, not
-the true period — an expected outcome of the partial phase coverage,
-declared before running rather than adjusted after seeing it, and not a
-failure of `find_variable_sources` itself (which is what the crossmatch
-recovery above actually validates).
-
-### IASC / Pan-STARRS1: `examples/iasc_demo.jl`
-
-Validates `run_pipeline` against 5 real Pan-STARRS1 (PS1) IASC practice
-sets ("Practice Image Sets", 2019-08-28/09-04/09-24), each 4 exposures of
-the same field over ~40-70 min — see `examples/iasc_demo.jl` (point it at
-your own local practice/campaign FITS; IASC material isn't public, so
-unlike the ZTF demo above there is no fetch script). This was first
-reported as **9** known objects recovered via
-`crossmatch_catalog(...; :skybot)`; re-checked against SkyBoT's
-ephemeris at *every* frame's epoch (a tracklet must follow the object,
-not just sit within 15" of it once), only **2** were real — 2009 SG135
-and the Jupiter Trojan 2019 NB9 — the other 7 were static stars that
-happened to lie within the 15" radius. A 2025 set from a live
-campaign's practice round then added external ground truth measured in
-Astrometrica, and the pipeline as it stood found neither of its two real
-moving objects. The fixes, and the configuration now in
-`examples/iasc_demo.jl`, recover all 6 real moving objects in the six
-local sets (the original configuration: 3) with ~35x fewer tracklets to
-vet — see [IASC / Pan-STARRS1 campaign validation](iasc-campaign-validation.md).
-
-Getting there surfaced four real, fixed issues — see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/iasc-campaign-validation)
-for the full story of each:
-
-- `load_wcs` raised "Linear transformation matrix is singular" on every
-  one of these real headers — PS1's legacy `CNPIX1`/`CNPIX2` keywords
-  make wcslib build a separate, degenerate implicit WCS alongside the
-  header's real, valid one. Fixed in `load_wcs` itself.
-- These FITS files mark invalid/masked pixels via the standard `BLANK`
-  keyword rather than `NaN`, which `FITSIO.jl` doesn't auto-convert —
-  left alone, `detect_sources` read one masked region as real flux and
-  produced 158,443 spurious detections in a single frame. Handled as a
-  preprocessing step in `examples/iasc_demo.jl` (not in `src/`, since
-  this is a real-FITS-ingestion concern, not `detect_sources`'s job).
-- `crossmatch_catalog(...; :skybot)` queried one candidate at a time,
-  fully sequentially — real candidate lists here (hundreds to thousands
-  of tracklets) took minutes to hours, and a multi-hour run eventually
-  died to a transient connection error with no retry. Fixed in
-  `_crossmatch_skybot` itself: concurrent requests (real, measured ~8x
-  wall-clock speedup) and a retry on transient HTTP errors.
-- `match_radius`, first converted from `real_data_demo.jl`'s ZTF value to
-  keep the same ~10" angular tolerance, turned out far looser than PS1's
-  own real astrometric precision (`PERROR`, in these headers:
-  0.20-0.23 pixels, ~0.06") — on the densest field this produced 10,422 tracklets,
-  almost all spurious duplicates of the same real objects (distinct real
-  stars within 10" of each other, or the same object matched by several
-  near-identical trial velocities). Retuned to 2" (~35x `PERROR`,
-  measured from the headers, not guessed) and confirmed directly: the
-  same 9 distinct known objects are still recovered in every field,
-  while total tracklets across all 5 fields drop from 16,158 to 4,960
-  (-69%) — this was cleanup of spurious duplicates, not lost detections.
-
-#### Using real IASC campaign data
-
-Not yet attempted on a live campaign — practice data above is the
-closest real-world test so far. IASC's own coordinator confirmed
-(2026-08) that testing an outside program during a real campaign is
-possible, on the condition that submitted reports use the 80-column
-format specifically — not just ADES, which the MPC itself now prefers
-but this pipeline's own submission format (`mpc80_report`) covers as of
-this confirmation. General guidance for pointing this pipeline at a
-real campaign, or any other survey's data:
-
-- Point `run_pipeline` (or `examples/iasc_demo.jl`'s pattern) at the
-  local file paths directly; no fetch script is needed for files you
-  already have.
-- Check `timestamp_key` and whether the frames already carry a WCS before
-  assuming the `"MJD-OBS"` default and `plate_solve_api_key=nothing`
-  (unset) both apply — PS1's headers happened to match `"MJD-OBS"`
-  exactly, but that's this survey, not a general guarantee.
-- Re-tune `threshold`, `match_radius` (see the `PERROR`-based lesson
-  above — scale to the *survey's own* astrometric precision, not another
-  survey's pixel scale), and (if using the ZOGY path) `quality_max_std`
-  for the new data, rather than assuming defaults calibrated against
-  ZTF/PS1 transfer as-is.
-- Run the existing test suite first (`Pkg.test()`) to confirm the
-  environment itself is sound, then adapt `examples/iasc_demo.jl` or
-  `examples/real_data_demo.jl` as a validation template: known objects in
-  the field (via `crossmatch_catalog(...; :skybot)`) are the same kind of
-  ground truth used there.
-
-## Known limitations
-
-!!! warning "Empirical PSF's quality still depends on the field"
-    `estimate_psf` stacks real star cutouts, which captures the true PSF
-    shape (wings included) without fitting a model family per
-    instrument, but needs enough bright, isolated, unsaturated stars to
-    do it. It now retries at a progressively relaxed `min_separation`
-    (halved, up to `relaxation_attempts` times, default 2) before giving
-    up — a field with a few usable stars at a tighter isolation radius
-    still gives the real PSF shape, which the analytic fallback never
-    can. Only once even the most relaxed attempt finds nothing does it
-    fall back (by default) to `fit_moffat_psf` — a parametric Moffat fit
-    — rather than failing outright; the fallback trades exact PSF shape
-    for robustness, and is not itself a substitute for a genuinely
-    well-behaved field.
-
-!!! note "`zogy_subtract`'s astrometric-noise term (`V_ast`) is opt-in by design"
-    It needs `n_sources`/`r_sources` passed explicitly, and is `0`
-    without them; this is deliberate API layering (`run_pipeline` always
-    supplies them, so a direct caller who doesn't need the extra
-    `detect_sources` cost can skip it), not something planned to change.
-    What did change: leaving both unset now emits a `@warn` (once per
-    session), so omitting `V_ast` is a visible choice instead of a
-    silent default a direct caller could miss.
-
-!!! warning "`find_variable_sources` has a real, measured false-positive floor"
-    The first hypothesis tried — pixel-grid jitter in `detect_sources`'s
-    peak-pixel aperture centering — turned out to be a real but
-    secondary effect: refining the aperture to a sub-pixel centroid (see
-    `detect_sources`'s docstring) barely moved the false-positive rate
-    (23% → 22% at `chi2_threshold=3` on real ZTF field 451). The actual
-    dominant cause, found by checking *which* stars were flagged, was a
-    systematic photometric error floor — bright stars' tiny formal
-    errors made ordinary flat-fielding/PSF-variation systematics look
-    like huge chi2 significance. Adding that floor
-    (`variability_chi2`'s `systematic_error_fraction`) cut the rate: a
-    1% floor took it to 6% at threshold 3, ~0% at threshold 20.
-    Sweeping the floor further, first against field 451 alone and its
-    one real confirmed variable (ASASSN-V J183620.31, from a different
-    field), settled on 2% — later repeated against two more real,
-    independent fields (V1012 Mon and ASASSN-V J072906.85-090518.2,
-    each with its own real confirmed variable and 180+ real matched
-    stars), which moved the default to **3%**: the largest floor at
-    which all three confirmed variables stay above `chi2_threshold=10.0`
-    while the false-positive rate is the same or better than at 2% in
-    every field (1.3%/2.04%/0.55% at 3% vs. 2.0%/2.55%/0.55% at 2%). A
-    literal 0% rate is reachable at a 5% floor, but only by also erasing
-    two of the three real variables' own signal below threshold — a
-    different failure mode, not a real improvement. See
-    `find_variable_sources`'s docstring and
-    [Design refinements](https://richard7987.github.io/AsteroidPipeline.jl/dev/design-refinements)
-    for the full three-field before/after numbers. Still not zero: treat
-    a candidate as needing independent confirmation (a catalog match or
-    a recovered period), not as self-evidently real.
-
-!!! note "GPU reprojection and local plate-solving: investigated, not recommended now"
-    Explored alongside `digest2`/cross-night linking as candidate
-    technologies. **GPU-accelerated reprojection**: `Reproject.jl` (used
-    by `build_reference`) has no GPU code path at all (checked its
-    source directly), and the real per-frame cost is `wcslib`'s own C
-    calls — not portable to a GPU kernel without reimplementing WCS
-    pixel math from scratch, real correctness risk in a domain that has
-    already produced two real bugs this project (the transposed-aperture
-    bug, the cross-process `WCSTransform` segfault), for a target
-    already solved by a real, measured 3.21x via multiprocessing (see
-    [Design refinements](@ref)). **Local plate-solving** (`solve-field`,
-    replacing the live nova.astrometry.net API `plate_solve` already
-    uses): not packaged in nixpkgs, and needs multiple GB of scale-specific
-    index files even once built — real setup cost to replace something
-    that already works. Recorded here so this isn't silently forgotten
-    or re-litigated from scratch without new information changing the
-    calculus.
-
-## Follow-up workflows
-
-### Rotation period recovery
-
-For a confirmed discovery, given a dedicated photometric follow-up
-sequence (many exposures over hours, at a fixed sky position — the
-target should barely move between them, unlike the original discovery
-epochs):
-
-```julia
-using AsteroidPipeline
-
-times, flux, flux_err = light_curve(fits_paths, ra, dec)
-result = recover_rotation_period(times, flux; minimum_period=0.02, maximum_period=1.0)
-result.period, result.false_alarm_probability
-```
-
-`minimum_period`/`maximum_period` bound the search (same units as
-`times`, i.e. days) and should bracket the rotation periods physically
-plausible for the object's size class. A small `false_alarm_probability`
-is what distinguishes a real periodic signal from a noise fluctuation —
-see the function's docstring.
-
-### Plate-solving
-
-For a frame with no WCS already in its header, and a
-[nova.astrometry.net](https://nova.astrometry.net/) API key (free
-registration):
-
-```julia
-using AsteroidPipeline
-
-run_pipeline(fits_paths; reference=reference, plate_solve_api_key=key)
-```
-
-or directly: `plate_solve(fits_path; api_key=key)`. This is a live
-network round trip — upload, then poll until the frame solves — so it is
-slow and requires connectivity. Validated against the real service: see
-the [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#plate_solve-validated-end-to-end-against-the-live-service).
-
-## Dependencies
-
-- [FITSIO.jl](https://github.com/JuliaAstro/FITSIO.jl) — FITS I/O
-- [Photometry.jl](https://github.com/JuliaAstro/Photometry.jl) — source detection and photometry
-- [WCS.jl](https://github.com/JuliaAstro/WCS.jl) — astrometric (pixel-to-sky) calibration
-- [Reproject.jl](https://github.com/JuliaAstro/Reproject.jl) — resampling frames onto a common pixel grid for reference stacking
-- [FFTW.jl](https://github.com/JuliaMath/FFTW.jl) — Fourier-domain ZOGY difference imaging
-- [Interpolations.jl](https://github.com/JuliaMath/Interpolations.jl) — sub-pixel PSF stamp alignment
-- [LombScargle.jl](https://github.com/JuliaAstro/LombScargle.jl) — rotation-period periodogram analysis
-- [LsqFit.jl](https://github.com/JuliaNLSolvers/LsqFit.jl) — analytic (Moffat) PSF fallback fitting
-- [HTTP.jl](https://github.com/JuliaWeb/HTTP.jl), [CSV.jl](https://github.com/JuliaData/CSV.jl) — catalog cross-match queries
-- [JSON.jl](https://github.com/JuliaIO/JSON.jl) — nova.astrometry.net API requests (plate-solving)
-
-## License
-
-MIT. See `LICENSE`.
+AsteroidPipeline.jl is free software under the MIT license.

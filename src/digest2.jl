@@ -14,7 +14,7 @@ anything trained or guessed at here.
 `digest2` is a separate C program (source:
 `https://github.com/Smithsonian/digest2`), not a Julia dependency —
 build it yourself (`make` in its `digest2/` directory; see
-[MPC digest2 Scoring](@ref) for exact steps) and either put the
+[Follow-up tools](@ref "Orbit class: digest2") for exact steps) and either put the
 resulting `digest2` executable on `PATH` or pass its path via
 `digest2_path`. `config_dir` defaults to the directory of the *real*
 executable — symlinks resolved, so a link on `PATH` (say `~/.local/bin`)
@@ -54,7 +54,7 @@ scores for whatever doesn't make the main four).
 **Real finding, not a design assumption — `digest2`'s scores are an
 orbit-class classifier, not a real/bogus one, and this matters in
 practice**: run for real against `real_data_demo.jl`'s ZTF field 451
-baseline tracklets (see [MPC digest2 Scoring](@ref) for the full
+baseline tracklets (see [Follow-up tools](@ref "Orbit class: digest2") for the full
 numbers), the two real, SkyBoT-confirmed known objects scored `neo_score`
 5 and 7 (correctly low — they're Main Belt, not NEOs), while 131 of the
 other 133 tracklets scored `neo_score=100`. Those 131 were not missed

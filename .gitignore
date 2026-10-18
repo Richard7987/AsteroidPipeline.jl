@@ -26,6 +26,13 @@ docs/src/.vitepress/dist/
 # hand-authored logo.png/favicon.ico is ever added there.
 docs/src/assets/systematic-error-floor-sweep.png
 docs/src/assets/iasc-match-radius-retuning.png
+docs/src/assets/pipeline-overview.png
+docs/src/assets/completeness.png
+docs/src/assets/set-quality.png
+docs/src/assets/background-excess.png
+docs/src/assets/astrometry-vs-astrometrica.png
+docs/src/assets/tracklets-to-vet.png
+docs/src/assets/nearby-geometry.png
 
 # Local-only notes about the GitHub mirror's own CI/Pages plumbing — not
 # part of the project (the wiki documents the pipeline, not its own
@@ -35,3 +42,8 @@ PAGES_NOTES.md
 # Real API keys for local test runs (e.g. ASTROMETRY_API_KEY) — see
 # .env.example for the expected format.
 .env
+
+# Python packaging of the terminal app (pyproject.toml)
+dist/
+__pycache__/
+*.egg-info/

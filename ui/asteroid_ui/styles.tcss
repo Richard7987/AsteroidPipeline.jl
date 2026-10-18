@@ -1,0 +1,299 @@
+/* Same structure on every screen: title, content, status line, key bar.
+   Every focusable widget shows a visible border when focused. */
+
+Screen {
+    background: $background;
+}
+
+.screen-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+.section-title {
+    text-style: bold;
+    color: $primary;
+    margin-top: 1;
+}
+
+#status {
+    dock: bottom;
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+.buttons {
+    height: auto;
+    margin-top: 1;
+}
+
+.buttons Button {
+    margin-right: 1;
+    min-width: 8;
+    width: auto;
+}
+
+Button:focus, OptionList:focus, DataTable:focus, Input:focus, TextArea:focus, DirectoryTree:focus {
+    border: tall $accent;
+}
+
+/* -- start screen -------------------------------------------------------- */
+#home {
+    padding: 1 2;
+}
+
+#banner {
+    width: 100%;
+    content-align: center middle;
+    text-align: center;
+    color: $accent;
+    text-style: bold;
+    margin-top: 1;
+}
+
+#subtitle {
+    width: 100%;
+    text-align: center;
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+#home-body {
+    height: 1fr;
+}
+
+#sets-pane {
+    width: 2fr;
+}
+
+#sets {
+    height: 1fr;
+}
+
+#help-pane {
+    width: 1fr;
+    min-width: 40;
+    margin-left: 2;
+    padding: 1 2;
+    background: $surface;
+}
+
+/* -- dialogs --------------------------------------------------------------- */
+ModalScreen {
+    align: center middle;
+    background: $background 70%;
+}
+
+.dialog {
+    width: 90%;
+    max-width: 120;
+    height: auto;
+    max-height: 95%;
+    padding: 1 2;
+    background: $surface;
+    border: thick $primary;
+}
+
+.dialog-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+.dialog-help {
+    margin-bottom: 1;
+}
+
+#open-dialog {
+    height: 90%;
+}
+
+#open-tree {
+    height: 1fr;
+}
+
+#open-marked {
+    margin-top: 1;
+    color: $text-muted;
+}
+
+#report-text {
+    height: 16;
+}
+
+#help-dialog Static {
+    margin-bottom: 1;
+}
+
+/* -- analysis ---------------------------------------------------------------- */
+#analysis {
+    padding: 2 4;
+}
+
+#steps {
+    margin: 1 0;
+}
+
+#progress {
+    margin: 1 0;
+}
+
+#elapsed {
+    color: $text-muted;
+}
+
+#analysis-error {
+    margin-top: 1;
+}
+
+/* -- results ----------------------------------------------------------------- */
+#verdict {
+    height: auto;
+    padding: 0 1;
+}
+
+.verdict-success {
+    background: $success 25%;
+    color: $text;
+}
+
+.verdict-warning {
+    background: $warning 25%;
+    color: $text;
+}
+
+.verdict-error {
+    background: $error 30%;
+    color: $text;
+}
+
+#results-body {
+    height: 1fr;
+}
+
+#sidebar {
+    width: 58;
+    padding: 0 1;
+}
+
+#objects {
+    height: 1fr;
+    min-height: 8;
+}
+
+#frames-info, #warnings {
+    height: auto;
+}
+
+#viewer-pane {
+    width: 1fr;
+    padding: 0 1;
+}
+
+#viewer {
+    height: 1fr;
+    background: #1d2021;
+}
+
+#viewer #sky {
+    width: 1fr;
+    height: 1fr;
+}
+
+#caption {
+    height: 1;
+    color: $text;
+    text-style: bold;
+}
+
+#legend {
+    height: 1;
+}
+
+#controls {
+    height: 3;
+    margin-top: 0;
+}
+
+/* -- report check -------------------------------------------------------------- */
+#check {
+    padding: 1 2;
+}
+
+#check-set {
+    width: 70;
+    margin-bottom: 1;
+}
+
+#issues {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#check-panes {
+    height: 1fr;
+}
+
+#check-panes Vertical {
+    width: 1fr;
+    margin-right: 1;
+}
+
+#check-panes TextArea {
+    height: 1fr;
+}
+
+/* -- summary and settings ---------------------------------------------------------- */
+#summary, #settings {
+    padding: 1 2;
+}
+
+.form-row {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.form-label {
+    width: 100%;
+    color: $text-muted;
+    text-style: bold;
+}
+
+#reason-dialog {
+    max-width: 80;
+}
+
+#reasons {
+    height: auto;
+}
+
+#check-path {
+    margin-bottom: 1;
+}
+
+.hidden {
+    display: none;
+}
+
+#profile-dialog {
+    max-width: 110;
+}
+
+#profile-dialog Select, #profile-dialog Input {
+    margin-bottom: 1;
+}
+
+#profiles-list {
+    height: auto;
+    max-height: 14;
+}
+
+#details {
+    height: auto;
+    max-height: 16;
+    padding: 0 1;
+    background: $surface;
+}
