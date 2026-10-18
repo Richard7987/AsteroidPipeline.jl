@@ -39,7 +39,7 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://richard7987.github.io/AsteroidPipeline.jl/dev/"
+Documentation = "https://richard7987.github.io/AsteroidPipeline.jl/stable/"
 Source = "https://github.com/Richard7987/AsteroidPipeline.jl"
 
 [project.scripts]

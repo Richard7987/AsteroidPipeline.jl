@@ -1,6 +1,7 @@
 # AsteroidPipeline.jl
 
 [![CI](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml)
+[![docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/)
 [![docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/dev/)
 
 Find asteroids in astronomical images. Give it a few exposures of one field
@@ -17,7 +18,7 @@ It comes two ways:
 - **AsteroidPipeline.jl**, the Julia library that does all the analysis —
   for scripts, batches and anything the app doesn't do.
 
-**Documentation: <https://richard7987.github.io/AsteroidPipeline.jl/dev/>**
+**Documentation: <https://richard7987.github.io/AsteroidPipeline.jl/stable/>** (for the latest release; [dev](https://richard7987.github.io/AsteroidPipeline.jl/dev/) for `main`)
 
 ## Install the app
 
