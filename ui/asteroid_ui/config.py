@@ -36,6 +36,10 @@ class Config:
     # its profile (profiles.py).
     measurers: str = ""
     contact: str = ""
+    # Your own temporary designations for the candidates you report: a prefix
+    # ("NHU") and the next number (NHU0002). Empty: the program's own (P2).
+    designation_prefix: str = ""
+    next_designation: int = 1
     # A report file to check before submitting it (from this program or any other).
     report_to_check: str = ""
     # Animation speed, images per second (at most 3: no fast flashing).

@@ -54,7 +54,7 @@ that real objects pass and coincidences don't:
 | Test | Real objects | Why |
 |:--|:--|:--|
 | moves at 3–210″/h (`min_speed`, `max_speed`) | main belt ~20–40″/h, Trojans ~10–15″/h | slower is a star matched to itself |
-| straight line, within 1 px RMS (`max_residual`) | 0.1–0.3 px measured | chance alignments wander (median 2.6 px) |
+| straight line, within 1 px RMS (`max_residual`) — or 3 times the astrometric residual, if larger (at most 2 px) | 0.1–0.3 px measured | chance alignments wander (median 2.6 px) |
 | brightness constant within ×2.5 (`max_flux_ratio`) | | unrelated detections differ |
 | seen in 3 or more frames (`min_frames`) | | a real object can fall in a gap in one frame |
 
@@ -70,8 +70,10 @@ calibrated magnitudes through each frame's own zero point against Gaia
 Each tracklet is compared with the known asteroids predicted at its own
 times ([`crossmatch_catalog`](@ref)): a match in three frames makes it known.
 Every one left is then compared with all known objects within 10′, for one
-moving exactly like it ([Is a candidate new?](known-objects.md)). What remains
-are the **candidates**: for a person to check, and then to report.
+moving exactly like it, and — for recent images — with the objects awaiting
+confirmation on the MPC's NEO Confirmation Page
+([Is a candidate new?](known-objects.md)). What remains are the
+**candidates**: for a person to check, and then to report.
 
 ## 7. Report
 

@@ -76,10 +76,19 @@ class ReportScreen(ModalScreen[None]):
         self.run_worker(self._build())
 
     async def _build(self) -> None:
+        from asteroid_ui.designations import assign
+
+        try:
+            confirmed = [t for t in self.result.get("tracklets", []) if t["id"] in self.confirmed]
+            designations = assign(self.app.config, self.entry.name, confirmed)
+        except ValueError as e:
+            self.query_one("#report-text", TextArea).text = f"The designations could not be given: {e}"
+            return
         try:
             answer = await self.app.backend.request(
                 "build_report", result=str(self.entry.cache_dir / "result.json"),
-                tracklets=self.confirmed, header=report_header(self.app.config, self.profile))
+                tracklets=self.confirmed, header=report_header(self.app.config, self.profile),
+                designations=designations)
         except BackendError as e:
             self.query_one("#report-text", TextArea).text = f"The report could not be written: {e}"
             return

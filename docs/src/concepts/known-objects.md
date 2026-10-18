@@ -54,9 +54,14 @@ looser tests both would have "explained" it — wrongly: it is neither.
 | (610588) 2006 CX81 | 5.6′ | 31.8″/h | 232° | different motion (9° off) |
 | (683089) 2007 JO28 | 8.1′ | 31.6″/h | 256° | different motion |
 
-## Still not certain
+## Not yet catalogued
 
 A candidate with no known object near it is new *to the published orbits*.
-It may already be on the MPC's [NEO Confirmation Page](https://minorplanetcenter.net/iau/NEO/toconfirm_tabular.html)
-or reported by someone else that night; the MPC decides when the report
-arrives.
+Objects reported in the last days, still without an orbit, are on the MPC's
+[NEO Confirmation Page](https://minorplanetcenter.net/iau/NEO/toconfirm_tabular.html):
+for recent images, each candidate is also compared with the MPC's own
+predictions for them ([`neocp_check`](@ref)). One moving like it — rate within
+30%, direction within 15°, within 30′ (those predictions, from arcs of
+hours, are rough) — is probably that object: someone else's find, to report
+under its NEOCP designation. Beyond that, someone may have reported it the
+same night; the MPC decides when the report arrives.

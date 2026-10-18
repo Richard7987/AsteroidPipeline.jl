@@ -45,6 +45,25 @@ check.checks[2].objects      # name, separation, predicted rate and direction, a
 How the comparison works, and why it has to be strict, is in
 [Is a candidate new?](../concepts/known-objects.md).
 
+## Is someone else observing it?
+
+Objects reported in the last days that have no orbit yet are on the MPC's
+[NEO Confirmation Page](https://minorplanetcenter.net/iau/NEO/toconfirm_tabular.html)
+(NEOCP) — and in no catalogue. [`neocp_check`](@ref) asks the MPC for their
+positions at the candidate's own times, from the observatory:
+
+```julia
+c = neocp_check(candidate_rows; observatory="F51")
+c.checks[2].verdict        # :on_neocp or :none
+c.checks[2].objects        # NEOCP designation, separation, predicted motion, agreement
+```
+
+A candidate on the NEOCP is someone's recent, unconfirmed find: if it is
+real, report it under the NEOCP's designation — the observations help
+confirm it. Only recent images are checked (by default, up to 30 days old):
+the NEOCP lists what is being observed now, and its ephemerides come from
+arcs of hours, so they are uncertain by arcminutes (30′ are searched).
+
 ## Which known objects should be in my images?
 
 [`known_objects_in_field`](@ref) lists every catalogued object predicted on

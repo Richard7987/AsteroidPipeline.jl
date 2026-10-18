@@ -155,7 +155,9 @@ class ResultsScreen(Screen):
                         text, dstyle = _DECISION_TEXT[self.decisions[tid]]
                     else:
                         check = o.data.get("check") or {}
-                        text, dstyle = CHECKS[check["verdict"]][:2] if check.get("verdict") in CHECKS else _DECISION_TEXT[None]
+                        neocp = (o.data.get("neocp") or {}).get("verdict") == "on_neocp"
+                        verdict = "neocp" if neocp else check.get("verdict")
+                        text, dstyle = CHECKS[verdict][:2] if verdict in CHECKS else _DECISION_TEXT[None]
                     parts += ["  ", (text, dstyle)]
                 options.add_option(Option(Text.assemble(*parts), id=o.key))
                 first = first or o.key
@@ -227,6 +229,18 @@ class ResultsScreen(Screen):
                     text.append(f"  {o['name']}  {_distance(o['separation_arcsec'])} away, V {o['mag']:.1f}, "
                                 f"{o['rate_arcsec_h']:.1f}\"/h to {o['pa_deg']:.0f}° — {how}\n",
                                 style="" if o["agreement"] != "none" else "dim")
+            neocp = t.get("neocp")
+            if neocp and neocp.get("objects"):
+                if neocp["verdict"] == "on_neocp":
+                    tag, style, sentence = CHECKS["neocp"]
+                    text.append(f"{tag} ", style=style)
+                    text.append(sentence + "\n")
+                for o in neocp["objects"][:2]:
+                    how = "same motion" if o["agreement"] == "motion" else "different motion"
+                    flag = " (uncertain ephemeris)" if o["uncertain"] else ""
+                    text.append(f"  NEOCP {o['designation']}  {_distance(o['separation_arcsec'])} away, "
+                                f"{o['rate_arcsec_h']:.0f}\"/h to {o['pa_deg']:.0f}° — {how}{flag}\n",
+                                style="" if o["agreement"] == "motion" else "dim")
         else:
             k = obj.data
             text.append(f"{k['name']}", style="bold")

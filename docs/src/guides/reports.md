@@ -42,6 +42,23 @@ NET Gaia DR3
 
 Each observation line carries a temporary designation (here `P2`, from the
 tracklet id), the time of mid-exposure, the position and the magnitude.
+
+### Your own designations
+
+Observers usually number their finds with a prefix of their own. Give them
+with `designations` (tracklet id ⇒ designation, up to 7 letters and digits):
+
+```julia
+mpc_report(candidates, "F51"; designations=Dict(2 => "NHU0002"), header...)
+```
+
+```
+     NHU0002  C2025 09 16.41824600 12 25.816-10 43 50.18         21.4 G      F51
+```
+
+A candidate that is already on the MPC's NEO Confirmation Page goes under the
+NEOCP's designation ([Identify known objects](known-objects.md)).
+[`ades_psv`](@ref) takes the same keyword.
 Known objects are reported by their packed designation:
 [`pack_designation`](@ref)`("2016 SB115") == "K16SB5B"`.
 

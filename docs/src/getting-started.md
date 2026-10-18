@@ -22,7 +22,7 @@ time.
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/Richard7987/AsteroidPipeline.jl")
+Pkg.add(url="https://github.com/Richard7987/AsteroidPipeline.jl")   # Pkg.add("AsteroidPipeline") once it is registered
 ```
 
 ## 2. Analyze the set

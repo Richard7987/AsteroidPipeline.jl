@@ -95,7 +95,7 @@ relative to the field's median deviates by more than
 emitted — this is only a warning, never an automatic exclusion, unlike
 `quality_max_std`, precisely to avoid repeating that gate's own
 combinatorial side effect on `link_candidates`'s `min_frames` (see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/dev/investigation-log#The-quality-gate's-combinatorial-side-effect-on-tracklet-count)).
+[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/ztf-investigation#The-quality-gate's-combinatorial-side-effect-on-tracklet-count)).
 
 Tested directly (not left unvalidated) against the one real, confirmed
 anomaly available: the same field-451 frame `quality_max_std` catches (a
@@ -154,7 +154,13 @@ objects and reported positions ~7" off:
 - `min_speed` (pixels per day), `max_flux_ratio` and `max_residual`
   (pixels) filter tracklets after linking, per IASC's own "true signature" tests (see
   [`_filter_tracklets`](@ref)): use `max_flux_ratio=2.5` for IASC's
-  1-magnitude limit.
+  1-magnitude limit. With `refine_astrometry`, `max_residual` is raised to
+  three times the frames' typical astrometric residual (at most 2 px) when
+  that is larger:
+  a straight line can't be checked more finely than the positions are
+  measured. On a real Pan-STARRS1 set with few Gaia stars (9-14 matched per
+  frame, residuals up to 0.23"), a V 17 asteroid's three points sat 1.5 px
+  from a line and the 1 px limit dropped it.
 - `detector_artifact_radius` (pixels; difference path): drop a detection
   that recurs at the same *detector* pixel, within this radius, in two or
   more other frames — a hot pixel or bad column moves only with the
@@ -191,7 +197,7 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        min_sharpness::Real=-Inf, exptime_key::Union{Nothing,AbstractString}="EXPTIME",
                        subpixel_alignment::Bool=false, max_background_excess::Real=Inf,
                        detector_artifact_radius::Real=0.0)
-    detections_per_frame, wcs_per_frame, timestamps, n_gated = _detect_all_frames(
+    detections_per_frame, wcs_per_frame, timestamps, n_gated, astrometric_rms_px = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
         reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
         photometric_outlier_threshold, mask_fill_values, difference_stack,
@@ -201,6 +207,8 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
     effective_min_frames = min_frames === nothing ? length(fits_paths) - n_gated : min_frames
     tracklets = link_candidates(detections_per_frame, timestamps;
                                  max_speed, match_radius, min_frames=effective_min_frames)
+    # at most 2 px: chance alignments sit a median 2.6 px off a line
+    isfinite(astrometric_rms_px) && (max_residual = max(max_residual, min(3 * astrometric_rms_px, 2.0)))
     tracklets = _filter_tracklets(tracklets, detections_per_frame, timestamps; min_speed, max_flux_ratio, max_residual)
     return astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
 end
@@ -209,7 +217,7 @@ end
     _detect_all_frames(fits_paths; timestamp_key, threshold, box_size, aperture_radius,
                         reference, psf_threshold, psf_min_separation,
                         quality_max_std, plate_solve_api_key)
-        -> (detections_per_frame, wcs_per_frame, timestamps, n_gated)
+        -> (detections_per_frame, wcs_per_frame, timestamps, n_gated, astrometric_rms_px)
 
 The per-frame detection stage shared by [`run_pipeline`](@ref) (which
 links these into movers) and [`search_field`](@ref) (which additionally
@@ -231,12 +239,16 @@ raw path, `photometric_outlier_threshold` is forwarded to a post-loop
 auto-adjust their own `min_frames` default, since a gated frame otherwise
 silently makes no tracklet/variable-candidate reachable at all.
 
+`astrometric_rms_px` is the median, over the frames, of the refined
+astrometry's residual in pixels (`NaN` without `refine_astrometry`):
+[`run_pipeline`](@ref) scales its straight-line test by it.
+
 `detections_per_frame` is concretely typed from `detect_sources`'s own
 return type (confirmed identical on both its empty and non-empty return
 paths, not assumed) rather than left as `Vector{Any}` — a real
 type-stability fix found while profiling for other speedups, though it
 didn't measurably change this function's own real-data timing; see
-[Design refinements](https://richard7987.github.io/AsteroidPipeline.jl/dev/design-refinements).
+[Design refinements](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/design-decisions).
 """
 function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              timestamp_key::Union{Nothing,AbstractString}=nothing,
@@ -258,6 +270,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
     wcs_per_frame = WCSTransform[]
     timestamps = Float64[]
     n_gated = 0
+    rms_px = Float64[]       # refined astrometry's residual per frame, in pixels
     # difference_stack needs every frame before it can detect in any of them
     stacked_images = Matrix{Float64}[]
     stacked_masks = Union{Nothing,BitMatrix}[]
@@ -298,6 +311,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                     refined = refine_wcs(image, frame_wcs, reference_stars; mask)
                     if refined.refined
                         frame_wcs = refined.wcs
+                        push!(rms_px, refined.rms_arcsec / _pixel_scale_arcsec(frame_wcs, size(image)))
                     else
                         @warn "astrometric refinement failed; keeping the header WCS" path n_matches=refined.n_matches
                     end
@@ -390,7 +404,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
         end
     end
 
-    return detections_per_frame, wcs_per_frame, timestamps, n_gated
+    return detections_per_frame, wcs_per_frame, timestamps, n_gated, isempty(rms_px) ? NaN : median(rms_px)
 end
 
 """
@@ -446,7 +460,7 @@ function search_field(fits_paths::AbstractVector{<:AbstractString};
                        variability_normalize::Bool=(reference === nothing),
                        variability_max_relative_error::Real=0.10,
                        variability_systematic_error_fraction::Real=0.03)
-    detections_per_frame, wcs_per_frame, timestamps, n_gated = _detect_all_frames(
+    detections_per_frame, wcs_per_frame, timestamps, n_gated, _ = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
         reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
         photometric_outlier_threshold)

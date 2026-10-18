@@ -120,7 +120,7 @@ end
 """
     ades_psv(candidates, station::AbstractString; mode::AbstractString="CCD",
              trksub_prefix::AbstractString="", astCat=nothing,
-             photCat=nothing, band=nothing) -> String
+             photCat=nothing, band=nothing, designations=nothing) -> String
 
 Format `candidates` (an [`astrometric_calibrate`](@ref) table — columns
 `id`, `frame`, `x`, `y`, `ra`, `dec`, `epoch`) as an ADES PSV
@@ -153,12 +153,15 @@ astrometry-only submissions.
 
 Returns the PSV content as a `String`; write it to a `.psv` file
 yourself (e.g. `write("submission.psv", ades_psv(candidates, "I41"))`).
+
+`designations` (tracklet id => `trkSub`) replaces the generated ones, as in
+[`mpc80_report`](@ref).
 """
 function ades_psv(candidates, station::AbstractString; mode::AbstractString="CCD",
                    trksub_prefix::AbstractString="",
                    astCat::Union{Nothing,AbstractString}=nothing,
                    photCat::Union{Nothing,AbstractString}=nothing,
-                   band::Union{Nothing,AbstractString}=nothing)
+                   band::Union{Nothing,AbstractString}=nothing, designations=nothing)
     length(station) == 3 || throw(ArgumentError("station must be a 3-character MPC observatory code"))
 
     columns = ["trkSub", "mode", "stn", "obsTime", "ra", "dec"]
@@ -168,7 +171,10 @@ function ades_psv(candidates, station::AbstractString; mode::AbstractString="CCD
 
     lines = [join(columns, "|")]
     for row in candidates
-        trksub = trksub_prefix * uppercase(string(row.id; base=36))
+        trksub = designations === nothing ? trksub_prefix * uppercase(string(row.id; base=36)) :
+                 String(designations[row.id])
+        occursin(r"^[A-Za-z0-9]+$", trksub) || throw(ArgumentError(
+            "temporary designation \"$trksub\" must be letters and digits only"))
         length(trksub) <= 8 || throw(ArgumentError(
             "trkSub \"$trksub\" exceeds ADES's 8-character limit; use a shorter trksub_prefix"))
 
@@ -186,7 +192,7 @@ end
 """
     mpc80_report(candidates, station::AbstractString; note1::AbstractChar=' ',
                  note2::AbstractChar='C', trksub_prefix::AbstractString="",
-                 band::AbstractChar='G') -> String
+                 band::AbstractChar='G', designations=nothing) -> String
 
 Format `candidates` (an [`astrometric_calibrate`](@ref) table, same
 shape [`ades_psv`](@ref) takes) as the legacy MPC1992 fixed-width
@@ -232,15 +238,23 @@ One row (one 80-character line, newline-terminated) per detection
 point, same granularity as `ades_psv`. Returns the report content as a
 `String`; write it to a file yourself
 (e.g. `write("submission.txt", mpc80_report(candidates, "I41"))`).
+
+`designations` (tracklet id => designation) replaces the generated
+temporary designations with your own — an observing team's own numbering,
+`"NHU0002"`, or a NEO Confirmation Page designation for an object already
+posted there. Each must be 1-7 letters and digits.
 """
 function mpc80_report(candidates, station::AbstractString; note1::AbstractChar=' ',
                        note2::AbstractChar='C', trksub_prefix::AbstractString="",
-                       band::AbstractChar='G')
+                       band::AbstractChar='G', designations=nothing)
     length(station) == 3 || throw(ArgumentError("station must be a 3-character MPC observatory code"))
 
     lines = String[]
     for row in candidates
-        trksub = trksub_prefix * uppercase(string(row.id; base=36))
+        trksub = designations === nothing ? trksub_prefix * uppercase(string(row.id; base=36)) :
+                 String(designations[row.id])
+        occursin(r"^[A-Za-z0-9]+$", trksub) || throw(ArgumentError(
+            "temporary designation \"$trksub\" must be letters and digits only"))
         length(trksub) <= 7 || throw(ArgumentError(
             "temporary designation \"$trksub\" exceeds the 80-column format's 7-character limit; use a shorter trksub_prefix"))
 

@@ -234,14 +234,15 @@ blank_mpc_report(code::AbstractString; header...) =
     join([mpc_report_header(code; header...); _MPC_REPORT_END], "\n") * "\n"
 
 """
-    mpc_report(candidates, code; trksub_prefix="", header...) -> String
+    mpc_report(candidates, code; trksub_prefix="", designations=nothing, header...) -> String
 
 [`mpc80_report`](@ref)'s observation lines for `candidates`, between a
 [`mpc_report_header`](@ref) and the end line: a whole report, in the form
 Astrometrica produces.
 """
-function mpc_report(candidates, code::AbstractString; trksub_prefix::AbstractString="", header...)
-    obs = isempty(candidates) ? String[] : split(chomp(mpc80_report(candidates, code; trksub_prefix)), '\n')
+function mpc_report(candidates, code::AbstractString; trksub_prefix::AbstractString="", designations=nothing,
+                    header...)
+    obs = isempty(candidates) ? String[] : split(chomp(mpc80_report(candidates, code; trksub_prefix, designations)), '\n')
     return join([mpc_report_header(code; header...); obs; _MPC_REPORT_END], "\n") * "\n"
 end
 
@@ -534,7 +535,8 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
    (15"), confirmed in at least 3 frames (all, with 3 frames);
 6. check every candidate left against the known objects within 10' of it
    ([`nearby_known_objects`](@ref)): one there moving the same way is
-   most likely a known object with a poor orbit;
+   most likely a known object with a poor orbit — and, for recent images,
+   against the MPC's NEO Confirmation Page ([`neocp_check`](@ref));
 7. list the known objects expected in the field
    ([`known_objects_in_field`](@ref)), marking which were detected;
 8. write the report: the unidentified tracklets' observations (for vetting in
@@ -551,7 +553,8 @@ frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 `frames_used`, `dropped`, `reliable`, `candidates` (an
 [`astrometric_calibrate`](@ref) table with `frame` indexing `paths`, and a
 `mag` column), `known` (`Dict` tracklet id => name), `unknown_ids`, `nearby`
-(`nearby_known_objects`'s check of each unknown tracklet),
+(`nearby_known_objects`'s check of each unknown tracklet), `neocp`
+(`neocp_check`'s),
 `expected` (from `known_objects_in_field`, each with a `detected` flag),
 `report`, `report_kind` (`:blank`, `:candidates` or `:unreliable`) and
 `warnings`.
@@ -617,12 +620,16 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
 
     # every candidate left: is a known object near it, moving the same way?
     nearby = Dict{Int,Any}()
+    neocp = Dict{Int,Any}()
     unknown_rows = filter(r -> !haskey(known, r.id), collect(candidates))
     if !isempty(unknown_rows)
         progress(:nearby, 0.8)
         check = nearby_known_objects(unknown_rows; observatory, mpcorb)
         nearby = check.checks
         append!(warnings, check.warnings)
+        on_neocp = neocp_check(unknown_rows; observatory)
+        neocp = on_neocp.checks
+        append!(warnings, on_neocp.warnings)
     end
 
     progress(:field, 0.85)
@@ -644,7 +651,7 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
     progress(:done, 1.0)
     return (name=name, paths=paths, epochs=epochs, wcs=wcs, image_size=image_size, ratios=ratios,
             frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, known=known,
-            unknown_ids=unknown_ids, nearby=nearby, expected=expected, report=report, report_kind=report_kind,
+            unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, expected=expected, report=report, report_kind=report_kind,
             warnings=warnings)
 end
 

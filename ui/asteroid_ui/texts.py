@@ -35,6 +35,9 @@ CHECKS = {
                        "A known object nearby moves exactly like it — probably that object, with an imprecise "
                        "orbit. If so, press k."),
     "known": ("= known", "bold green", "A known object is predicted right there: it is that object. Press k."),
+    "neocp": ("◆ NEOCP", "bold yellow",
+              "An object on the MPC's NEO Confirmation Page moves like it: someone's recent, unconfirmed find. "
+              "If it is real, report it — it goes under the NEOCP's designation and helps confirm it."),
 }
 
 # Verdict of an analysis -> (icon, title, style, explanation)

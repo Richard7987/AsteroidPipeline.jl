@@ -29,10 +29,10 @@ curl -fsSL https://raw.githubusercontent.com/Richard7987/AsteroidPipeline.jl/mai
 asteroidpipeline
 ```
 
-or with [pipx](https://pipx.pypa.io/), from a release's wheel:
+or with [pipx](https://pipx.pypa.io/) (or pip), from PyPI:
 
 ```sh
-pipx install https://github.com/Richard7987/AsteroidPipeline.jl/releases/download/v0.2.0/asteroidpipeline-0.2.0-py3-none-any.whl
+pipx install asteroidpipeline
 asteroidpipeline --setup      # optional: install the analysis engine now
 ```
 
