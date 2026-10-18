@@ -1490,6 +1490,59 @@ end
         end
     end
 
+    @testset "own designations; the NEO Confirmation Page" begin
+        P = AsteroidPipeline
+        rows = [(id=2, frame=k, ra=183.0 + k / 1000, dec=-10.7, epoch=2460934.9 + k / 100, mag=21.4) for k in 1:2]
+        rep = mpc_report(rows, "F51"; designations=Dict(2 => "NHU0002"))
+        @test count(l -> startswith(l, "     NHU0002  C"), split(rep, '\n')) == 2
+        @test_throws ArgumentError mpc80_report(rows, "F51"; designations=Dict(2 => "NHU 2"))
+        @test_throws ArgumentError mpc80_report(rows, "F51"; designations=Dict(2 => "NHU00002"))
+        @test startswith(split(ades_psv(rows, "F51"; designations=Dict(2 => "ZTF10Go")), '\n')[2], "ZTF10Go|")
+
+        # the MPC's ephemeris page, as it answered (2026-10-18), abridged
+        html = """<pre>
+         ZTF10Go
+        <a href="x">Get the observations</a>
+        Date       UT   *  R.A. (J2000) Decl.  Elong.  V        Motion     Object
+        2026 10 18 2200   01 42 01.5 -08 46 22 161.4  17.9   45.22  078.4  160  -77   +60    0.52  082  -16   Map/Offsets   !
+        2026 10 18 2230   01 43 29.8 -08 41 54 161.4  17.9   43.82  078.5  193  -78   +59    0.53  082  -10   Map/Offsets   !
+         ABC0069
+        2026 10 18 2200   05 22 59.7 +37 32 48 119.7  19.0   54.86  094.7  135  -08   +60    0.34  165  +03   Map/Offsets
+        </pre>"""
+        eph = P._parse_neocp_ephemerides(html, ["ZTF10Go", "ABC0069"])
+        @test length(eph["ZTF10Go"]) == 2 && length(eph["ABC0069"]) == 1
+        r = eph["ZTF10Go"][1]
+        @test r.jd ≈ datetime2julian(DateTime(2026, 10, 18, 22, 0))
+        @test r.ra ≈ 15 * (1 + 42 / 60 + 1.5 / 3600) && r.dec ≈ -(8 + 46 / 60 + 22 / 3600)
+        @test r.rate_arcsec_h ≈ 45.22 * 60 && r.pa_deg ≈ 78.4 && r.uncertain
+        @test !eph["ABC0069"][1].uncertain
+        mid = P._interpolate_ephemeris(eph["ZTF10Go"], r.jd + 15 / 1440)
+        @test mid.ra ≈ (eph["ZTF10Go"][1].ra + eph["ZTF10Go"][2].ra) / 2
+        @test P._interpolate_ephemeris(eph["ZTF10Go"], r.jd - 1) === nothing
+
+        # old images aren't checked: the NEOCP lists what is being observed now
+        old = [(id=1, ra=10.0, dec=0.0, epoch=2460000.5 + k / 96) for k in 0:3]
+        c = neocp_check(old; observatory="F51", now_jd=2460100.5)
+        @test isempty(c.checks) && occursin("100 days old", only(c.warnings))
+
+        # live: a tracklet built from an object now on the NEOCP is recognised
+        try
+            objs = neocp_objects()
+            if !isempty(objs)
+                o = objs[1]
+                t0 = datetime2julian(P.Dates.now(P.Dates.UTC)) - 3 / 24
+                e = P._neocp_ephemerides([o.designation], "F51", t0)[o.designation]
+                track = [(id=1, P._interpolate_ephemeris(e, t0 + k / 96)...) for k in 0:3]
+                c = neocp_check(track; observatory="F51")
+                @test c.checks[1].verdict === :on_neocp
+                @test first(c.checks[1].objects).designation == o.designation
+            end
+        catch e
+            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            @test_skip "network unavailable"
+        end
+    end
+
     @testset "crossmatch_catalog" begin
         @test_throws ArgumentError crossmatch_catalog([], :unknown_catalog; radius=5.0)
 

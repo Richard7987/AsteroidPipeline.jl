@@ -34,6 +34,7 @@ include("mpcorb.jl")
 include("campaign.jl")
 include("observatories.jl")
 include("known_nearby.jl")
+include("neocp.jl")
 include("injection.jl")
 include("reference.jl")
 include("psf.jl")
@@ -56,6 +57,6 @@ export detect_sources, fill_value_mask, link_candidates, load_wcs, pix_to_sky,
        mpc_report_header, blank_mpc_report, mpc_report, pack_designation, check_mpc_report,
        known_objects_in_field, frame_footprint, analyze_set, pipeline_config, IASC_PS1_CONFIG,
        read_obscodes, download_obscodes, frame_site, observatory_candidates, tracklet_motion,
-       nearby_known_objects
+       nearby_known_objects, neocp_objects, neocp_check
 
 end # module AsteroidPipeline
