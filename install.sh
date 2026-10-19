@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/Richard7987/AsteroidPipeline.jl/main/install.sh | sh
 #
-# or, from a downloaded release:  sh install.sh asteroidpipeline-0.2.1-py3-none-any.whl
+# or, from a downloaded release:  sh install.sh asteroidpipeline-0.2.2-py3-none-any.whl
 #
 # What it does: a private Python environment in ~/.local/share/asteroidpipeline,
 # the app installed into it, the `asteroidpipeline` command in ~/.local/bin,
@@ -12,7 +12,7 @@
 # Remove everything with:  rm -rf ~/.local/share/asteroidpipeline ~/.local/bin/asteroidpipeline
 set -eu
 
-VERSION="0.2.1"
+VERSION="0.2.2"
 SOURCE="${1:-https://github.com/Richard7987/AsteroidPipeline.jl/releases/download/v$VERSION/asteroidpipeline-$VERSION-py3-none-any.whl}"
 PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/asteroidpipeline"
 BIN="$HOME/.local/bin"
