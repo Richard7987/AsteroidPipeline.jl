@@ -44,7 +44,7 @@ Statistics = "1.11.1"
 TypedTables = "1.4.6"
 WCS = "0.6.3"
 julia = "1.11"
-p7zip_jll = "17.7.0"
+p7zip_jll = "17"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
