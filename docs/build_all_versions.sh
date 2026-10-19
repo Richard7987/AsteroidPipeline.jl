@@ -33,6 +33,10 @@ build() {   # build <checkout> <git ref>: compile its docs, copy each version fo
     (cd "$dir" && GITHUB_REF="$ref" julia --project=docs -e \
         'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()' &&
      GITHUB_REF="$ref" julia --project=docs docs/make.jl)
+    if [ ! -f "$dir/docs/build/bases.txt" ]; then
+        echo "=== $ref: no version folder of its own (a newer release replaces it)"
+        return
+    fi
     local i=1 base
     while read -r base; do
         [ -n "$base" ] || { echo "error: $ref was built without a version folder" >&2; exit 1; }
@@ -44,7 +48,14 @@ build() {   # build <checkout> <git ref>: compile its docs, copy each version fo
 
 build "$root" refs/heads/main
 
-for tag in $(git -C "$root" tag -l 'v*' --sort=v:refname); do
+# Only the newest release of each series is built — each vX.Y below 1.0,
+# each vX from 1.0 on — the folders DocumenterVitepress keeps (keep=:breaking):
+# an older release in the same series would build no folder of its own.
+releases="$(git -C "$root" tag -l 'v[0-9]*' --sort=v:refname |
+    awk -F'[v.]' '{ series = ($2 == 0) ? $2 "." $3 : $2; last[series] = $0 }
+                  END { for (s in last) print last[s] }' | sort -V)"
+
+for tag in $releases; do
     wt="$(mktemp -d)"
     git -C "$root" worktree add -q --detach "$wt" "$tag"
     rm -rf "$wt/docs/src/.vitepress"
