@@ -87,6 +87,7 @@ makedocs(;
         "Release notes" => "release-notes.md",
         "Development notes" => [
             "Overview" => "development/index.md",
+            "Setting up for development" => "development/setup.md",
             "Releasing a version" => "development/releasing.md",
             "ZTF investigation log" => "development/ztf-investigation.md",
             "Pan-STARRS1 working notes" => "development/pan-starrs1-notes.md",

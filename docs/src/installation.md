@@ -54,12 +54,25 @@ result = analyze_set("images.zip"; observatory="F51", workdir="work")
 [Getting started](getting-started.md) goes on from there. To upgrade:
 `Pkg.update("AsteroidPipeline")`.
 
-## With Nix
+## Getting Python, pipx and Julia
+
+Most Linux distributions have Python 3.11 or newer already. pipx and Julia:
+
+| Distribution | pipx |
+|:--|:--|
+| Debian, Ubuntu, Mint | `sudo apt install pipx` |
+| Fedora | `sudo dnf install pipx` |
+| Arch, Manjaro | `sudo pacman -S python-pipx` |
+| macOS (Homebrew) | `brew install pipx` |
+
+Julia, on any of them, with [juliaup](https://julialang.org/install), its
+official installer (which also keeps it up to date: `juliaup update`):
 
 ```sh
-nix run github:Richard7987/AsteroidPipeline.jl      # the app
-nix develop github:Richard7987/AsteroidPipeline.jl  # a shell with Julia and Python
+curl -fsSL https://install.julialang.org | sh
 ```
+
+The app doesn't need it: it downloads Julia itself if there is none.
 
 ## Checking it works
 
@@ -70,3 +83,8 @@ nix develop github:Richard7987/AsteroidPipeline.jl  # a shell with Julia and Pyt
 
 Both need an internet connection when they run: positions are calibrated
 against Gaia, and known asteroids come from the MPC and SkyBoT.
+
+!!! note "Nix"
+    With [Nix](https://nixos.org) the app is also
+    `nix run github:Richard7987/AsteroidPipeline.jl` — an option, not a
+    requirement: everything above works on any Linux.

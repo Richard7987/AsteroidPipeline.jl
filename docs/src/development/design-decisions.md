@@ -295,9 +295,9 @@ than decided on general reputation:
   cross-process `WCSTransform` segfault this same multiprocessing work
   hit), for a target already solved.
 - **Local plate-solving** (replacing `plate_solve`'s live
-  nova.astrometry.net dependency) — rejected. `solve-field` isn't in
-  nixpkgs, and needs multiple GB of scale-specific index files even
-  once built, to replace something that already works.
+  nova.astrometry.net dependency) — rejected. `solve-field` (astrometry.net)
+  isn't packaged for every Linux distribution, and needs multiple GB of
+  scale-specific index files, to replace something that already works.
 - **`digest2` NEO/orbit-class scoring** — built (`digest2_score`, [Follow-up
   tools](../guides/follow-up.md)). Real verification against real ZTF field 451
   candidates surfaced a genuinely useful, non-obvious finding: `digest2`

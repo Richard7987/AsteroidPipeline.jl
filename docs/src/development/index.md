@@ -9,5 +9,6 @@ evidence, for anyone checking a result or changing the code it concerns.
 |:--|:--|
 | [ZTF investigation log](ztf-investigation.md) | the first real-data tests: five bugs, a clouded frame, the quality gate, plate solving, photometry, variable-star false positives |
 | [Pan-STARRS1 working notes](pan-starrs1-notes.md) | every failure on real Pan-STARRS1 image sets, the configuration now in `pipeline_config`, epochs, completeness, the blind test |
+| [Setting up for development](setup.md) | the library and this documentation from a checkout, on any Linux |
 | [Releasing a version](releasing.md) | how a version goes out: the tag, PyPI, the documentation, Julia's registry |
 | [Design decisions](design-decisions.md) | choices revisited: the PSF fallback, ZOGY's astrometric noise term, performance of reference building, technologies tried and rejected |

@@ -1,20 +1,9 @@
 # AsteroidPipeline.jl
 
 [![CI](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml)
-[![Documentation build](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/Documenter.yml/badge.svg)](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/Documenter.yml)
-[![docs: stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/)
-[![docs: dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/dev/)
-[![Release](https://img.shields.io/github/v/release/Richard7987/AsteroidPipeline.jl?sort=semver)](https://github.com/Richard7987/AsteroidPipeline.jl/releases)
+[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/)
 [![PyPI](https://img.shields.io/pypi/v/asteroidpipeline.svg)](https://pypi.org/project/asteroidpipeline/)
-[![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://pypi.org/project/asteroidpipeline/)
-[![Julia](https://img.shields.io/badge/julia-1.11%2B-9558b2.svg)](https://julialang.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-[![Installation](https://img.shields.io/badge/%F0%9F%93%A6_installation-app_or_library-0a7bbb.svg)](https://richard7987.github.io/AsteroidPipeline.jl/dev/installation)
-[![Getting started](https://img.shields.io/badge/%F0%9F%9A%80_getting_started-tutorial-0a7bbb.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/getting-started)
-[![Validation](https://img.shields.io/badge/%F0%9F%93%8A_validation-reports-2e8b57.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/validation/summary)
-[![Release notes](https://img.shields.io/badge/%F0%9F%93%9D_release_notes-what%27s_new-8a6d3b.svg)](https://richard7987.github.io/AsteroidPipeline.jl/dev/release-notes)
-[![API reference](https://img.shields.io/badge/%F0%9F%93%9A_reference-API-6c757d.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/reference/sets)
 
 Find asteroids in astronomical images. Give it a few exposures of one field
 taken minutes apart — a `.zip`, a folder or FITS files, from any telescope —
@@ -84,8 +73,6 @@ or with the installer, which makes its own Python environment:
 curl -fsSL https://raw.githubusercontent.com/Richard7987/AsteroidPipeline.jl/main/install.sh | sh
 ```
 
-With Nix: `nix run github:Richard7987/AsteroidPipeline.jl`.
-
 The first run sets up the analysis engine — Julia (downloaded if you don't
 have it) and its packages — which takes several minutes, once;
 `asteroidpipeline --setup` does it ahead of time. Images are shown at full
@@ -121,8 +108,35 @@ Start with [Getting started](https://richard7987.github.io/AsteroidPipeline.jl/s
 | `examples/` | scripts for real data, batches and completeness tests |
 | `ui/` | the terminal app (Python, [Textual](https://textual.textualize.io/)) |
 | `pyproject.toml`, `install.sh` | packaging of the app, with the library inside |
-| `flake.nix` | Nix: `nix develop` for a development shell, `nix build` for the app |
+| `flake.nix` | optional, for Nix users: a development shell and a package of the app |
 | `.github/workflows/` | tests, the documentation, and releases (PyPI, GitHub) |
+
+## Development
+
+On any Linux (or macOS), with git, Python 3.11+ and Julia 1.11+ (the
+easiest way to get Julia is [juliaup](https://julialang.org/install):
+`curl -fsSL https://install.julialang.org | sh`):
+
+```sh
+git clone https://github.com/Richard7987/AsteroidPipeline.jl.git
+cd AsteroidPipeline.jl
+
+# the Julia library
+julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.test()'
+
+# the documentation
+julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
+julia --project=docs docs/make.jl                  # site in docs/build/1
+
+# the terminal app, editable: it uses this checkout's Julia code
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e .
+asteroidpipeline
+```
+
+With [Nix](https://nixos.org), `nix develop` gives a shell with Julia and
+Python instead, and `nix run .` runs the app — optional, the steps above
+need nothing of it.
 
 Releasing a version — the tag, PyPI, the documentation, Julia's registry —
 is described in [Releasing a version](https://richard7987.github.io/AsteroidPipeline.jl/dev/development/releasing).
