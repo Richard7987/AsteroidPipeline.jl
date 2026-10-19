@@ -24,6 +24,11 @@ real data from Pan-STARRS1 and the Zwicky Transient Facility.
 
 ## In a few lines
 
+```sh
+pipx install asteroidpipeline      # the app, or, for the library:
+julia -e 'using Pkg; Pkg.add("AsteroidPipeline")'
+```
+
 ```julia
 using AsteroidPipeline
 
@@ -38,6 +43,7 @@ print(result.report)      # the MPC report (blank if nothing new was found)
 
 | If you want to… | Read |
 |:--|:--|
+| install it — the app with Python, or the library with Julia | [Installation](installation.md) |
 | try it on your own images | [Getting started](getting-started.md) |
 | do a specific task (reports, known objects, another telescope…) | the [Guides](guides/image-sets.md) |
 | understand how it decides what is real | [How it works](concepts/pipeline.md) |

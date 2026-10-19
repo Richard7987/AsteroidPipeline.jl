@@ -48,6 +48,7 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
+        "Installation" => "installation.md",
         "Getting started" => "getting-started.md",
         "Guides" => [
             "Analyze image sets" => "guides/image-sets.md",

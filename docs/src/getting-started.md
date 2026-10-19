@@ -22,8 +22,12 @@ time.
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/Richard7987/AsteroidPipeline.jl")   # Pkg.add("AsteroidPipeline") once it is registered
+Pkg.add("AsteroidPipeline")
 ```
+
+(Until its registration completes, around 22 October 2026:
+`Pkg.add(url="https://github.com/Richard7987/AsteroidPipeline.jl")`. Other
+ways, and the app: [Installation](installation.md).)
 
 ## 2. Analyze the set
 

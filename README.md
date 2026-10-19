@@ -46,7 +46,18 @@ for `main`. What changed: [release notes](https://richard7987.github.io/Asteroid
 How well it works, measured on real data, is in the
 [validation reports](https://richard7987.github.io/AsteroidPipeline.jl/stable/validation/summary).
 
-## Install the app
+## Install
+
+| | Command | Needs |
+|:--|:--|:--|
+| the app | `pipx install asteroidpipeline` | Python 3.11+ |
+| the library | `julia -e 'using Pkg; Pkg.add("AsteroidPipeline")'` | Julia 1.11+ |
+
+The app carries the library inside it and sets up Julia by itself; install
+the library only to use it from your own code. Details:
+[Installation](https://richard7987.github.io/AsteroidPipeline.jl/stable/installation).
+
+### The app
 
 On any Linux (or macOS) with Python 3.11 or newer, from PyPI with
 [pipx](https://pipx.pypa.io/) (or pip):
@@ -71,14 +82,15 @@ resolution in terminals with a graphics protocol (Kitty, WezTerm, Ghostty,
 foot…), as coloured blocks elsewhere. The app's own guide is
 [ui/README.md](ui/README.md).
 
-## Use the library
+### The library
 
-Julia 1.11 or newer:
+Julia 1.11 or newer, from Julia's General registry:
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/Richard7987/AsteroidPipeline.jl")
-# Pkg.add("AsteroidPipeline") once its registration in Julia's General registry completes
+Pkg.add("AsteroidPipeline")
+# until the registration completes (around 22 October 2026):
+# Pkg.add(url="https://github.com/Richard7987/AsteroidPipeline.jl")
 
 using AsteroidPipeline
 result = analyze_set("images.zip"; observatory="F51", workdir="work")
