@@ -83,8 +83,10 @@ makedocs(;
             "Report formats and digest2" => "reference/export.md",
             "Linking across nights" => "reference/multinight.md",
         ],
+        "Release notes" => "release-notes.md",
         "Development notes" => [
             "Overview" => "development/index.md",
+            "Releasing a version" => "development/releasing.md",
             "ZTF investigation log" => "development/ztf-investigation.md",
             "Pan-STARRS1 working notes" => "development/pan-starrs1-notes.md",
             "Design decisions" => "development/design-decisions.md",

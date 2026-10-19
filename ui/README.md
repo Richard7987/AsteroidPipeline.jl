@@ -12,8 +12,8 @@ Everything here is interface. The analysis is the AsteroidPipeline.jl library
 
 ## Installing and running
 
-See the repository's README: `install.sh` on any Linux, `pipx` from a release
-wheel, or `nix run`. The package is built from `../pyproject.toml`; the wheel
+See the repository's README: `pipx install asteroidpipeline` (PyPI),
+`install.sh` on any Linux, or `nix run`. The package is built from `../pyproject.toml`; the wheel
 carries the Julia library inside it (`asteroid_ui/julia/AsteroidPipeline`).
 
 On first run (or `asteroidpipeline --setup`) the engine is set up
@@ -34,9 +34,11 @@ Images are shown at full resolution in terminals with a graphics protocol
 
 ## Using it
 
-1. **Settings** (`s`): who measures (the report's MEA line, required) and,
-   optionally, a contact (CON). Everything else in the report's header comes
-   with the images — see *Telescope profiles* below.
+1. **Settings** (`s`): who measures (the report's MEA line, required),
+   optionally a contact (CON), and your designations for new candidates — a
+   prefix and the next number (`NHU` and `2` give NHU0002, NHU0003…; empty,
+   the program's own P2). Everything else in the report's header comes with
+   the images — see *Telescope profiles* below.
 2. **Choose an image set**: the start screen lists the `.zip` files of FITS
    images in your downloads folder; `o` opens any `.zip`, folder or FITS
    files. `t` analyzes every new `.zip` at once.
@@ -51,9 +53,14 @@ Images are shown at full resolution in terminals with a graphics protocol
    like it a little ahead or behind on its path (an object whose orbit is
    imprecise), *= known* if one is predicted right there. `k` marks it as
    that known object: kept as a real asteroid for the training data, left
-   out of the report.
+   out of the report. For images up to 30 days old it is also compared with
+   the MPC's NEO Confirmation Page: *◆ NEOCP* if an object awaiting
+   confirmation moves like it — someone else's recent find.
 5. **Report** (`r`): the observations of the candidates you confirmed, or the
-   blank report if there are none — copy it (`c`) or save it (`s`).
+   blank report if there are none — copy it (`c`) or save it (`s`). Each
+   confirmed candidate gets your next designation, and keeps it whenever the
+   report is written again; one on the NEOCP is reported under the NEOCP's
+   designation.
 
 `v` on the start screen checks any MPC report file before it is submitted:
 missing `COD` line, wrong observatory code, lines left over from another image
@@ -113,6 +120,7 @@ candidates are numbered anew).
 |:--|:--|
 | `~/.config/asteroid-ui/config.json` | settings |
 | `~/.config/asteroid-ui/profiles.json` | telescope profiles |
+| `~/.config/asteroid-ui/designations.json` | the designations given to candidates |
 | `~/.cache/asteroid-ui/sets/<set>/` | each analysis: `result.json`, display images, cut-outs |
 | `~/.cache/asteroid-ui/engine.log` | the analysis engine's log |
 | `~/.local/share/asteroid-ui/engine/` | the engine's Julia environment |
