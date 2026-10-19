@@ -1,9 +1,20 @@
 # AsteroidPipeline.jl
 
 [![CI](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml)
+[![Documentation build](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/Documenter.yml/badge.svg)](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/Documenter.yml)
+[![docs: stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/)
+[![docs: dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/dev/)
+[![Release](https://img.shields.io/github/v/release/Richard7987/AsteroidPipeline.jl?sort=semver)](https://github.com/Richard7987/AsteroidPipeline.jl/releases)
 [![PyPI](https://img.shields.io/pypi/v/asteroidpipeline.svg)](https://pypi.org/project/asteroidpipeline/)
-[![docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/)
-[![docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/dev/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://pypi.org/project/asteroidpipeline/)
+[![Julia](https://img.shields.io/badge/julia-1.11%2B-9558b2.svg)](https://julialang.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+[![Installation](https://img.shields.io/badge/%F0%9F%93%A6_installation-app_or_library-0a7bbb.svg)](https://richard7987.github.io/AsteroidPipeline.jl/dev/installation)
+[![Getting started](https://img.shields.io/badge/%F0%9F%9A%80_getting_started-tutorial-0a7bbb.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/getting-started)
+[![Validation](https://img.shields.io/badge/%F0%9F%93%8A_validation-reports-2e8b57.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/validation/summary)
+[![Release notes](https://img.shields.io/badge/%F0%9F%93%9D_release_notes-what%27s_new-8a6d3b.svg)](https://richard7987.github.io/AsteroidPipeline.jl/dev/release-notes)
+[![API reference](https://img.shields.io/badge/%F0%9F%93%9A_reference-API-6c757d.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/reference/sets)
 
 Find asteroids in astronomical images. Give it a few exposures of one field
 taken minutes apart — a `.zip`, a folder or FITS files, from any telescope —
@@ -22,7 +33,7 @@ It comes two ways:
 **Documentation: <https://richard7987.github.io/AsteroidPipeline.jl/stable/>**
 — for the latest release; the version picker at the top right has each
 release's, and [dev](https://richard7987.github.io/AsteroidPipeline.jl/dev/)
-for `main`. What changed: [release notes](https://richard7987.github.io/AsteroidPipeline.jl/stable/release-notes).
+for `main`. What changed: [release notes](https://richard7987.github.io/AsteroidPipeline.jl/dev/release-notes).
 
 ## What it does
 
@@ -55,7 +66,7 @@ How well it works, measured on real data, is in the
 
 The app carries the library inside it and sets up Julia by itself; install
 the library only to use it from your own code. Details:
-[Installation](https://richard7987.github.io/AsteroidPipeline.jl/stable/installation).
+[Installation](https://richard7987.github.io/AsteroidPipeline.jl/dev/installation).
 
 ### The app
 
