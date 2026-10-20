@@ -245,6 +245,17 @@ end
         @test F([moving, bent], dets4, ts4; max_residual=1.0) == [moving]
         @test F([bent], dets, ts; max_residual=1.0) == [bent]                    # complete: left alone
 
+        # four frames, one of them faint (fluxes 121, 114, 47, 95: 2019 UA185's):
+        # kept without that point, as a partial tracklet that must still be straight
+        flux4 = [121.0, 114.0, 47.0, 95.0]
+        dets_ua = [Table(x=[10 + 2k], y=[10], flux=[flux4[k]], xcen=[10.0 + 2k], ycen=[10.0]) for k in 1:4]
+        ua = [(frame=k, x=10.0 + 2k, y=10.0) for k in 1:4]
+        @test F([ua], dets_ua, ts4; max_flux_ratio=2.5, max_residual=1.0) == [ua[[1, 2, 4]]]
+        @test isempty(F([ua], dets_ua, ts4; max_flux_ratio=2.5, max_residual=1.0, min_frames=4))
+        # not when the rest isn't straight
+        ua_bent = [ua[1], ua[2], ua[3], (frame=4, x=18.0, y=20.0)]
+        dets_bent = vcat(dets_ua[1:3], [Table(x=[18], y=[20], flux=[95.0], xcen=[18.0], ycen=[20.0])])
+        @test isempty(F([ua_bent], dets_bent, ts4; max_flux_ratio=2.5, max_residual=1.0))
     end
 
     @testset "link_candidates" begin

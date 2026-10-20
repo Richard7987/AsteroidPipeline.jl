@@ -171,7 +171,7 @@ end
 
 """
     _filter_tracklets(tracklets, detections_per_frame, timestamps;
-                      min_speed=0.0, max_flux_ratio=Inf, max_residual=Inf) -> Vector
+                      min_speed=0.0, max_flux_ratio=Inf, max_residual=Inf, min_frames=3) -> Vector
 
 Drop tracklets that fail IASC's own "true signature" tests (its
 Signature Guide: a real asteroid moves in a straight line, at constant
@@ -185,7 +185,11 @@ fluctuates by more than 1"). Straight line and constant speed are what
   residual left by a star.
 - `max_flux_ratio`: brightest over faintest detection flux must not
   exceed it (2.5 is IASC's 1 magnitude). Chance alignments of noise
-  peaks rarely keep a steady flux; a real object does.
+  peaks rarely keep a steady flux; a real object does. A tracklet longer
+  than `min_frames` that fails only because of one point — the one
+  farthest from the median flux — is kept without it if the rest passes
+  every test: 2019 UA185 (V ≈ 21, `XY72_p01`) had fluxes 121, 114, 47 and
+  95, a faint frame at signal-to-noise ~5, not a different object.
 - `max_residual` (pixels): for a tracklet missing some frame, the RMS
   distance of its points from their own least-squares line must not
   exceed it. `link_candidates` accepts any point within `match_radius` of
@@ -201,9 +205,11 @@ fluctuates by more than 1"). Straight line and constant speed are what
 With all at their defaults, `tracklets` is returned unchanged.
 """
 function _filter_tracklets(tracklets, detections_per_frame, timestamps;
-                           min_speed::Real=0.0, max_flux_ratio::Real=Inf, max_residual::Real=Inf)
+                           min_speed::Real=0.0, max_flux_ratio::Real=Inf, max_residual::Real=Inf,
+                           min_frames::Integer=3)
     (min_speed <= 0 && isinf(max_flux_ratio) && isinf(max_residual)) && return tracklets
-    return filter(tracklets) do t
+    flux(p) = _detection_flux(detections_per_frame[p.frame], p)
+    function passes(t)
         if min_speed > 0
             ts = [timestamps[p.frame] for p in t]
             _, vx = _linfit(ts, [p.x for p in t])
@@ -211,7 +217,7 @@ function _filter_tracklets(tracklets, detections_per_frame, timestamps;
             hypot(vx, vy) < min_speed && return false
         end
         if isfinite(max_flux_ratio)
-            fluxes = [_detection_flux(detections_per_frame[p.frame], p) for p in t]
+            fluxes = flux.(t)
             all(f -> f > 0, fluxes) || return false
             maximum(fluxes) / minimum(fluxes) > max_flux_ratio && return false
         end
@@ -220,6 +226,20 @@ function _filter_tracklets(tracklets, detections_per_frame, timestamps;
         partial && isfinite(max_residual) && _line_residual(t, timestamps) > max_residual && return false
         return true
     end
+    kept = eltype(tracklets)[]
+    for t in tracklets
+        if passes(t)
+            push!(kept, t)
+        elseif isfinite(max_flux_ratio) && length(t) > min_frames && all(p -> flux(p) > 0, t)
+            # One point too faint or too bright for the rest: the tracklet without
+            # it, if that passes every test — a partial one, the straight-line one too
+            fluxes = flux.(t)
+            drop = argmax(i -> abs(log(fluxes[i] / median(fluxes))), eachindex(t))
+            rest = t[setdiff(eachindex(t), drop)]
+            passes(rest) && push!(kept, rest)
+        end
+    end
+    return kept
 end
 
 # The flux of the detection a tracklet point was taken from (`NaN` if the

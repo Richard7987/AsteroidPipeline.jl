@@ -210,7 +210,8 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                                  max_speed, match_radius, min_frames=effective_min_frames)
     # at most 2 px: chance alignments sit a median 2.6 px off a line
     isfinite(astrometric_rms_px) && (max_residual = max(max_residual, min(3 * astrometric_rms_px, 2.0)))
-    tracklets = _filter_tracklets(tracklets, detections_per_frame, timestamps; min_speed, max_flux_ratio, max_residual)
+    tracklets = _filter_tracklets(tracklets, detections_per_frame, timestamps; min_speed, max_flux_ratio, max_residual,
+                                  min_frames=effective_min_frames)
     return astrometric_calibrate(tracklets, wcs_per_frame, timestamps)
 end
 
