@@ -146,13 +146,14 @@ end
 # examples/injection_test.jl on a real Pan-STARRS1 set (XY54_p10), with the
 # configuration in pipeline_config: 180 main-belt-like objects (V 18-23,
 # 5-100"/h) and 80 fast, NEO-like ones (100-1000"/h), injected into the real
-# frames with each frame's own PSF, zero point, noise and trailing.
+# frames with each frame's own PSF, zero point, noise and trailing. Measured
+# with the frames' astrometry fitted together (refine_wcs_set), 0.3.0.
 let
     mag_edges = 18.0:0.5:23.0
-    mag_rec = [13, 14, 11, 13, 9, 16, 16, 13, 3, 0]
+    mag_rec = [14, 15, 12, 13, 10, 16, 16, 13, 4, 0]
     mag_n = [17, 16, 17, 16, 14, 18, 19, 18, 19, 26]
     speed_labels = ["5-10", "10-20", "20-40", "40-70", "70-100", "100-200", "200-400", "400-700", "700-1000"]
-    speed_rec = [5, 13, 22, 40, 28, 6, 7, 7, 2]
+    speed_rec = [5, 13, 24, 41, 30, 8, 9, 7, 3]
     speed_n = [10, 21, 31, 67, 51, 14, 16, 22, 28]
 
     fig = Figure(size=(800, 760))

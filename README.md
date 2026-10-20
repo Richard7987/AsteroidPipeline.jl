@@ -30,7 +30,7 @@ for `main`. What changed: [release notes](https://richard7987.github.io/Asteroid
   whose images carry a WCS; the observatory's MPC code is found from the
   FITS headers.
 - **Calibrated**: every frame's astrometry refitted to Gaia DR3 (positions
-  agree with an independent reduction to 0.13–0.19″), magnitudes against
+  agree with an independent reduction to 0.12–0.17″), magnitudes against
   Gaia's.
 - **The search**: each frame minus the set's median, artifacts removed (hot
   pixels, bright-star halos, ghosts and diffraction spikes), detections

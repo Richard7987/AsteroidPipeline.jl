@@ -13,7 +13,7 @@ known.
 | Problem in real images | What is done |
 |:--|:--|
 | invalid pixels flagged by a `BLANK` value, or gaps between detector cells filled with one constant | replaced, or masked ([`clean_blank_pixels`](@ref), [`fill_value_mask`](@ref)) |
-| the header's astrometric solution is off by several arcseconds (6.8″ on one real Pan-STARRS1 set) | each frame's WCS refitted to Gaia DR3 stars detected in it ([`refine_wcs`](@ref)); residuals ~0.1–0.2″ |
+| the header's astrometric solution is off by several arcseconds (6.8″ on one real Pan-STARRS1 set, 32″ on others) | the frames' WCS refitted to Gaia DR3 stars detected in them, all frames together ([`refine_wcs_set`](@ref)); residuals ~0.1″ |
 | a frame full of detector defects | its 10σ sources counted per Gaia star; above 30, the frame is left out, and with fewer than 3 good frames the set is flagged ([`set_quality`](@ref)) |
 | exposure times in different conventions | the time of mid-exposure, in UTC ([`frame_epoch`](@ref)) |
 

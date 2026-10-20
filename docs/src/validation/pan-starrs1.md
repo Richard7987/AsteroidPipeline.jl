@@ -103,9 +103,59 @@ doesn't search, the count rises from 22 to 84.
 
 Of the 13 catalogued objects still missed, 5 are in the damaged set, 7 are
 fainter than V≈21 (the depth of these images), and one, 4311 T-1, crosses a
-cell gap in one frame and a star in the next. Two more that a first count
+cell gap in one frame and a star in the next (found since, with the frames'
+astrometry fitted together — below). Two more that a first count
 placed in the field are 30–90 px off the chip once the astrometry is
 corrected.
+
+### The frames' astrometry fitted together
+
+Eight sets taken on 2026-10-12 and 10-14 (`XY75_p01`, `XY75_p10`, `XY02_p00`,
+`XY04_p01`, `XY04_p10`, `XY04_p11`, `XY05_p00`, `XY05_p01`) gave 60
+candidates on first analysis, none of them real. Two causes, each confirmed
+directly:
+
+- **Headers far off.** On `XY04_p11` and `XY05_p00` the header astrometry
+  was 128 px (32″) off, beyond the 60 px [`refine_wcs`](@ref) searched: every
+  frame kept its header solution, and a known asteroid, (273964) 2007 KS7,
+  was reported as new, 32″ from where it was.
+- **Frames out of step.** Elsewhere each frame was refitted, but on the
+  6–13 Gaia stars its single offset matched, of ~250 in the field; the
+  frames' solutions then disagreed by up to 9 px (2.3″), where their headers
+  agreed with each other to 0.1–0.35 px (measured on the 120–800 stars
+  detected in both). Every star seemed to move ~3″/h, and dozens passed as
+  candidates.
+
+[`refine_wcs_set`](@ref) fits the frames together: a frame that fails is
+retried with a 300 px search; stars are matched again from each fit until no
+more match (70–250 per frame); frames left with few stars start again from
+the best one's solution; and the matched stars of every frame are pooled
+through the headers' relative alignment into one fit per frame — kept only
+if no frame's stars need an offset of their own. On those eight sets the
+residuals are 0.10–0.13″ (from 38–250 stars), the 60 candidates are gone,
+and 2007 KS7 is identified. On `XY54_p10` the unknown object's positions
+agree with Astrometrica's to 0.12–0.17″.
+
+Aligned correctly, one more cause showed: a faint object's four detections
+can span more than the 2.5× flux ratio allowed — 2019 UA185 (V ≈ 21,
+`XY72_p01`) had fluxes 121, 114, 47 and 95, one frame at signal-to-noise ~5.
+Such a tracklet is now kept without its one discordant point, if the rest
+passes every test, the straight-line one included.
+
+On the 21 sets (all above but `XY73_p00`, damaged; 20 searched), analyzed
+with [`analyze_set`](@ref), a catalogued object counting as found when a
+tracklet is identified as it:
+
+| | Tracklets | Not identified | Catalogued found |
+|:--|--:|--:|--:|
+| before (0.2.2) | 176 | 150 | 24 |
+| fitted together, flux test per point | 119 | 91 | 28 |
+
+Found now and not before: 4311 T-1, 2013 AK16, 2008 SV214, 2007 KS7 and
+2026 SE8. Lost: 2020 HW140 (V 21.9), detected in three frames at 4–6σ
+before and in two now — its fourth position borders a masked cell gap. The
+injection test below, repeated, recovers more: 113 of 180 main-belt objects
+(from 108) and 27 of 80 fast ones (from 22).
 
 ### Completeness
 
@@ -113,11 +163,11 @@ corrected.
 
 | Magnitude | 18–21.5 | 21.5–22 | 22–22.5 | 22.5–23 |
 |:--|--:|--:|--:|--:|
-| recovered | 79% (92/117) | 72% | 16% | 0% |
+| recovered | 82% (96/117) | 72% | 21% | 0% |
 
 | Rate (″/h) | 5–10 | 10–100 | 100–400 | 400–1000 |
 |:--|--:|--:|--:|--:|
-| recovered | 50% | 61% | 43% | 18% |
+| recovered | 50% | 66% | 57% | 20% |
 
 ### A blind test
 

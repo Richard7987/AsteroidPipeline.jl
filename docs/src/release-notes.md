@@ -3,6 +3,29 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Fixed**
+
+- Images whose header astrometry is far off, or whose frames hold few
+  matching Gaia stars, gave dozens of false candidates — every star seemed
+  to move ~3″/h — and could report a known asteroid as new, 32″ from where it
+  was. The frames' astrometry is now fitted together
+  ([`refine_wcs_set`](@ref), used by [`run_pipeline`](@ref) and
+  [`analyze_set`](@ref)): a wider search when a header is far off, stars
+  matched again from each fit, and one solution per frame from the stars of
+  all of them. On eight 2026-10-12/14 Pan-STARRS1 sets, 60 false candidates
+  fell to none; on 20 sets, catalogued asteroids identified rose from 24 to
+  28 ([Validation](validation/pan-starrs1.md)).
+- A tracklet with one point too faint or too bright for the brightness test
+  is kept without that point, if the rest passes every test: a faint known
+  asteroid (2019 UA185, V ≈ 21) was being dropped for one frame at
+  signal-to-noise ~5.
+
+**Added**
+
+- [`refine_wcs`](@ref) returns the matched stars (`matches`).
+
 ## 0.2.2 — 2026-10-18
 
 **Fixed**

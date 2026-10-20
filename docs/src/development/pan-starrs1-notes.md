@@ -435,3 +435,59 @@ tracklets instead of 133. On injected objects (`XY54_p10`, as above)
 they cost 2 of 180 main-belt objects (110 → 108, both at V 19.5-20.5)
 and none of the 80 fast ones (22 → 22).
 `set_quality` flags none of the nine other sets.
+
+## Eight sets of 2026-10-12 and 10-14: the frames' astrometry fitted together
+
+The first analysis of eight new sets gave 60 candidates: 31 in `XY75_p01`,
+21 in `XY05_p01`, 7 in `XY04_p01`, 1 in `XY04_p11`. Their rates gave them
+away: nearly all moved 2.4–6″/h, all in one set the same way, by the same
+per-frame offsets — stars, displaced by the frames' astrometry.
+
+### Headers 32″ off
+
+On `XY04_p11` and `XY05_p00` [`refine_wcs`](@ref) failed on every frame
+(1–3 matches). Its vote searches offsets up to 60 px; rerun with 300 px,
+the offset was (−112, −64) px on one and (111, 65) px on the other, the
+same on all four frames, and 10–16 stars matched at 0.16–0.36″. The one
+"candidate" in `XY04_p11` was (273964) 2007 KS7, 32″ off its predicted
+position — the header's error — and so not identified.
+
+### Frames out of step
+
+On the other sets the refinement succeeded, yet frames disagreed. The
+headers were compared with the refitted solutions on the sources detected
+in two frames (120–800 of them), each mapped from one frame into the other:
+through the headers they lined up to 0.1–0.35 px; through the refitted
+solutions, off by up to 9 px. Each frame had been fitted to its own 6–13
+stars of ~250, and 6 parameters on so few, mostly in one part of the chip,
+extrapolate poorly. The single voted offset was itself the limit: it
+differed between frames of one set (12.8–20.8 px on `XY04_p01`) — the
+header's error varies across the chip, so one offset matches only where it
+holds. Matched again from the first fit (8 px search), 70–90 stars matched
+per frame at ~0.1″; a frame stuck at its first few starts again from the
+best frame's solution carried through the headers.
+
+Pooling all frames' stars into one fit per frame, through the headers'
+relative alignment, then needs a check that the headers really do agree:
+the pooled fit is repeated with a free offset for each frame's stars, and
+rejected if any offset is significant. A first check — each frame's mean
+residual — was too weak: a synthetic header 8 px out of line passed it, the
+6-parameter fit absorbing the offset when that frame's stars sat in one
+part of the chip.
+
+### The flux test, per point
+
+Aligned correctly, 2019 UA185 (`XY72_p01`) was detected in all four frames
+within 0.5–1.1 px of Astrometrica's positions — closer than before (0.7–4.1
+px) — and still not reported: fluxes 121, 114, 47 and 95, a ratio of 2.57
+against the 2.5 allowed. The tracklet is now kept without its most
+discordant point when the rest passes every test, the partial-tracklet
+straight-line test included.
+
+### Effect
+
+The eight sets: no candidate, 2007 KS7 identified, residuals 0.10–0.13″.
+On 20 sets, 176 → 119 tracklets, 150 → 91 not identified, 24 → 28 catalogued
+asteroids identified; 2020 HW140 (V 21.9, by a cell gap) lost. Injection on
+`XY54_p10`: 108 → 113 of 180, 22 → 27 of 80. NHU0001 against Astrometrica:
+0.12–0.17″ (0.13–0.18″ before).
