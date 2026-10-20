@@ -17,6 +17,18 @@ from the version picker at the top right.
   all of them. On eight 2026-10-12/14 Pan-STARRS1 sets, 60 false candidates
   fell to none; on 20 sets, catalogued asteroids identified rose from 24 to
   28 ([Validation](validation/pan-starrs1.md)).
+- Images from telescopes other than Pan-STARRS1, checked on ZTF's: the
+  observation time is read from any of the usual header keywords
+  (`DATE-OBS`, `MJD-OBS`, `OBSMJD`, `JD`…; [`frame_epoch`](@ref)) —
+  [`analyze_set`](@ref) failed on ZTF images, which have no `DATE-OBS`; the
+  astrometric searches are in arcseconds, for any pixel scale; and the MPC's
+  orbit file is used only for images within a year of its orbits' epoch —
+  propagated to 2019 images it put a known asteroid 155″ off, so older
+  images use SkyBoT alone.
+- Known asteroids could go unidentified, and pass for new ones: SkyBoT,
+  asked for a 5″ cone, returned nothing for an asteroid 0.94″ from its
+  centre in two of four frames. It is now always asked for at least 2′,
+  and the distance is applied here.
 - A tracklet with one point too faint or too bright for the brightness test
   is kept without that point, if the rest passes every test: a faint known
   asteroid (2019 UA185, V ≈ 21) was being dropped for one frame at

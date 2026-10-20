@@ -59,6 +59,23 @@ one part of the detector, with a flat background — thin cloud during the
 exposure. `quality_max_std=1.5` leaves it out; both asteroids are still
 recovered.
 
+### The same frames through `analyze_set`
+
+The whole-set workflow, [`analyze_set`](@ref) — the one built on Pan-STARRS1
+sets — was run on the same five frames with no setting but the observatory
+code (I41), to check that nothing in it was specific to that telescope.
+Three things were:
+
+| Problem | Effect on these frames | Change |
+|:--|:--|:--|
+| the observation time read only from `DATE-OBS` or `MJD-OBS` | ZTF's `OBSMJD` not found: the analysis failed | the usual keywords looked for ([`frame_epoch`](@ref)) |
+| the MPC's orbit file propagated two-body from its 2026 epoch | 1997 KO3 predicted 155″ off | the file used only within a year of its epoch; SkyBoT otherwise |
+| SkyBoT asked for 5″ cones | 1997 KO3, 0.94″ from the cone's centre, not returned in two frames: left as a "new" candidate | cones of at least 2′, filtered locally |
+
+With them fixed: the five frames' astrometry fitted together with 530 Gaia
+stars at 0.16″, two tracklets, both identified (2002 UY45 and 1997 KO3),
+none left to vet.
+
 ## 5. Discussion
 
 Both runs recover both asteroids, but this field doesn't test ZOGY's real

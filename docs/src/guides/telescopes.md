@@ -40,8 +40,9 @@ run_pipeline(paths; pipeline_config(1.01)...)    # ZTF: 1.01"/pixel
 
 | Need | Read from | If missing |
 |:--|:--|:--|
-| time of each exposure | `DATE-OBS` (UTC start), else `MJD-OBS`; plus half of `EXPTIME` | pass `timestamp_key` to [`run_pipeline`](@ref) |
-| astrometric solution | the header's WCS, refitted to Gaia DR3 | [`plate_solve`](@ref) (see [Follow-up tools](follow-up.md)) |
+| time of each exposure | the first of `DATE-OBS` (with `TIME-OBS`, `UT` or `UTC` if it holds only the date), `MJD-OBS`, `OBSMJD`, `MJD_OBS`, `JD`, `OBSJD`, `JD-OBS` — the start of the exposure; plus half of `EXPTIME` ([`frame_epoch`](@ref)) | pass `timestamp_key` to [`run_pipeline`](@ref) |
+| astrometric solution | the header's WCS, refitted to Gaia DR3, all frames together; the header may be off by any amount up to ~75″ | [`plate_solve`](@ref) (see [Follow-up tools](follow-up.md)) |
+| known objects | SkyBoT; and the MPC's orbit file for images within a year of its orbits' epoch — older images (an archive) use SkyBoT alone | — |
 | invalid pixels | `BLANK`, constant fill values | handled by [`clean_blank_pixels`](@ref) and `mask_fill_values` |
 
 Check the time keywords first: a header whose `MJD-OBS` is in TAI rather than
