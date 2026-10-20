@@ -1188,6 +1188,11 @@ end
         @test sent[]["-loc"] == "F51"
         AsteroidPipeline._skybot_matches(c, 0.12; fetch=capture)
         @test !haskey(sent[], "-loc")
+        # a small cone is asked of SkyBoT as 2′ (it loses objects in tiny ones),
+        # and what lies beyond the radius asked for is dropped here
+        @test isempty(AsteroidPipeline._skybot_matches(c, 5 / 3600; fetch=capture))      # 2018 LT is 140″ off
+        @test parse(Float64, sent[]["-rd"]) ≈ 2 / 60
+        @test only(AsteroidPipeline._skybot_matches(c, 150 / 3600; fetch=capture)).name == "2018 LT"
         @test_throws ArgumentError crossmatch_catalog([c], :vsx; radius=5.0, observatory="F51")
         @test_throws ArgumentError crossmatch_catalog([c], :skybot; radius=5.0, observatory="Palomar")
     end

@@ -265,6 +265,12 @@ directly against the live service (2026-10): identical cone searches
 intermittently came back `# Flag: -1` with a crashed ephemeris process's
 backtrace in place of results, then succeeded on a plain resend.
 
+The cone asked of SkyBoT is never smaller than `_SKYBOT_MIN_CONE` (2′);
+matches beyond `radius_deg` are dropped here. Asked for 5″, SkyBoT's old
+service returned nothing for a known asteroid 0.94″ from the centre, in
+two of four real ZTF frames — and found it in all four with a 60″ cone —
+so a known object could go unidentified and pass for a new one.
+
 Up to `_SKYBOT_ATTEMPTS` tries total, with exponential backoff between
 them; the last failure propagates. `fetch` is the HTTP call itself,
 injectable so the retry logic can be tested without the network.
@@ -275,7 +281,7 @@ function _skybot_matches(c, radius_deg::Real;
                                                        read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body),
                          backoff_seconds::Real=1.0)
     query = Dict(
-        "-ra" => string(c.ra), "-dec" => string(c.dec), "-rd" => string(radius_deg),
+        "-ra" => string(c.ra), "-dec" => string(c.dec), "-rd" => string(max(radius_deg, _SKYBOT_MIN_CONE)),
         # Julian Dates are ~2.4e6, which Julia's default Float64 printing
         # renders in scientific notation (e.g. "2.4592886174e6"); SkyBoT
         # rejects that outright as an empty/null epoch, so every match
@@ -285,7 +291,7 @@ function _skybot_matches(c, radius_deg::Real;
     observatory === nothing || (query["-loc"] = observatory)
     for attempt in 1:_SKYBOT_ATTEMPTS
         try
-            return _parse_skybot(fetch(query))
+            return filter(m -> m.distance_arcsec <= radius_deg * 3600, _parse_skybot(fetch(query)))
         catch e
             (e isa HTTP.HTTPError || e isa SkyBoTServiceError) || rethrow()
             attempt == _SKYBOT_ATTEMPTS && rethrow()
@@ -293,6 +299,9 @@ function _skybot_matches(c, radius_deg::Real;
         end
     end
 end
+
+# The smallest cone _skybot_matches asks for, in degrees (see its docstring).
+const _SKYBOT_MIN_CONE = 2 / 60
 
 # Total tries per candidate (first request + retries) in _skybot_matches.
 # SkyBoT's server-side failures seen so far cleared on the first resend;
