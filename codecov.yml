@@ -1,0 +1,11 @@
+# Codecov: coverage of the Julia library's tests, uploaded by CI.yml.
+coverage:
+  status:
+    # reported, never a failing check: coverage is a guide, not a gate
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+comment: false
