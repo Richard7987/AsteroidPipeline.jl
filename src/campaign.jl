@@ -523,7 +523,8 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
    order, whatever order they were given in;
 2. clean `BLANK` pixels ([`clean_blank_pixels`](@ref), copies under
    `workdir`);
-3. refine every frame's WCS against Gaia DR3 ([`refine_wcs`](@ref)) and
+3. refine every frame's WCS against Gaia DR3, the frames together
+   ([`refine_wcs_set`](@ref)), and
    measure its quality — sources at 10σ per reference star, as
    [`set_quality`](@ref) does. A frame above the limit (30) is left out if at
    least 3 others remain — on a real 2026-10-04 set, one frame Astrometrica
@@ -579,24 +580,30 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     progress(:clean, 0.05)
     cleaned = [clean_blank_pixels(p; outdir=joinpath(workdir, "cleaned", name)) for p in paths]
 
-    wcs = WCSTransform[]; epochs = Float64[]; ratios = Float64[]; image_size = (0, 0)
+    header_wcs = WCSTransform[]; epochs = Float64[]; image_size = (0, 0)
+    images = Matrix{Float64}[]; masks = BitMatrix[]
     stars = nothing
     for (k, p) in enumerate(cleaned)
-        progress(:refine, 0.05 + 0.25 * (k - 1) / length(cleaned))
+        progress(:refine, 0.05 + 0.2 * (k - 1) / length(cleaned))
         image, hstr, hdr = FITS(p, "r") do f
             permutedims(Float64.(read(f[1]))), read_header(f[1], String), read_header(f[1])
         end
         image_size = size(image)
         epoch = frame_epoch(hdr)
         w = load_wcs(hstr)
-        mask = fill_value_mask(image)
         stars === nothing && (stars = _field_reference_stars(image, w, epoch))
-        refined = refine_wcs(image, w, stars; mask)
-        refined.refined || push!(warnings, "frame $k: astrometric refinement failed; header WCS kept")
-        push!(wcs, refined.refined ? refined.wcs : w)
-        push!(epochs, epoch)
-        push!(ratios, refined.n_detections / max(length(stars), 1))
+        push!(images, image); push!(masks, fill_value_mask(image))
+        push!(header_wcs, w); push!(epochs, epoch)
     end
+    progress(:refine, 0.25)
+    refined = refine_wcs_set(images, header_wcs, stars; masks)
+    images = masks = nothing
+    for (k, r) in enumerate(refined)
+        r.shift_only && push!(warnings, "frame $k: too few Gaia stars; only the header WCS's offset corrected")
+        r.refined || r.shift_only || push!(warnings, "frame $k: astrometric refinement failed; header WCS kept")
+    end
+    wcs = [r.wcs for r in refined]
+    ratios = [r.n_detections / max(length(stars), 1) for r in refined]
     good = findall(<=(_MAX_DETECTIONS_PER_REFERENCE_STAR), ratios)
     reliable = length(good) >= 3
     used = reliable ? good : collect(eachindex(paths))

@@ -139,7 +139,8 @@ objects and reported positions ~7" off:
 - `mask_fill_values`: mask constant-valued plateaus (the gaps between
   detector cells; see [`fill_value_mask`](@ref)) before detection.
 - `refine_astrometry`: replace each frame's header WCS with one fitted to
-  reference stars detected in the frame ([`refine_wcs`](@ref)) — against
+  reference stars detected in the frames, all of them together
+  ([`refine_wcs_set`](@ref)) — against
   `reference_stars` if given, else Gaia DR3 stars covering the first
   frame, fetched once ([`gaia_reference_stars`](@ref), a live network
   request). On that set the header WCS was off by 6.8"; refined, an
@@ -274,6 +275,8 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
     # difference_stack needs every frame before it can detect in any of them
     stacked_images = Matrix{Float64}[]
     stacked_masks = Union{Nothing,BitMatrix}[]
+    refine_images = Matrix{Float64}[]
+    refine_masks = Union{Nothing,BitMatrix}[]
 
     # Computed once, not per frame: reference.image is the same every
     # iteration, and this is what zogy_subtract's astrometric-noise term
@@ -308,14 +311,9 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                 if refine_astrometry
                     reference_stars === nothing &&
                         (reference_stars = _field_reference_stars(image, frame_wcs, timestamps[end]))
-                    refined = refine_wcs(image, frame_wcs, reference_stars; mask)
-                    if refined.refined
-                        frame_wcs = refined.wcs
-                        push!(rms_px, refined.rms_arcsec / _pixel_scale_arcsec(frame_wcs, size(image)))
-                    else
-                        @warn "astrometric refinement failed; keeping the header WCS" path n_matches=refined.n_matches
-                    end
-                    _check_frame_quality(path, refined.n_detections, length(reference_stars))
+                    # refitted below, all frames together
+                    push!(refine_images, image)
+                    push!(refine_masks, mask)
                 end
                 push!(wcs_per_frame, frame_wcs)
                 if difference_stack
@@ -367,6 +365,21 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                 push!(detections_per_frame, detect_sources(image; threshold, box_size, aperture_radius))
             end
         end
+    end
+
+    if !isempty(refine_images)
+        refined = refine_wcs_set(refine_images, wcs_per_frame, reference_stars; masks=refine_masks)
+        for (path, image, r) in zip(fits_paths, refine_images, refined)
+            if r.refined
+                push!(rms_px, r.rms_arcsec / _pixel_scale_arcsec(r.wcs, size(image)))
+            elseif r.shift_only
+                @warn "astrometric refinement: too few stars; only the header WCS's offset corrected" path n_matches=r.n_matches
+            else
+                @warn "astrometric refinement failed; keeping the header WCS" path n_matches=r.n_matches
+            end
+            _check_frame_quality(path, r.n_detections, length(reference_stars))
+        end
+        wcs_per_frame = [r.wcs for r in refined]
     end
 
     if difference_stack

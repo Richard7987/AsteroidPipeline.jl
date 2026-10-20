@@ -181,6 +181,50 @@ end
         @test too_few.wcs === header
     end
 
+    @testset "refine_wcs_set" begin
+        Random.seed!(17)
+        nx, ny = 300, 260
+        base = WCSTransform(2; crpix=[150.0, 130.0], crval=[3.05, -10.74],
+                            cdelt=[-0.257 / 3600, 0.257 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+        sky = [pix_to_world(base, [20 + 260rand(), 20 + 220rand()]) for _ in 1:40]
+        stars = Table(ra=[s[1] for s in sky], dec=[s[2] for s in sky])
+        # three dithered frames, 5 different catalogue stars bright enough in each
+        # -- too few for any one frame's own fit
+        truths = [WCSTransform(2; crpix=base.crpix .+ [3.0k, -2.0k], crval=base.crval, cdelt=base.cdelt,
+                               ctype=base.ctype) for k in 1:3]
+        images = map(1:3) do k
+            image = 100.0 .+ 5.0 .* randn(ny, nx)
+            for s in sky[5k-4:5k]
+                x, y = world_to_pix(truths[k], [s...])
+                for j in max(1, floor(Int, x) - 8):min(nx, ceil(Int, x) + 8),
+                    i in max(1, floor(Int, y) - 8):min(ny, ceil(Int, y) + 8)
+                    image[i, j] += 2000.0 * exp(-((j - x)^2 + (i - y)^2) / (2 * 1.6^2))
+                end
+            end
+            image
+        end
+        off(k, d) = WCSTransform(2; crpix=truths[k].crpix .+ d, crval=base.crval, cdelt=base.cdelt, ctype=base.ctype)
+        error_arcsec(w, k) = maximum(sky[1:15]) do s
+            a = pix_to_world(w, world_to_pix(truths[k], [s...]))
+            hypot((a[1] - s[1]) * cosd(s[2]), a[2] - s[2]) * 3600
+        end
+
+        # headers 80 px off (beyond refine_wcs's default search), all by the same amount
+        headers = [off(k, [-80.0, 10.0]) for k in 1:3]
+        @test all(k -> !refine_wcs(images[k], headers[k], stars).refined, 1:3)
+        r = refine_wcs_set(images, headers, stars)
+        @test all(x -> x.refined && x.joint && x.n_matches == 15, r)
+        @test all(k -> error_arcsec(r[k].wcs, k) < 0.1, 1:3)
+
+        # one header disagreeing with the others by 8 px: no joint fit, and each
+        # frame's own offset corrected instead
+        headers[3] = off(3, [-72.0, 10.0])
+        r = refine_wcs_set(images, headers, stars)
+        @test !any(x -> x.joint, r)
+        @test all(x -> !x.refined && x.shift_only, r)
+        @test all(k -> error_arcsec(r[k].wcs, k) < 0.3, 1:3)
+    end
+
     @testset "_filter_tracklets" begin
         dets = [Table(x=[10, 50], y=[10, 50], flux=[100.0, 100.0], xcen=[10.0, 50.0], ycen=[10.0, 50.0]),
                 Table(x=[12, 50], y=[10, 50], flux=[90.0, 100.0], xcen=[12.0, 50.0], ycen=[10.0, 50.0]),
@@ -200,6 +244,7 @@ end
         dets4, ts4 = vcat(dets, [dets[1]]), [ts; 3.0]
         @test F([moving, bent], dets4, ts4; max_residual=1.0) == [moving]
         @test F([bent], dets, ts; max_residual=1.0) == [bent]                    # complete: left alone
+
     end
 
     @testset "link_candidates" begin
