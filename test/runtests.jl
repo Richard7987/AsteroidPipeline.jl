@@ -1372,6 +1372,16 @@ end
         @test (@test_logs (:warn,) P._check_frame_quality("bad.fits", 160_000, 170)) > 30
     end
 
+    @testset "the MPC orbit file only near its epoch" begin
+        orbits = [(epoch=2461200.5, name="x")]                          # 2026-06-09
+        w = String[]
+        @test AsteroidPipeline._mpcorb_for(orbits, [2461330.5], w) === orbits   # 130 days: used
+        @test isempty(w)
+        @test AsteroidPipeline._mpcorb_for(orbits, [2458779.7], w) === nothing  # a 2019 image: not
+        @test occursin("SkyBoT", only(w))
+        @test AsteroidPipeline._mpcorb_for(nothing, [2458779.7], w) === nothing
+    end
+
     @testset "image sets, MPC reports and their checks" begin
         P = AsteroidPipeline
         # packed designations, as Astrometrica wrote them in real reports

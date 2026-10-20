@@ -533,7 +533,11 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
 4. search the remaining frames with `config` — by default
 [`pipeline_config`](@ref) at the frames' own pixel scale;
 5. identify tracklets with SkyBoT (5") and, given `mpcorb`, the MPC's orbits
-   (15"), confirmed in at least 3 frames (all, with 3 frames);
+   (15"), confirmed in at least 3 frames (all, with 3 frames). `mpcorb` is
+   used only for images within a year of its orbits' epoch (it is renewed
+   about twice a year; 130 days out, it placed 2019 UA185 within 4"):
+   its orbits, propagated two-body, drift far from it — 155" for a 2019 ZTF
+   image and a 2026 file — and SkyBoT's integrated ones are used instead;
 6. check every candidate left against the known objects within 10' of it
    ([`nearby_known_objects`](@ref)): one there moving the same way is
    most likely a known object with a poor orbit — and, for recent images,
@@ -604,6 +608,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     end
     wcs = [r.wcs for r in refined]
     ratios = [r.n_detections / max(length(stars), 1) for r in refined]
+    mpcorb = _mpcorb_for(mpcorb, epochs, warnings)
     good = findall(<=(_MAX_DETECTIONS_PER_REFERENCE_STAR), ratios)
     reliable = length(good) >= 3
     used = reliable ? good : collect(eachindex(paths))
@@ -666,6 +671,23 @@ end
 # (15") match in at least `min_frames` of their rows — a static star near a
 # known asteroid's track matches in one frame, not three. MPCORB's name wins
 # (it carries the number) when both catalogs identify a tracklet.
+# MPCORB's orbits osculate at one recent epoch; propagated two-body far from
+# it they drift (155" for a 2019 ZTF image and a 2026 file), so beyond
+# _MPCORB_MAX_DAYS the orbit file is set aside, with a warning.
+const _MPCORB_MAX_DAYS = 365
+
+function _mpcorb_for(mpcorb, epochs, warnings)
+    mpcorb === nothing && return nothing
+    orbits = mpcorb isa AbstractString ? read_mpcorb(mpcorb) : mpcorb
+    isempty(orbits) && return orbits
+    epoch = median(o.epoch for o in Iterators.take(orbits, 1000))
+    days = maximum(abs(e - epoch) for e in epochs)
+    days <= _MPCORB_MAX_DAYS && return orbits
+    push!(warnings, "MPC orbit file not used: its orbits are for $(round(Int, days)) days from these " *
+                    "images, too far for two-body propagation; known objects from SkyBoT")
+    return nothing
+end
+
 function _identify_tracklets(candidates, mpcorb, observatory, min_frames, warnings)
     rows = collect(candidates)
     sources = Any[(:skybot, (; radius=5.0, observatory))]
