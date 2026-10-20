@@ -135,8 +135,8 @@ end
 const _NO_MATCHES = Tuple{Float64,Float64,Float64,Float64}[]
 
 """
-    refine_wcs_set(images, wcss, stars; masks=nothing, wide_offset=300.0,
-                   max_rms=1.0, iterations=5, rematch_offset=8.0, kwargs...) -> Vector
+    refine_wcs_set(images, wcss, stars; masks=nothing, wide_offset_arcsec=77.0,
+                   max_rms=1.0, iterations=5, rematch_arcsec=2.0, kwargs...) -> Vector
 
 [`refine_wcs`](@ref) for the frames of one field taken in sequence, fitted
 together: one result per frame, as `refine_wcs`'s, plus `joint` (whether
@@ -158,10 +158,10 @@ fit's RMS may not exceed `max_rms` arcseconds.
 On those two sets the joint fit's RMS was 0.34–0.55″, from 38 stars.
 
 Each frame is first matched as [`refine_wcs`](@ref) does (`kwargs` are
-passed on); one that fails is retried with `max_offset = wide_offset`
-pixels — some PS1 headers are 128 px (32″) off, beyond the default search.
-Then the stars are matched again from the fitted solution (within
-`rematch_offset` pixels), up to `iterations` times while more of them match:
+passed on); one that fails is retried searching `wide_offset_arcsec` — some
+Pan-STARRS1 headers are 32″ (128 px) off, beyond `refine_wcs`'s default
+search. Then the stars are matched again from the fitted solution (within
+`rematch_arcsec`), up to `iterations` times while more of them match:
 the header's error is not one offset across a whole chip, so the first
 match finds only part of the stars — 6 to 13 of ~250 on those sets, 70 to
 90 after rematching, with residuals of ~0.1″. If the joint fit is rejected, a frame whose own fit failed but with 4 or more
@@ -169,20 +169,24 @@ stars agreeing on the header's offset gets that offset corrected
 (`shift_only`), which keeps it aligned with the others.
 """
 function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
-                        masks=nothing, wide_offset::Real=300.0, max_rms::Real=1.0,
-                        iterations::Integer=5, rematch_offset::Real=8.0,
+                        masks=nothing, wide_offset_arcsec::Real=77.0, max_rms::Real=1.0,
+                        iterations::Integer=5, rematch_arcsec::Real=2.0,
                         clip_sigma::Real=3.0, min_matches::Integer=6, kwargs...)
     n = length(images)
     length(wcss) == n || throw(ArgumentError("images and wcss must have the same length"))
     masks === nothing && (masks = fill(nothing, n))
+    # searches in arcseconds, for any pixel scale: in each frame's own pixels
+    scale = [_pixel_scale_arcsec(w, size(img)) for (w, img) in zip(wcss, images)]
+    wide_px = wide_offset_arcsec ./ scale
+    rematch_px = rematch_arcsec ./ scale
     # Matched again from the fitted solution, until no more stars match:
     # one offset for the whole chip matches only where the header's error is
     # that offset (6-13 of ~250 stars on IASC chips); from the fit, 70-90 match.
-    function _rematched(r, image, mask)
+    function _rematched(r, k)
         for _ in 1:iterations
             r.refined || break
-            again = refine_wcs(image, r.wcs, stars; mask, clip_sigma, min_matches, kwargs...,
-                               max_offset=rematch_offset)
+            again = refine_wcs(images[k], r.wcs, stars; mask=masks[k], clip_sigma, min_matches, kwargs...,
+                               max_offset=rematch_px[k])
             again.refined && again.n_matches > r.n_matches || break
             # the offset stays the header's
             r = merge(again, (offset_px=r.offset_px,))
@@ -194,10 +198,10 @@ function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
         r = refine_wcs(images[k], wcss[k], stars; mask=masks[k], clip_sigma, min_matches, kwargs...)
         if !r.refined
             wide = refine_wcs(images[k], wcss[k], stars; mask=masks[k], clip_sigma, min_matches, kwargs...,
-                              max_offset=wide_offset)
+                              max_offset=wide_px[k])
             (wide.refined || wide.n_matches > r.n_matches) && (r = wide)
         end
-        _rematched(r, images[k], masks[k])
+        _rematched(r, k)
     end
     # A frame left with far fewer stars than the best one starts again from the
     # best one's solution, carried over through the headers.
@@ -207,9 +211,9 @@ function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
             (k == best || single[k].n_matches >= 0.6 * single[best].n_matches) && continue
             guess = _carried_wcs(wcss[k], wcss[best], single[best].wcs, size(images[k]))
             r = refine_wcs(images[k], guess, stars; mask=masks[k], clip_sigma, min_matches, kwargs...,
-                           max_offset=rematch_offset)
+                           max_offset=rematch_px[k])
             r.refined || continue
-            r = _rematched(merge(r, (offset_px=single[k].offset_px,)), images[k], masks[k])
+            r = _rematched(merge(r, (offset_px=single[k].offset_px,)), k)
             r.n_matches > single[k].n_matches && (single[k] = r)
         end
     end
