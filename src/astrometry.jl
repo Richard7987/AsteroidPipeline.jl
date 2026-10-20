@@ -122,6 +122,10 @@ function _has_fits_card(header::AbstractString, keywords)
     return any(i -> any(k -> startswith(header[80(i-1)+1:80i], k), keywords), 1:ncards)
 end
 
+# the keywords frame_epoch looks for, in order, and the first a header has
+const _EPOCH_KEYS = ("DATE-OBS", "MJD-OBS", "OBSMJD", "MJD_OBS", "JD", "OBSJD", "JD-OBS")
+_first_key(header, keys) = (i = findfirst(k -> haskey(header, k), keys); i === nothing ? nothing : keys[i])
+
 """
     frame_epoch(header::FITSHeader; timestamp_key=nothing, exptime_key="EXPTIME") -> Float64
 
@@ -129,16 +133,19 @@ A frame's observation epoch as a UTC Julian Date at **mid-exposure** — what
 MPC reports require, and what Astrometrica writes into IASC reports.
 
 `timestamp_key` names the header keyword holding the time: a number is read
-as a Modified Julian Date, a string as an ISO-8601 date-time (fractional
-seconds kept). Left `nothing`, it is `DATE-OBS` when the header has one, else
-`MJD-OBS`. That default matters for Pan-STARRS1: its `MJD-OBS` is the shutter
+as a Modified Julian Date (as a Julian Date if the keyword names one, or if
+it is above 2,400,000), a string as an ISO-8601 date-time (fractional
+seconds kept). Left `nothing`, the first of the usual keywords the header
+has is used: `DATE-OBS` (with `TIME-OBS`, `UT` or `UTC` when it holds only
+the date), `MJD-OBS`, `OBSMJD`, `MJD_OBS`, `JD`, `OBSJD`, `JD-OBS` — so
+images from any telescope that follows one of these conventions need no
+setting. `DATE-OBS` first matters for Pan-STARRS1: its `MJD-OBS` is the shutter
 time in **TAI**, not UTC — 37 s later than `DATE-OBS` ("UTC start of
 exposure") in every real IASC header checked, 2019 and 2025 alike, despite
 the same header's `TIMESYS = 'UTC'` (its `SHUTOPEN` card, labelled TAI, is
 the same instant as `MJD-OBS`). Reading `MJD-OBS` put every epoch 37 s late —
 caught by comparing this pipeline's MPC report for a real object with
-Astrometrica's. ZTF's `OBSMJD` is UTC; pass it explicitly as
-`timestamp_key="OBSMJD"` there.
+Astrometrica's. ZTF has no `DATE-OBS`; its `OBSMJD` (UTC) is found.
 
 If the header has `exptime_key` (seconds), half of it is added: both surveys
 stamp the *start* of the exposure. `exptime_key=nothing` skips that, for a
@@ -146,12 +153,21 @@ timestamp that already marks mid-exposure.
 """
 function frame_epoch(header::FITSHeader; timestamp_key::Union{Nothing,AbstractString}=nothing,
                      exptime_key::Union{Nothing,AbstractString}="EXPTIME")
-    key = timestamp_key === nothing ? (haskey(header, "DATE-OBS") ? "DATE-OBS" : "MJD-OBS") : timestamp_key
+    key = timestamp_key === nothing ? _first_key(header, _EPOCH_KEYS) : timestamp_key
+    key === nothing && throw(ArgumentError("no observation time in the header (looked for " *
+                                           join(_EPOCH_KEYS, ", ") * "); pass timestamp_key"))
     value = header[key]
+    if value isa AbstractString && occursin(r"^\s*\d{4}-\d\d-\d\d\s*$", value)
+        # a date alone: the time is in a keyword of its own
+        tkey = _first_key(header, ("TIME-OBS", "UT", "UTC", "UT-START"))
+        tkey === nothing || (value = strip(value) * "T" * strip(string(header[tkey])))
+    end
     jd = if value isa AbstractString
         m = match(r"^(\d{4}-\d\d-\d\d(?:T\d\d:\d\d:\d\d)?)(\.\d+)?", strip(value))
         m === nothing && throw(ArgumentError("$key = $(repr(value)) is not an ISO-8601 date-time"))
         datetime2julian(DateTime(m[1])) + (m[2] === nothing ? 0.0 : parse(Float64, m[2])) / 86400
+    elseif occursin("JD", key) && !occursin("MJD", key) || value > 2.4e6
+        Float64(value)
     else
         Float64(value) + 2400000.5
     end

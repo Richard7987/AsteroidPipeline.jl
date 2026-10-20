@@ -1224,6 +1224,14 @@ end
         @test frame_epoch(no_date) ≈ 2460000.75                           # falls back to MJD-OBS
         @test frame_epoch(FITSHeader(["DATE-OBS"], Any["2020-01-01"], [""]); exptime_key=nothing) ≈ 2458849.5
         @test_throws ArgumentError frame_epoch(FITSHeader(["DATE-OBS"], Any["yesterday"], [""]))
+        # other telescopes' conventions, found without a timestamp_key
+        ztf = FITSHeader(["OBSJD", "OBSMJD", "EXPTIME"], Any[2458779.6955903, 58779.1955903, 30.0], fill("", 3))
+        @test frame_epoch(ztf) ≈ 2458779.6955903 + 15 / 86400 atol=1e-8          # OBSMJD
+        @test frame_epoch(FITSHeader(["JD"], Any[2458779.5], [""])) ≈ 2458779.5
+        @test frame_epoch(FITSHeader(["DATE-OBS", "TIME-OBS"], Any["2020-01-01", "06:00:00"], fill("", 2))) ≈ 2458849.75
+        @test frame_epoch(FITSHeader(["DATE-OBS", "UT"], Any["2020-01-01", "06:00:00.5"], fill("", 2))) ≈
+              2458849.75 + 0.5 / 86400 atol=1e-8
+        @test_throws ArgumentError frame_epoch(FITSHeader(["EXPTIME"], Any[30.0], [""]))
     end
 
     @testset "calibrated photometry / inject_movers / injection_recovery" begin
