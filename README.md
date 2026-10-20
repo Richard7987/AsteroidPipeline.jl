@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Richard7987/AsteroidPipeline.jl/actions/workflows/CI.yml)
 [![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://richard7987.github.io/AsteroidPipeline.jl/stable/)
+[![Coverage](https://codecov.io/gh/Richard7987/AsteroidPipeline.jl/graph/badge.svg)](https://codecov.io/gh/Richard7987/AsteroidPipeline.jl)
 [![PyPI](https://img.shields.io/pypi/v/asteroidpipeline.svg)](https://pypi.org/project/asteroidpipeline/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 

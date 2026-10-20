@@ -25,6 +25,12 @@ from the version picker at the top right.
 **Added**
 
 - [`refine_wcs`](@ref) returns the matched stars (`matches`).
+- Test coverage is measured in CI and published on Codecov.
+
+**Changed**
+
+- Releases: a version is registered in Julia's General registry before its
+  tag is created ([Releasing a version](development/releasing.md)).
 
 ## 0.2.2 — 2026-10-18
 
