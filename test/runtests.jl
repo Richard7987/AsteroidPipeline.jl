@@ -1193,6 +1193,15 @@ end
         @test isempty(AsteroidPipeline._skybot_matches(c, 5 / 3600; fetch=capture))      # 2018 LT is 140″ off
         @test parse(Float64, sent[]["-rd"]) ≈ 2 / 60
         @test only(AsteroidPipeline._skybot_matches(c, 150 / 3600; fetch=capture)).name == "2018 LT"
+        # a request failing inside @sync/@async comes out as itself, which
+        # callers treat as SkyBoT being unavailable, not wrapped
+        wrapped = try
+            @sync @async throw(SkyBoTServiceError("down"))
+        catch e
+            e
+        end
+        @test wrapped isa CompositeException
+        @test AsteroidPipeline._task_root(wrapped) isa SkyBoTServiceError
         @test_throws ArgumentError crossmatch_catalog([c], :vsx; radius=5.0, observatory="F51")
         @test_throws ArgumentError crossmatch_catalog([c], :skybot; radius=5.0, observatory="Palomar")
     end

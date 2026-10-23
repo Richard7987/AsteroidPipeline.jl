@@ -303,6 +303,10 @@ end
 # The smallest cone _skybot_matches asks for, in degrees (see its docstring).
 const _SKYBOT_MIN_CONE = 2 / 60
 
+# The exception at the root of a failed @sync/@async block.
+_task_root(e) = e isa CompositeException && !isempty(e.exceptions) ? _task_root(first(e.exceptions)) :
+                e isa TaskFailedException ? _task_root(e.task.exception) : e
+
 # Total tries per candidate (first request + retries) in _skybot_matches.
 # SkyBoT's server-side failures seen so far cleared on the first resend;
 # 4 tries with 1/2/4 s backoff rides out a short burst of them without
@@ -359,15 +363,24 @@ function _crossmatch_skybot(candidates, radius::Real;
     per_candidate = Vector{Vector{NamedTuple}}(undef, length(candidates_vec))
 
     semaphore = Base.Semaphore(_SKYBOT_CONCURRENCY)
-    @sync for (i, c) in enumerate(candidates_vec)
-        @async begin
-            Base.acquire(semaphore)
-            try
-                per_candidate[i] = _skybot_matches(c, radius_deg; observatory)
-            finally
-                Base.release(semaphore)
+    try
+        @sync for (i, c) in enumerate(candidates_vec)
+            @async begin
+                Base.acquire(semaphore)
+                try
+                    per_candidate[i] = _skybot_matches(c, radius_deg; observatory)
+                finally
+                    Base.release(semaphore)
+                end
             end
         end
+    catch e
+        # @sync wraps a failed request in a TaskFailedException inside a
+        # CompositeException; callers handle the request's own error (an
+        # HTTP status, a SkyBoTServiceError) as SkyBoT being unavailable, and
+        # didn't recognise it wrapped: a SkyBoT outage stopped analyze_set
+        # instead of leaving a warning.
+        throw(_task_root(e))
     end
 
     id = Int[]
