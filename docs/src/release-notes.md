@@ -3,7 +3,11 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
-## Unreleased
+## 1.0.0 — 2026-10-23
+
+The first stable release: from here on, a change that breaks the API raises
+the major version. The images of any telescope are handled without
+settings beyond the observatory code — checked on Pan-STARRS1's and ZTF's.
 
 **Fixed**
 
@@ -29,6 +33,9 @@ from the version picker at the top right.
   asked for a 5″ cone, returned nothing for an asteroid 0.94″ from its
   centre in two of four frames. It is now always asked for at least 2′,
   and the distance is applied here.
+- A SkyBoT outage stopped [`analyze_set`](@ref) with an error, instead of
+  a warning: the failed request came wrapped in the error of the parallel
+  task that made it. Known objects then come from the MPC's orbit file alone.
 - A tracklet with one point too faint or too bright for the brightness test
   is kept without that point, if the rest passes every test: a faint known
   asteroid (2019 UA185, V ≈ 21) was being dropped for one frame at
@@ -41,6 +48,8 @@ from the version picker at the top right.
 
 **Changed**
 
+- The package is in Julia's General registry (0.2.2, since 2026-10-22):
+  `Pkg.add("AsteroidPipeline")`.
 - Releases: a version is registered in Julia's General registry before its
   tag is created ([Releasing a version](development/releasing.md)).
 

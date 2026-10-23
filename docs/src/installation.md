@@ -38,11 +38,9 @@ using Pkg
 Pkg.add("AsteroidPipeline")
 ```
 
-!!! note "Until 22 October 2026"
-    The package's registration in Julia's General registry completes after
-    its first-time waiting period, around 22 October 2026. Until then,
-    install it from its repository:
-    `Pkg.add(url="https://github.com/Richard7987/AsteroidPipeline.jl")`.
+The package is in Julia's General registry, so no URL is needed; the
+development version, `main`, is
+`Pkg.add(url="https://github.com/Richard7987/AsteroidPipeline.jl")`.
 
 Then:
 

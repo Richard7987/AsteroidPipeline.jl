@@ -23,7 +23,7 @@ It comes two ways:
 **Documentation: <https://richard7987.github.io/AsteroidPipeline.jl/stable/>**
 — for the latest release; the version picker at the top right has each
 release's, and [dev](https://richard7987.github.io/AsteroidPipeline.jl/dev/)
-for `main`. What changed: [release notes](https://richard7987.github.io/AsteroidPipeline.jl/dev/release-notes).
+for `main`. What changed: [release notes](https://richard7987.github.io/AsteroidPipeline.jl/stable/release-notes).
 
 ## What it does
 
@@ -56,7 +56,7 @@ How well it works, measured on real data, is in the
 
 The app carries the library inside it and sets up Julia by itself; install
 the library only to use it from your own code. Details:
-[Installation](https://richard7987.github.io/AsteroidPipeline.jl/dev/installation).
+[Installation](https://richard7987.github.io/AsteroidPipeline.jl/stable/installation).
 
 ### The app
 
@@ -88,8 +88,6 @@ Julia 1.11 or newer, from Julia's General registry:
 ```julia
 using Pkg
 Pkg.add("AsteroidPipeline")
-# until the registration completes (around 22 October 2026):
-# Pkg.add(url="https://github.com/Richard7987/AsteroidPipeline.jl")
 
 using AsteroidPipeline
 result = analyze_set("images.zip"; observatory="F51", workdir="work")
@@ -140,7 +138,7 @@ Python instead, and `nix run .` runs the app — optional, the steps above
 need nothing of it.
 
 Releasing a version — the tag, PyPI, the documentation, Julia's registry —
-is described in [Releasing a version](https://richard7987.github.io/AsteroidPipeline.jl/dev/development/releasing).
+is described in [Releasing a version](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/releasing).
 
 ## License
 

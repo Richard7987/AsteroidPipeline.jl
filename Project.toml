@@ -1,6 +1,6 @@
 name = "AsteroidPipeline"
 uuid = "1001636e-a0d1-496e-b23d-cef10bc3cdca"
-version = "0.2.2"
+version = "1.0.0"
 authors = ["Alejandro <ale_bnes@nezzontli.xyz>"]
 
 [deps]
