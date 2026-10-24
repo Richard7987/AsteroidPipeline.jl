@@ -3,6 +3,18 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Added**
+
+- [`analyze_set`](@ref) takes `reference_stars`: a catalogue of one's own in
+  place of the Gaia DR3 query, or work without the network.
+
+**Changed**
+
+- Tests: [`analyze_set`](@ref) run end to end on a synthetic set, and
+  digest2 built in CI so [`digest2_score`](@ref) is tested there.
+
 ## 1.0.0 — 2026-10-23
 
 The first stable release: from here on, a change that breaks the API raises

@@ -510,7 +510,7 @@ end
 
 """
     analyze_set(source; workdir, observatory, mpcorb=nothing, header=(;), name=nothing,
-                extract_to=dirname(source), config=nothing,
+                extract_to=dirname(source), config=nothing, reference_stars=nothing,
                 progress=(stage, fraction) -> nothing) -> NamedTuple
 
 Everything [`run_pipeline`](@ref) and the checks around it do for one image
@@ -553,7 +553,10 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
 `progress(stage, fraction)` is called as it goes (`stage` a `Symbol`:
 `:extract`, `:clean`, `:refine`, `:search`, `:identify`, `:nearby`, `:field`,
 `:report`, `:done`). `name` names a set given as files (default: their
-folder's name). Returns a named tuple: `name`, `paths` (the original
+folder's name). `reference_stars` (a table with `ra`, `dec` and, for
+magnitudes, `gmag`, as [`gaia_reference_stars`](@ref) returns)
+replaces the Gaia DR3 query for the astrometry and photometry: a catalogue of
+one's own, or work without the network. Returns a named tuple: `name`, `paths` (the original
 frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 `frames_used`, `dropped`, `reliable`, `candidates` (an
 [`astrometric_calibrate`](@ref) table with `frame` indexing `paths`, and a
@@ -567,7 +570,7 @@ frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 function analyze_set(source; workdir::AbstractString, observatory::AbstractString, mpcorb=nothing,
                      header=(;), name=nothing,
                      extract_to::AbstractString=dirname(abspath(source isa AbstractString ? source : first(source))),
-                     config=nothing, progress=(stage, fraction) -> nothing)
+                     config=nothing, reference_stars=nothing, progress=(stage, fraction) -> nothing)
     warnings = String[]
     progress(:extract, 0.0)
     set_name, paths = if source isa AbstractVector
@@ -586,7 +589,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
 
     header_wcs = WCSTransform[]; epochs = Float64[]; image_size = (0, 0)
     images = Matrix{Float64}[]; masks = BitMatrix[]
-    stars = nothing
+    stars = reference_stars
     for (k, p) in enumerate(cleaned)
         progress(:refine, 0.05 + 0.2 * (k - 1) / length(cleaned))
         image, hstr, hdr = FITS(p, "r") do f

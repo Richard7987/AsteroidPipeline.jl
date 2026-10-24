@@ -1391,6 +1391,56 @@ end
         @test AsteroidPipeline._mpcorb_for(nothing, [2458779.7], w) === nothing
     end
 
+    @testset "analyze_set on a synthetic set" begin
+        # Four frames of one field, 15 min apart: 60 stars, a header 3″ off,
+        # and one asteroid at 30″/h. The reference stars are given, so only
+        # the known-object services (SkyBoT) use the network — and an outage
+        # of theirs is a warning.
+        Random.seed!(29)
+        nx, ny, scale = 500, 500, 0.26
+        truth = WCSTransform(2; crpix=[250.0, 250.0], crval=[210.0, 45.0],
+                             cdelt=[-scale / 3600, scale / 3600], ctype=["RA---TAN", "DEC--TAN"])
+        star_xy = [(20 + 460rand(), 20 + 460rand()) for _ in 1:60]
+        gmag = 15 .+ 4 .* rand(60)
+        sky = [pix_to_world(truth, [x, y]) for (x, y) in star_xy]
+        stars = Table(ra=first.(sky), dec=last.(sky), gmag=gmag)
+        zp, sigma = 27.0, 1.6
+        add!(img, x, y, flux) = for i in max(1, floor(Int, x) - 8):min(nx, ceil(Int, x) + 8),
+                                    j in max(1, floor(Int, y) - 8):min(ny, ceil(Int, y) + 8)
+            img[i, j] += flux * exp(-((i - x)^2 + (j - y)^2) / (2sigma^2)) / (2pi * sigma^2)
+        end
+        mover(k) = (150.0 + 29.0 * (k - 1), 200.0 + 6.0 * (k - 1))          # px, ~30″/h
+        mover_mag = 18.0
+        dir = mktempdir()
+        for k in 1:4
+            img = 200.0 .+ 10.0 .* randn(nx, ny)
+            for ((x, y), g) in zip(star_xy, gmag)
+                add!(img, x, y, 10^((zp - g) / 2.5))
+            end
+            add!(img, mover(k)..., 10^((zp - mover_mag) / 2.5))
+            header = FITSHeader(
+                ["CTYPE1", "CTYPE2", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2",
+                 "DATE-OBS", "EXPTIME"],
+                Any["RA---TAN", "DEC--TAN", 250.0 + 12, 250.0 - 8, 210.0, 45.0, -scale / 3600, scale / 3600,
+                    "2020-03-01T08:$(lpad(15 * (k - 1), 2, '0')):00", 45.0],
+                fill("", 10))
+            FITS(f -> write(f, img; header), joinpath(dir, "frame$k.fits"), "w")
+        end
+
+        r = analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars)
+        @test r.reliable && r.frames_used == 1:4
+        @test r.epochs[1] ≈ datetime2julian(DateTime(2020, 3, 1, 8)) + 22.5 / 86400 atol=1e-7
+        @test length(unique(r.candidates.id)) == 1                # the asteroid, and nothing else
+        @test r.report_kind === :candidates && only(r.unknown_ids) == r.candidates.id[1]
+        for c in r.candidates
+            ra, dec = pix_to_world(truth, collect(mover(c.frame)))
+            @test hypot((c.ra - ra) * cosd(dec), c.dec - dec) * 3600 < 0.3   # through the refitted WCS
+            @test c.mag ≈ mover_mag atol=0.3
+        end
+        @test count(l -> length(l) == 80 && endswith(l, "F51"), split(r.report, "\n")) == length(r.candidates)   # one 80-column line each
+        @test isempty(r.dropped)
+    end
+
     @testset "image sets, MPC reports and their checks" begin
         P = AsteroidPipeline
         # packed designations, as Astrometrica wrote them in real reports
