@@ -23,7 +23,7 @@ jobs:
         # everywhere but there
         version: ['1.11', '1']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
         with:
           version: ${{ matrix.version }}
@@ -33,7 +33,7 @@ jobs:
       # coverage measured once, on the newest release
       - uses: julia-actions/julia-processcoverage@v1
         if: matrix.version == '1'
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         if: matrix.version == '1'
         with:
           files: lcov.info
