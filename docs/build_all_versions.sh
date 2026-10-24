@@ -14,7 +14,8 @@
 # uploads this folder to GitHub Pages; there is no gh-pages branch — see
 # docs/make.jl), so every version is rebuilt each time. A release's pages
 # keep their own content, with this checkout's presentation: its theme
-# (docs/src/.vitepress) and figure styling (docs/make_figures.jl).
+# (docs/src/.vitepress), figure styling (docs/make_figures.jl) and npm
+# dependencies (docs/package.json, which must match DocumenterVitepress).
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -61,6 +62,7 @@ for tag in $releases; do
     rm -rf "$wt/docs/src/.vitepress"
     cp -r "$root/docs/src/.vitepress" "$wt/docs/src/.vitepress"
     cp "$root/docs/make_figures.jl" "$wt/docs/make_figures.jl"
+    cp "$root/docs/package.json" "$wt/docs/package.json"
     build "$wt" "refs/tags/$tag"
     git -C "$root" worktree remove --force "$wt"
 done
