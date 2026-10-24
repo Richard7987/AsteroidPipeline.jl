@@ -29,6 +29,15 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
+      # digest2, the MPC's orbit-class program, for digest2_score's tests:
+      # built from its repository, at a fixed commit
+      - name: Build digest2
+        run: |
+          sudo apt-get install -y -qq libxml2-dev
+          git clone -q https://github.com/Smithsonian/digest2.git "$RUNNER_TEMP/digest2"
+          git -C "$RUNNER_TEMP/digest2" checkout -q d324a4816fc49e9c7624335a6aa5499d7fdf3b9a
+          make -s -C "$RUNNER_TEMP/digest2/digest2"
+          echo "DIGEST2_PATH=$RUNNER_TEMP/digest2/digest2/digest2" >> "$GITHUB_ENV"
       - uses: julia-actions/julia-runtest@v1
       # coverage measured once, on the newest release
       - uses: julia-actions/julia-processcoverage@v1
