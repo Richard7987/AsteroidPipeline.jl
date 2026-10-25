@@ -55,12 +55,12 @@ class Backend:
             self.ready.set()
             return
         BACKEND_LOG.parent.mkdir(parents=True, exist_ok=True)
-        log = open(BACKEND_LOG, "a", buffering=1)
-        self._proc = await asyncio.create_subprocess_exec(
-            *engine.server_command(julia),
-            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=log,
-            limit=64 * 1024 * 1024,
-        )
+        with open(BACKEND_LOG, "a", buffering=1) as log:  # the child keeps its own copy
+            self._proc = await asyncio.create_subprocess_exec(
+                *engine.server_command(julia),
+                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=log,
+                limit=64 * 1024 * 1024,
+            )
         asyncio.create_task(self._read_loop())
 
     async def _read_loop(self) -> None:
@@ -122,5 +122,5 @@ class Backend:
                 self._proc.stdin.write(b'{"cmd": "quit"}\n')
                 await self._proc.stdin.drain()
                 await asyncio.wait_for(self._proc.wait(), 3)
-            except (asyncio.TimeoutError, BrokenPipeError, ConnectionResetError):
+            except (TimeoutError, BrokenPipeError, ConnectionResetError):
                 self._proc.kill()
