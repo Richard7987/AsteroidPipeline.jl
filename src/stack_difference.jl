@@ -23,45 +23,26 @@ pixels from the median; a pixel needs at least `min_valid` valid frames
 (3, so the median of a 4-frame set still out-votes one frame's mover).
 
 Before taking the median each frame is background-subtracted and scaled
-to a common flux level — fitted from bright pixels, not assumed — since
-transparency changes between exposures (a real IASC set had one frame
-~29% fainter than the others): unscaled, every star would leave a
-residual in every frame. Whole-pixel alignment and changing seeing
-still leave residuals around bright stars, so each connected region
-where the median exceeds `bright_star_sigma` times the difference noise
-is masked out to `bright_star_radius` plus `halo_factor` times its own
-equivalent radius (`sqrt(area / π)`) — a brighter star has a bigger
-core above that level *and* a wider halo, so the mask has to scale with
-it. Measured on the real IASC set: one saturated star's halo stayed 3σ
-above the sky out to ~40 px from a ~12 px core, and a fixed 4 px margin
-left its residuals linked into 14 of 16 surviving tracklets.
+to a common flux level, fitted from bright pixels, since transparency
+changes between exposures. Whole-pixel alignment and changing seeing still
+leave residuals around bright stars, so each connected region where the
+median exceeds `bright_star_sigma` times the difference noise is masked out
+to `bright_star_radius` plus `halo_factor` times its own equivalent radius
+(`sqrt(area / π)`): a brighter star has a wider halo too.
 
-Each difference is divided by its own *local* noise — a robust (MAD)
-estimate in `noise_box`-pixel boxes — so it is a significance map, like
-ZOGY's `S_corr`: [`detect_sources`](@ref)'s `threshold` then means the
-same thing everywhere. A single frame-wide noise figure doesn't: PS1's
-cells differ in noise, and on a real 2019 IASC set (`XY15_p01`) a couple
-of noisier cells produced ~3,000 of a frame's ~4,000 detections at 6σ,
-most barely over threshold — enough to stall linking entirely.
+Each difference is divided by its own *local* noise, a robust (MAD)
+estimate in `noise_box`-pixel boxes, so it is a significance map like
+ZOGY's `S_corr` and [`detect_sources`](@ref)'s `threshold` means the same
+everywhere, even where detector cells differ in noise.
 
 `subpixel=true` aligns by the WCS's *fractional* offsets instead, with
-bilinear interpolation both ways (frames onto the first frame's grid for
-the median, the median back onto each frame's grid). A real trade-off, so off by
-default: on 180 synthetic objects injected into each of two real IASC
-sets (`inject_movers`), it halved the spurious tracklets where bright
-stars leave the most residuals (`XY25_p10`: 356 tracklets in all down
-to 182) but recovered 5-9% fewer objects (145 -> 132 and 139 -> 131 of
-180) — interpolation smooths faint objects along with the stars.
+bilinear interpolation both ways. Off by default: on objects injected into
+IASC sets it halved the spurious tracklets near bright stars but recovered
+5-9% fewer objects, as interpolation smooths faint ones too.
 
 Returns each frame's normalized difference image, in that frame's
 **own** pixel grid (so its own WCS still applies to detections on it),
 and each frame's mask of pixels with no valid difference.
-
-Validated on the real IASC practice set it was built for (ps1-NewPractice_3,
-field `XY54_p10`), where it recovered both real moving objects that
-detecting on the raw frames missed at the same threshold: an unknown
-object at G≈21 (later measured in Astrometrica and reported as NHU0001)
-and the known Mars-crosser 2018 LT.
 """
 function stack_difference(images::AbstractVector{<:AbstractMatrix{<:Real}}, wcss;
                           masks=nothing, min_valid::Integer=3,
@@ -231,9 +212,8 @@ another (chained: a group is a connected component) in one frame. On a
 difference image a slow moving object stands alone, but two kinds of
 real signal fragment into groups of peaks:
 
-- a fast object's **trail** — on a real IASC frame, a ~480"/h synthetic
-  near-Earth object smeared ~24 px across a 45 s exposure and broke into
-  several peaks, none at the trail's centre;
+- a fast object's **trail**, which breaks into several peaks (~24 px at
+  480"/h in a 45 s exposure), none at its centre;
 - extended **junk** — a satellite trail hundreds of pixels long, the
   residual ring of a saturated star.
 
@@ -243,13 +223,8 @@ the trail's midpoint, i.e. the object's mid-exposure position — with the
 group's summed flux. Wider groups are dropped. Single detections pass
 unchanged.
 
-This replaced simply dropping every detection with two or more
-neighbours, which removed satellite trails (on `XY25_p10`, two of them
-had produced ~240 spurious 3-frame tracklets) but also took fast
-movers with them: injected 300-700"/h objects were recovered 0-1 times
-in 20. On a typical difference image (~400 detections over ~6M pixels)
-a lone object expects ~0.05 chance neighbours within 15 px, so merging
-costs isolated objects essentially nothing.
+Merging costs isolated objects almost nothing: on a typical difference
+image a lone object expects ~0.05 chance neighbours within 15 px.
 """
 function _merge_clusters(detections, radius::Real, max_extent::Real)
     n = length(detections)

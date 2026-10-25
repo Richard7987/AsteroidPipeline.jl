@@ -5,47 +5,25 @@
                         min_nights::Integer=2)
 
 Group tracklets from *different* observing nights that are consistent
-with one real moving object, the same problem [`link_candidates`](@ref)
-solves within a single night, one level up: on sky coordinates rather
-than pixels (different nights can have entirely different pointings/WCS
-solutions), and over gaps of days rather than minutes, where the target's
-own real orbital curvature — not just its instantaneous rate — starts to
-matter.
+with one moving object: [`link_candidates`](@ref)'s problem one level up,
+on sky coordinates rather than pixels (each night has its own pointing),
+and over gaps of days, where orbital curvature starts to matter.
 
-`night_movers[k]` is night `k`'s own [`astrometric_calibrate`](@ref) (or
-[`search_field`](@ref)) output table (`id`, `frame`, `x`, `y`, `ra`,
-`dec`, `epoch`; `x`/`y` are unused here). Each night's tracklets (per
-`id`) are independently fit to a linear rate in a local tangent-plane
-projection around their own mean position — via [`_linfit`](@ref),
-reused as-is from [`link_candidates`](@ref)'s own within-night fit, not
-reimplemented — then that rate is used to extrapolate forward to every
-other night's tracklets' own mean epoch. A cross-night pair is accepted
-whenever the extrapolated position lands within `match_radius_arcsec` of
-the other tracklet's actual mean position, loosened (if
-`max_accel_arcsec_per_day2` is finite) by an added
-`max_accel_arcsec_per_day2 * Δt_days^2` allowance for real curvature
-over the longer gap. Accepted pairs are grouped transitively (one
-tracklet can plausibly pair with several other nights' tracklets, which
-must then all collapse into a single group) via union-find; only groups
-spanning at least `min_nights` distinct nights are kept. Tracklets with
-fewer than 2 points (no rate to fit) are skipped — they carry no motion
-information to extrapolate from and so cannot be matched here.
+`night_movers[k]` is night `k`'s [`astrometric_calibrate`](@ref) (or
+[`search_field`](@ref)) table (`id`, `frame`, `x`, `y`, `ra`, `dec`,
+`epoch`). Each night's tracklets are fit to a linear rate in a tangent
+plane around their mean position ([`_linfit`](@ref)) and extrapolated to
+every other night's tracklets' mean epoch. A pair is accepted when the
+extrapolation lands within `match_radius_arcsec`, plus
+`max_accel_arcsec_per_day2 * Δt_days^2` for curvature if that is finite.
+Accepted pairs are grouped transitively (union-find), and groups spanning
+at least `min_nights` nights are kept. Tracklets with fewer than 2 points
+have no rate and are skipped.
 
-`max_accel_arcsec_per_day2` defaults to `Inf` (off), mirroring
-[`link_candidates`](@ref)'s own `max_speed::Real=Inf` default exactly:
-a single generous `match_radius_arcsec` does the real matching work by
-default. **Neither default is derived from this project's own measured
-data** — unlike e.g. `variability_chi2`'s `systematic_error_fraction`
-(calibrated against three real confirmed variables), no real multi-night
-same-object case was available to calibrate against when this was
-written; treat `match_radius_arcsec=5.0` as a starting point to tune
-against your own campaign's real cadence and target population, not a
-validated constant.
+The defaults are not calibrated on real multi-night data: tune
+`match_radius_arcsec` to your cadence and targets.
 
-Returns a `Vector` of groups, each a `Vector` of `(night, id)`
-`NamedTuple`s — the tracklets, across nights, judged to be the same
-object — mirroring [`link_candidates`](@ref)'s own "vector of vectors"
-return shape rather than a flat table.
+Returns groups, each a `Vector` of `(night, id)` named tuples.
 """
 function link_across_nights(night_movers::AbstractVector;
                              match_radius_arcsec::Real=5.0,

@@ -137,10 +137,8 @@ and unpacked if the file is missing or older than `max_age_hours`, kept as
 is otherwise. If the download fails and an older copy exists, that copy is
 returned with a warning; with no copy at all, the error propagates.
 
-Why: on a 2026-10-04 set, SkyBoT placed 2019 UA185 far from where it was,
-while the MPC's orbit file of that same day put it within ~4" — the file is
-only as useful as it is recent. Astrometrica's own copy is refreshed only
-when someone updates it from its menu.
+The MPC's current orbits identify recently linked or poorly observed
+objects that SkyBoT's older ones place far off, so the copy is kept fresh.
 """
 function download_mpcorb(path::AbstractString=default_mpcorb_path(); max_age_hours::Real=24,
                          url::AbstractString=MPCORB_URL)
@@ -521,17 +519,15 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
    ([`refine_wcs_set`](@ref)), and
    measure its quality — sources at 10σ per reference star, as
    [`set_quality`](@ref) does. A frame above the limit (30) is left out if at
-   least 3 others remain — on a real 2026-10-04 set, one frame Astrometrica
-   couldn't reduce made the whole set look unusable; with fewer than 3 good
-   frames the set is `reliable = false` and not searched;
+   least 3 others remain; with fewer than 3 good frames the set is
+   `reliable = false` and not searched;
 4. search the remaining frames with `config` — by default
 [`pipeline_config`](@ref) at the frames' own pixel scale;
 5. identify tracklets with SkyBoT (5") and, given `mpcorb`, the MPC's orbits
    (15"), confirmed in at least 3 frames (all, with 3 frames). `mpcorb` is
-   used only for images within a year of its orbits' epoch (it is renewed
-   about twice a year; 130 days out, it placed 2019 UA185 within 4"):
-   its orbits, propagated two-body, drift far from it — 155" for a 2019 ZTF
-   image and a 2026 file — and SkyBoT's integrated ones are used instead;
+   used only for images within a year of its orbits' epoch: propagated
+   two-body further than that they drift by arcminutes, and SkyBoT's
+   integrated orbits are used instead;
 6. check every candidate left against the known objects within 10' of it
    ([`nearby_known_objects`](@ref)): one there moving the same way is
    most likely a known object with a poor orbit — and, for recent images,

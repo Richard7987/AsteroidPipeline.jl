@@ -18,171 +18,83 @@ Run the local stages of the pipeline — detection, linking, and
 astrometric calibration — on a time-ordered sequence of FITS frames from
 the same field.
 
-For each frame: the primary image is read; the primary header supplies the
-WCS solution (via [`load_wcs`](@ref)) and the observation epoch, taken
-as a UTC Julian Date at mid-exposure, by [`frame_epoch`](@ref) with this
-call's `timestamp_key` and `exptime_key` — see it for why the default
-reads PS1's `DATE-OBS` rather than its `MJD-OBS` (TAI, 37 s off), and why
-half the exposure time is added (both surveys stamp the start; on a real
-IASC set that left every epoch 22.5 s early against Astrometrica's report
-of the same object). Detections are then linked across frames with
-[`link_candidates`](@ref) and calibrated to sky coordinates with
+For each frame, the primary header supplies the WCS (via [`load_wcs`](@ref))
+and the epoch, a UTC Julian Date at mid-exposure, from [`frame_epoch`](@ref)
+with `timestamp_key` and `exptime_key`. Detections are linked across frames
+with [`link_candidates`](@ref) and calibrated to sky coordinates with
 [`astrometric_calibrate`](@ref).
 
 If `reference` is `nothing` (the default), [`detect_sources`](@ref) runs
-directly on each science frame — limited to sources well above the
-frame's own background noise. Passing a deep reference stack (a
-`(image, sigma, mask, psf, wcs)` named tuple — `image`/`sigma`/`mask`/`wcs`
-from [`build_reference`](@ref) (`wcs` is the `target_wcs` it was built
-on), `psf` from `estimate_psf(image)` on that same reference image)
-switches to ZOGY difference imaging ([`zogy_subtract`](@ref)): each frame
-is reprojected onto `reference`'s pixel grid (frames dither by several
-pixels even within one night — see `src/reference.jl` — so this is not
-optional), subtracted against it, and `detect_sources` runs on the
-resulting `S_corr` instead of the science image, extending detection to
-sources below the single-frame noise floor. `threshold` is then a
-detection significance in sigma directly, since `S_corr` has zero mean and
-unit variance by construction; pixels outside either frame's footprint are
-excluded from detection. Because reprojection puts every frame's
-detections on `reference.wcs` rather than each frame's own WCS,
-`astrometric_calibrate` is given `reference.wcs` for every frame in this
-path. The empirical PSF is estimated from each frame *after*
-reprojection, from the same resampled pixels `zogy_subtract` actually
-differences — interpolation subtly reshapes a PSF, and measuring it
-beforehand understated that mismatch, leaving systematic subtraction
-residuals at every bright star (found via real ZTF data: ~85-97% of
-excess `S_corr` detections in a real test field fell within 15 px of a
-bright reference star). Bright stars in both the frame and `reference`
-are also detected and passed to [`zogy_subtract`](@ref) as
-`n_sources`/`r_sources`, so its astrometric-noise term can account for
-residual sub-pixel misregistration at exactly those positions instead of
-`S_corr` reporting an inflated, uncorrected significance there.
+directly on each frame. Passing a deep reference stack — an
+`(image, sigma, mask, psf, wcs)` named tuple, with `image`/`sigma`/`mask`
+from [`build_reference`](@ref), `wcs` the `target_wcs` it was built on and
+`psf` from `estimate_psf(image)` — switches to ZOGY difference imaging
+([`zogy_subtract`](@ref)): each frame is reprojected onto `reference`'s
+grid, subtracted, and detected on the resulting `S_corr`, which reaches
+below the single-frame noise floor. `threshold` is then a significance in
+sigma, and every frame is calibrated with `reference.wcs`. Each frame's PSF
+is estimated after reprojection, on the pixels `zogy_subtract` differences,
+and bright stars in the frame and the reference are passed as
+`n_sources`/`r_sources` for its astrometric-noise term.
 
-A per-frame quality gate applies in the `reference` path: if a frame's
-`S_corr` standard deviation (plain `Statistics.std`, over its valid,
-in-footprint region) exceeds `quality_max_std`, that frame is treated as
-having found nothing (a warning is emitted) rather than contributing
-possibly-spurious detections. `S_corr` is only *nominally* unit-variance —
-real registration and PSF-matching imperfections inflate it — and on real
-ZTF data, good frames measured std ~1.1-1.2 while one frame with an
-apparent transient atmospheric issue (see git log `3e31b95`) measured
-~2.0 and produced roughly twice as many bright detections as every other
-frame. Plain `std`, not a robust (MAD-based) one, deliberately: that real
-anomalous frame's excess showed up as ~232 point-like bright residuals
-rather than a bulk noise increase, and a MAD-based spread — robust to
-exactly that kind of minority-of-pixels outlier — measured ~0.997 for it,
-indistinguishable from the good frames' ~0.98-1.10; plain `std` is what
-actually separates them here. The default of `1.5` sits with margin on
-both sides of that real gap; it is calibrated from that one dataset, not
-a universal constant — tune per survey/conditions.
+On the `reference` path, a frame whose `S_corr` standard deviation (over
+its valid region) exceeds `quality_max_std` is treated as having found
+nothing, with a warning. The plain `std` is deliberate: a MAD-based spread
+misses a frame whose excess is a few hundred bright residuals. The default
+`1.5` was set on ZTF data (good frames ~1.1-1.2); tune it per survey.
+With `min_frames=nothing` (the default), linking requires every frame that
+was not gated; pass `min_frames` to set it explicitly.
 
-A gated frame contributes zero detections, and `link_candidates`
-(via `min_frames`) requires every frame to match by default — so a
-single real gated frame used to make no tracklet reachable at all unless
-the caller manually lowered `min_frames`. `min_frames`'s default
-(`nothing`) now accounts for this automatically: the value actually used
-is `length(fits_paths)` minus however many frames got gated this run,
-computed *after* detection, not the eager keyword default — pass
-`min_frames` explicitly to override this and get the old, literal
-behavior.
+On the raw path, a frame whose [`photometric_scale`](@ref) factor deviates
+from the median by more than `photometric_outlier_threshold` (20%) gets a
+warning, never an exclusion. It catches a uniform flux-scale change
+(transparency, focus); a thin passing cloud can leave it unchanged.
 
-The raw (no-`reference`) path has no equivalent gate built into
-`S_corr`'s own statistics, but a related signal is available there:
-[`photometric_scale`](@ref)'s per-frame flux-scale factor (computed after
-detection, from every frame's own detections). If any frame's factor
-relative to the field's median deviates by more than
-`photometric_outlier_threshold` (default `0.2`, i.e. 20%), a warning is
-emitted — this is only a warning, never an automatic exclusion, unlike
-`quality_max_std`, precisely to avoid repeating that gate's own
-combinatorial side effect on `link_candidates`'s `min_frames` (see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/ztf-investigation#The-quality-gate's-combinatorial-side-effect-on-tracklet-count)).
+If a frame's header has no WCS, [`load_wcs`](@ref) raises an error; with
+`plate_solve_api_key` (a nova.astrometry.net API key) the frame is solved
+by [`plate_solve`](@ref) instead, a network round trip.
 
-Tested directly (not left unvalidated) against the one real, confirmed
-anomaly available: the same field-451 frame `quality_max_std` catches (a
-likely passing cloud — `S_corr` std ~2.0 vs. ~1.1-1.2 for the other four,
-and ~232 excess bright residuals). That frame's *raw-path*
-`photometric_scale`, measured directly, differs from the field median by
-only 0.64% — nowhere near the default 20% threshold, at any reasonable
-setting of it. This is a real, informative negative result, not just "it
-didn't flag, so it's unvalidated": it shows `photometric_outlier_threshold`
-and `quality_max_std` are sensitive to genuinely different failure modes,
-not two redundant checks for the same thing. A passing cloud during ZOGY
-differencing shows up as elevated per-pixel residual noise in `S_corr` —
-exactly what `quality_max_std` measures — but a *raw*, undifferenced
-frame's stars can still read at normal relative brightness to each other
-even under a cloud thin enough not to have caused uniform extinction
-across the whole exposure, which is what `photometric_scale`'s
-ensemble-ratio approach would need to see. `photometric_outlier_threshold`
-is left in place for the failure mode it *would* catch (a real, uniform
-per-frame flux-scale shift — heavier cloud, real transparency loss,
-guiding/focus problems) — that specific scenario is still unvalidated,
-since no real example of it has turned up in this project's data yet —
-but it is no longer accurate to say this check has never been tested
-against a real anomaly at all.
-
-If a frame's header has no WCS, [`load_wcs`](@ref) raises an error;
-passing `plate_solve_api_key` (a nova.astrometry.net API key) makes that
-frame fall back to [`plate_solve`](@ref) instead of failing outright —
-see its docstring for what that involves (a live network round trip,
-polling until the frame solves or times out).
-
-With `refine_astrometry`, a frame whose detections far outnumber the
-reference stars in its field gets a warning that the set is unreliable
-([`_check_frame_quality`](@ref)).
-
-These options, all off by default and all only on the raw (no-`reference`)
-path, make the pipeline usable on real IASC/Pan-STARRS1 image sets — each
-was needed on a real 2025 IASC practice set (ps1-NewPractice_3, field
-`XY54_p10`), where the defaults recovered neither of its two real moving
-objects and reported positions ~7" off:
+These options, all off by default and all on the raw path only, are what
+IASC/Pan-STARRS1 sets need:
 
 - `mask_fill_values`: mask constant-valued plateaus (the gaps between
   detector cells; see [`fill_value_mask`](@ref)) before detection.
 - `refine_astrometry`: replace each frame's header WCS with one fitted to
-  reference stars detected in the frames, all of them together
-  ([`refine_wcs_set`](@ref)) — against
-  `reference_stars` if given, else Gaia DR3 stars covering the first
-  frame, fetched once ([`gaia_reference_stars`](@ref), a live network
-  request). On that set the header WCS was off by 6.8"; refined, an
-  unknown object's positions agreed with Astrometrica's to 0.08-0.18".
+  reference stars in all frames together ([`refine_wcs_set`](@ref)), against
+  `reference_stars` if given, else Gaia DR3 stars covering the first frame
+  ([`gaia_reference_stars`](@ref), a network request). A frame whose
+  detections far outnumber the reference stars gets a warning
+  ([`_check_frame_quality`](@ref)).
 - `difference_stack`: detect on each frame minus the median of the whole
-  sequence ([`stack_difference`](@ref)) instead of on the raw frame —
-  static sources cancel, so `threshold` can go much lower without
-  drowning in stars. Needs at least 3 frames. Groups of detections are
-  then resolved — a fast object's trail merged into one detection,
-  satellite trails and saturated-star residuals dropped — see
-  [`_merge_clusters`](@ref).
+  sequence ([`stack_difference`](@ref)): static sources cancel, so
+  `threshold` can go much lower. Needs at least 3 frames. A fast object's
+  trail is merged into one detection, satellite trails and saturated-star
+  residuals dropped (see [`_merge_clusters`](@ref)).
+- `subpixel_alignment` (difference path): align frames by fractional
+  offsets, with interpolation (see [`stack_difference`](@ref)'s `subpixel`).
 - `min_speed` (pixels per day), `max_flux_ratio` and `max_residual`
-  (pixels) filter tracklets after linking, per IASC's own "true signature" tests (see
-  [`_filter_tracklets`](@ref)): use `max_flux_ratio=2.5` for IASC's
+  (pixels) filter tracklets after linking, per IASC's "true signature"
+  tests (see [`_filter_tracklets`](@ref)); `max_flux_ratio=2.5` is IASC's
   1-magnitude limit. With `refine_astrometry`, `max_residual` is raised to
-  three times the frames' typical astrometric residual (at most 2 px) when
-  that is larger:
-  a straight line can't be checked more finely than the positions are
-  measured. On a real Pan-STARRS1 set with few Gaia stars (9-14 matched per
-  frame, residuals up to 0.23"), a V 17 asteroid's three points sat 1.5 px
-  from a line and the 1 px limit dropped it.
+  three times the frames' typical astrometric residual (at most 2 px): a
+  straight line can't be checked more finely than the positions are measured.
 - `detector_artifact_radius` (pixels; difference path): drop a detection
-  that recurs at the same *detector* pixel, within this radius, in two or
-  more other frames — a hot pixel or bad column moves only with the
-  telescope's dithers (see [`_drop_detector_fixed`](@ref)).
+  that recurs at the same *detector* pixel in two or more other frames — a
+  hot pixel or bad column (see [`_drop_detector_fixed`](@ref)).
 - `max_background_excess` (σ; difference path): drop a detection whose
-  surroundings in the raw frame sit more than this far above the sky — the
-  halo, ghost or diffraction spike of a bright star (see
-  [`_drop_on_bright_background`](@ref)).
+  surroundings in the raw frame sit more than this far above the sky — a
+  bright star's halo, ghost or spike (see [`_drop_on_bright_background`](@ref)).
 - `min_sharpness`: drop single-pixel spikes — cosmic rays, hot pixels —
   at detection (see [`detect_sources`](@ref)); `0.3` on IASC data.
 
-`fits_paths` must already be given in time order. `psf_threshold` and
-`psf_min_separation` are forwarded to `estimate_psf` for each frame's own
-PSF (only used when `reference` is given — `reference.psf` is estimated
-separately, by the caller, when building it). All other keyword arguments
-are forwarded to `detect_sources` and `link_candidates`.
+`fits_paths` must be in time order. `psf_threshold` and `psf_min_separation`
+go to `estimate_psf` for each frame's PSF (`reference` path only). All other
+keyword arguments are forwarded to `detect_sources` and `link_candidates`.
 
 Returns the candidate table from `astrometric_calibrate` (columns `id`,
-`frame`, `x`, `y`, `ra`, `dec`, `epoch`), ready to pass to
-[`crossmatch_catalog`](@ref). Cross-matching is not performed here, since
-it requires network access and a choice of catalog and radius.
+`frame`, `x`, `y`, `ra`, `dec`, `epoch`), ready for
+[`crossmatch_catalog`](@ref), which is left to the caller since it needs
+the network and a choice of catalog.
 """
 function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        timestamp_key::Union{Nothing,AbstractString}=nothing,
@@ -221,36 +133,17 @@ end
                         quality_max_std, plate_solve_api_key)
         -> (detections_per_frame, wcs_per_frame, timestamps, n_gated, astrometric_rms_px)
 
-The per-frame detection stage shared by [`run_pipeline`](@ref) (which
-links these into movers) and [`search_field`](@ref) (which additionally
-looks for stationary variable sources) — factored out so both share one
-detection pass over `fits_paths` rather than repeating the expensive
-reprojection/PSF/ZOGY work. See `run_pipeline`'s docstring for the
-meaning of every keyword. On the raw (no-`reference`) path, each frame's
-own `GAIN` header keyword (default `1.0` if absent) is passed to
-[`detect_sources`](@ref) so `flux_err` includes source shot noise, not
-just background noise — needed for [`find_variable_sources`](@ref)'s
-chi-squared test to have a realistic error bar to test against. Not
-applied on the `reference` (ZOGY) path, since `S_corr` there is already a
-normalized detection-significance map, not physical counts. On that same
-raw path, `photometric_outlier_threshold` is forwarded to a post-loop
-[`photometric_scale`](@ref) check — see `run_pipeline`'s docstring.
+The per-frame detection stage shared by [`run_pipeline`](@ref) and
+[`search_field`](@ref), so both use one pass over `fits_paths`. See
+`run_pipeline` for the keywords. On the raw path each frame's `GAIN` header
+keyword (default `1.0`) goes to [`detect_sources`](@ref), so `flux_err`
+includes shot noise, which [`find_variable_sources`](@ref)'s chi-squared
+test needs.
 
 `n_gated` is how many frames the `quality_max_std` gate excluded (always
-`0` on the raw path, which has no such gate) — both callers use it to
-auto-adjust their own `min_frames` default, since a gated frame otherwise
-silently makes no tracklet/variable-candidate reachable at all.
-
-`astrometric_rms_px` is the median, over the frames, of the refined
-astrometry's residual in pixels (`NaN` without `refine_astrometry`):
-[`run_pipeline`](@ref) scales its straight-line test by it.
-
-`detections_per_frame` is concretely typed from `detect_sources`'s own
-return type (confirmed identical on both its empty and non-empty return
-paths, not assumed) rather than left as `Vector{Any}` — a real
-type-stability fix found while profiling for other speedups, though it
-didn't measurably change this function's own real-data timing; see
-[Design refinements](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/design-decisions).
+`0` on the raw path): both callers lower their `min_frames` default by it.
+`astrometric_rms_px` is the median refined-astrometry residual in pixels
+(`NaN` without `refine_astrometry`).
 """
 function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              timestamp_key::Union{Nothing,AbstractString}=nothing,
@@ -405,43 +298,28 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
 end
 
 """
-    search_field(fits_paths; <all run_pipeline keywords>,
+    search_field(fits_paths; <run_pipeline's keywords through photometric_outlier_threshold>,
                  variability_position_tolerance::Real=2.0,
                  variability_min_frames::Union{Nothing,Integer}=nothing,
                  variability_chi2_threshold::Real=10.0,
+                 variability_normalize::Bool=(reference === nothing),
+                 variability_max_relative_error::Real=0.10,
                  variability_systematic_error_fraction::Real=0.03)
         -> (movers=<table>, variables=<table>)
 
-Run [`run_pipeline`](@ref)'s asteroid-candidate search and
-[`find_variable_sources`](@ref)'s variable/transient search together,
-sharing a single detection pass over `fits_paths` (via
-[`_detect_all_frames`](@ref)) rather than repeating the expensive
-per-frame work (reprojection, PSF estimation, ZOGY differencing) twice —
-the efficient choice for a real observing run that wants both outputs,
-since `run_pipeline` alone would need a second full pass over the same
-frames to also find variables.
+Run [`run_pipeline`](@ref)'s mover search and [`find_variable_sources`](@ref)'s
+variable search on one shared detection pass over `fits_paths`
+([`_detect_all_frames`](@ref)).
 
-All keywords through `photometric_outlier_threshold` are exactly
-`run_pipeline`'s (see its docstring, including how `min_frames`'s default
-now accounts for quality-gated frames); `variability_position_tolerance`,
-`variability_min_frames`, `variability_chi2_threshold`,
-`variability_normalize`, `variability_max_relative_error`, and
-`variability_systematic_error_fraction` are forwarded to
-[`find_variable_sources`](@ref) as its `position_tolerance`, `min_frames`,
-`chi2_threshold`, `normalize`, `max_relative_error`, and
-`systematic_error_fraction`. `variability_min_frames` defaults the same
-way `min_frames` does — `nothing` means "every non-gated frame must
-match". `variability_normalize` defaults to `reference === nothing` — off
-on the ZOGY path, per `find_variable_sources`'s own docstring (`S_corr`
-isn't on a physical flux scale, so ensemble photometric normalization
-doesn't apply there).
+Keywords through `photometric_outlier_threshold` are `run_pipeline`'s; the
+`variability_*` ones go to `find_variable_sources` without the prefix.
+`variability_min_frames=nothing` means every non-gated frame, as for
+`min_frames`. `variability_normalize` is off on the ZOGY path, where
+`S_corr` isn't on a flux scale.
 
-Returns a named tuple `(movers=..., variables=...)`, each an
-`astrometric_calibrate` candidate table (columns `id`, `frame`, `x`, `y`,
-`ra`, `dec`, `epoch`) — `movers` is identical to what `run_pipeline` would
-return for the same arguments; `variables` is ready for
-`crossmatch_catalog(...; :vsx)` the same way. `run_pipeline` itself
-remains the right entry point when only movers are needed.
+Returns `(movers=..., variables=...)`, each an `astrometric_calibrate`
+table (columns `id`, `frame`, `x`, `y`, `ra`, `dec`, `epoch`); `variables`
+is ready for `crossmatch_catalog(...; :vsx)`.
 """
 function search_field(fits_paths::AbstractVector{<:AbstractString};
                        timestamp_key::Union{Nothing,AbstractString}=nothing,
@@ -490,17 +368,10 @@ Every frame's detections re-expressed in the *first* frame's pixel grid
 whole raw-path sequence shares one coordinate system — afterwards the
 first frame's WCS applies to every frame's detections.
 
-[`link_candidates`](@ref) and [`find_variable_sources`](@ref) both
-compare positions across frames in pixels and assume one shared grid;
-the ZOGY path gets that from reprojecting onto `reference`, but the raw
-path used to link each frame's *own* pixel positions directly. Frames
-dither between exposures, so a real object's straight-line track was
-bent by each frame's pointing offset. Found on a real IASC set (field
-`XY54_p10`, dithers up to (6, 9) px): a G≈21 object detected in all four
-frames was never linked, because those offsets exceeded the 2"
-(7.8 px) `match_radius` tuned to PS1's astrometric precision. Only
-*relative* WCS accuracy matters here — the header's 6.8" absolute error
-on that same set is common to all four frames and cancels.
+[`link_candidates`](@ref) and [`find_variable_sources`](@ref) compare
+positions in pixels on one shared grid; without it, each frame's pointing
+offset bends a straight track. Only the frames' *relative* WCS accuracy
+matters: an error common to all of them cancels.
 
 `x`/`y` become the transformed position rounded to whole pixels; `xcen`/`ycen`
 keep it at full precision.
@@ -533,8 +404,6 @@ the same pixel, within `radius`, in two or more other frames. A moving
 object can't sit on one detector pixel for three exposures; a hot pixel or
 bad column does, and only seems to move on the sky because the telescope
 dithers between exposures — so the difference images don't cancel it.
-Found on a real IASC set (`XY72_p01`, 2026-10-04): a 4-frame "candidate"
-that stayed within 2 px of detector pixel (1420, 2370) in every frame.
 """
 function _drop_detector_fixed(per_frame, radius::Real)
     xy = [[_position(d) for d in dets] for dets in per_frame]
@@ -555,10 +424,8 @@ of an 8-20 px annulus, in units of the frame's own sky noise — sit more
 than `max_excess` above the sky. Real moving objects are found on clean
 sky; what a difference image leaves near a very bright star is its halo,
 an optical ghost, or a diffraction spike that turns between exposures, all
-of which can move just plausibly enough to link. On the real IASC sets of
-2026-10-04, two such false candidates (a ghost and a rotating spike) had
-1.7σ and 2.4σ of background around them; 14 real objects -0.07 to +0.12σ,
-and spurious tracklets of other kinds under 0.2σ.
+of which can move just plausibly enough to link. Real objects on IASC sets
+sit within ±0.12σ; ghosts and spikes reached 1.7-2.4σ.
 """
 function _drop_on_bright_background(detections, image, mask, max_excess::Real)
     valid = mask === nothing ? vec(image) : image[.!mask]
@@ -584,9 +451,8 @@ end
 Warn when a frame holds far more sources at [`refine_wcs`](@ref)'s
 threshold (10σ) than reference stars in its field — the signature of
 defective detector cells (speckled noise, gradients) rather than a crowded
-field. A real IASC set (`XY73_p00`, 2026-10-04) had 20,000-167,000 such
-sources per frame for 169 Gaia stars and produced 26 spurious tracklets,
-where good sets show a few hundred to ~900. Returns the ratio.
+field: good sets show a few hundred to ~900, a defective one 20,000 or
+more. Returns the ratio.
 """
 function _check_frame_quality(path, n_detections::Integer, n_reference_stars::Integer)
     ratio = n_detections / max(n_reference_stars, 1)

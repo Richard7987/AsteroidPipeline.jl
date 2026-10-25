@@ -1,6 +1,7 @@
 """
     zogy_subtract(n_image, r_image; psf_n, psf_r, sigma_n, sigma_r,
-                  gain_n=1.0, gain_r=1.0, f_n=1.0, f_r=1.0) -> (D, S_corr)
+                  gain_n=1.0, gain_r=1.0, f_n=1.0, f_r=1.0,
+                  n_sources=nothing, r_sources=nothing) -> (D, S_corr)
 
 Proper image subtraction (Zackay, Ofek & Gal-Yam 2016, ApJ 830, 27) between
 a science frame `n_image` ("new") and a reference frame `r_image`, both raw
@@ -28,38 +29,19 @@ Computed entirely in Fourier space (`FFTW.fft`), all as `Δ̂ = σ_n²F_r²|P̂_
   `detect_sources` runs on in the difference-imaging path of
   [`run_pipeline`](@ref).
 
-`n_image` and `r_image` need not be background-subtracted beforehand —
-each is subtracted its own median internally, before anything else. This
-matters more than it looks: a raw FFT's DC term is the *sum*, not the
-mean, of a whole image (often >10^6 pixels here), so even a few ADU of
-unmatched sky background between `n_image` and `r_image` — routine, since
-sky brightness depends on moon phase and airglow, not the photometric
-zeropoint `build_reference` already reconciles — blows up into a
-near-constant offset across all of `D` and `S`, swamping `S_corr` almost
-everywhere. This was caught by testing against real ZTF data, not by the
-synthetic tests, all of which happened to use matched backgrounds.
+`n_image` and `r_image` need not be background-subtracted: each has its
+median subtracted first. An FFT's DC term is the *sum* of the image, so a
+few ADU of unmatched sky would otherwise swamp `S_corr` everywhere.
 
-`f_n`, `f_r` are relative photometric flux scales; left at 1 because
-`build_reference` already rescales every reference frame to the science
-frame's zeropoint before stacking, so both inputs are on a common scale by
-the time they reach here. `gain_n`, `gain_r` (e-/ADU, from each frame's
-`GAIN` header) convert background-subtracted counts to Poisson variance for
-the `V_N`, `V_R` terms.
+`f_n`, `f_r` are relative flux scales, 1 when `build_reference` has put the
+reference on the science frame's zeropoint. `gain_n`, `gain_r` (e-/ADU)
+give the Poisson variance in `V_N`, `V_R`.
 
-Astrometric registration noise (`V_ast`) is included only if `n_sources`
-and `r_sources` (tables with `x`, `y` columns, e.g. from
-[`detect_sources`](@ref) on `n_image`/`r_image` directly, *not* on `D` or
-`S`) are passed as keywords; otherwise it is omitted, which is only valid
-if reprojection onto a common grid has already removed essentially all
-registration error — reasonable here since `build_reference` already
-reprojects reference frames onto the exact science-frame grid.
-[`run_pipeline`](@ref) always supplies both, so this only affects a
-direct `zogy_subtract` call: omitting them silently (rather than as a
-deliberate, informed choice) risks reading `S_corr`'s significance at
-face value near bright stars where real sub-pixel misregistration is
-exactly what `V_ast` accounts for — a `@warn` (once per session) fires
-when both are left unset, so this stays visible rather than a silent
-default.
+Astrometric registration noise (`V_ast`) is included only when `n_sources`
+and `r_sources` (tables with `x`, `y` columns, from [`detect_sources`](@ref)
+on `n_image`/`r_image`) are passed. Without them `S_corr` overstates the
+significance near bright stars wherever registration isn't perfect, so a
+warning (once per session) fires; [`run_pipeline`](@ref) always passes both.
 """
 function zogy_subtract(n_image::AbstractMatrix{<:Real}, r_image::AbstractMatrix{<:Real};
                         psf_n::AbstractMatrix{<:Real}, psf_r::AbstractMatrix{<:Real},

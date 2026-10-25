@@ -31,13 +31,9 @@ rather than being dropped outright (the seed itself already passed the
 Distinct seed pairs whose refit converges to the same final point set
 (more than one can lock onto the same real object) are deduplicated.
 
-Seeding from frames 1 and 2 only used to apply regardless of
-`min_frames`, so an object missing from either — crossing a detector gap,
-masked over a star, or leaving the field — could never be linked, even
-when `min_frames` said one missing frame was fine. Measured with
-synthetic objects injected into a real IASC set ([`inject_movers`](@ref)):
-of fast movers detected cleanly in three of four frames, those missing
-frame 1 or 2 were never recovered.
+When `min_frames` allows missing frames, any pair of frames can seed, so
+an object missing from frame 1 or 2 (a detector gap, a star, the field
+edge) can still be linked.
 
 Returns a vector of tracklets; each tracklet is a vector of
 `(frame, x, y)` named tuples for detections consistent with the same
@@ -188,19 +184,17 @@ fluctuates by more than 1"). Straight line and constant speed are what
   peaks rarely keep a steady flux; a real object does. A tracklet longer
   than `min_frames` that fails only because of one point — the one
   farthest from the median flux — is kept without it if the rest passes
-  every test: 2019 UA185 (V ≈ 21, `XY72_p01`) had fluxes 121, 114, 47 and
-  95, a faint frame at signal-to-noise ~5, not a different object.
+  every test: a faint object at signal-to-noise ~5 in one frame is still
+  the same object.
 - `max_residual` (pixels): for a tracklet missing some frame, the RMS
   distance of its points from their own least-squares line must not
   exceed it. `link_candidates` accepts any point within `match_radius` of
   the line — 7.8 px for IASC sets, wide enough for real motion — so with
   a frame allowed missing, bent chance alignments of three noise peaks get
   through; four on one line by chance are rare, so complete tracklets are
-  left alone. On the real IASC sets, partial tracklets of real objects had
-  residuals of 0.12-0.31 px against a median 2.6 px for spurious ones, and
-  1.0 px cut `XY25_p10` from 744 tracklets to under 50. Complete tracklets
-  of faint (V ≈ 21.3) real objects reached 1.40 px — applied to them too,
-  the cut lost 2019 PK5 and the Jupiter Trojan 2019 NB9.
+  left alone. On IASC sets, partial tracklets of real objects sat 0.12-0.31 px
+  from their line and spurious ones a median 2.6 px; complete tracklets of
+  faint real objects reached 1.4 px, which is why they are exempt.
 
 With all at their defaults, `tracklets` is returned unchanged.
 """

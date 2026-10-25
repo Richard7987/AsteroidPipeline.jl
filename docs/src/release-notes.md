@@ -14,6 +14,18 @@ from the version picker at the top right.
 
 - Tests: [`analyze_set`](@ref) run end to end on a synthetic set, and
   digest2 built in CI so [`digest2_score`](@ref) is tested there.
+- Tests: the package is checked with Aqua.jl (method ambiguities, stale
+  dependencies, compat bounds, type piracy).
+- Docstrings and comments say what the code does and why, without the
+  history of how each value was found; that lives in the validation pages.
+
+**Fixed**
+
+- [`julian_date_to_iso8601`](@ref) gave day 32 when rounding to the
+  millisecond reached midnight on a month's last day; it now moves to the
+  next month. The MPC date field gave `.000001` instead of `.000000` in the
+  same case.
+- The terminal UI kept the engine's log file open after starting it.
 
 ## 1.0.0 — 2026-10-23
 

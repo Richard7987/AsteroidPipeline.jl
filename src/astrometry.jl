@@ -8,30 +8,12 @@ Throws an error if the header defines no WCS solution. If it defines more
 than one (e.g. alternate WCS descriptions with an `a`/`b`/... suffix), the
 first one is returned.
 
-Real Pan-STARRS1 (PS1) headers — used by real IASC practice campaigns —
-carry `CNPIX1`/`CNPIX2` (a legacy IRAF/DSS-plate-astrometry keyword pair,
-unrelated to the header's actual CTYPE/CRVAL/CRPIX/CDELT WCS, present
-alongside it) that `WCS.jl`/wcslib mistakes for the start of a *separate*,
-implicit DSS-style WCS description; with none of that convention's other
-required keywords present, wcslib builds a degenerate, all-zero linear
-transform for it and raises "Linear transformation matrix is singular" —
-even though the header's real, complete WCS parses fine on its own.
-Confirmed directly (bisecting a real PS1 header down to the single
-offending keyword): removing just `CNPIX1`/`CNPIX2` is sufficient: the
-same header then parses cleanly, and the first (real) solution is
-unaffected. Handled here as a targeted retry — only when the header
-actually carries those keywords, only stripping those two — rather than
-a general parsing workaround.
-
-The retry used to trigger only on wcslib's "singular" message, which
-turned out to be just one face of the problem: the implicit solution's
-undefined fields are whatever memory wcslib got, so the error it raises
-depends on the process's heap state. Measured on a real 2025 PS1 header:
-300 parses in a fresh process all failed "singular", but inside a longer
-`run_pipeline` call the same header failed "Invalid parameter value"
-instead — intermittently, crashing the run. Stripped of `CNPIX1`/`CNPIX2`
-the same header parsed cleanly 300 times out of 300, so any wcslib error
-on a header carrying them now gets the retry.
+Pan-STARRS1 headers carry `CNPIX1`/`CNPIX2`, a legacy IRAF keyword pair
+that wcslib takes for the start of a second, implicit WCS; it builds that
+from uninitialised fields and fails with an error that depends on heap
+state ("singular", "Invalid parameter value"). On any wcslib error from a
+header carrying those keywords, the parse is retried with only those two
+removed.
 
 For a frame with no WCS at all, see [`plate_solve`](@ref) — `run_pipeline`
 uses it as a fallback when given `plate_solve_api_key`.
@@ -140,12 +122,8 @@ has is used: `DATE-OBS` (with `TIME-OBS`, `UT` or `UTC` when it holds only
 the date), `MJD-OBS`, `OBSMJD`, `MJD_OBS`, `JD`, `OBSJD`, `JD-OBS` — so
 images from any telescope that follows one of these conventions need no
 setting. `DATE-OBS` first matters for Pan-STARRS1: its `MJD-OBS` is the shutter
-time in **TAI**, not UTC — 37 s later than `DATE-OBS` ("UTC start of
-exposure") in every real IASC header checked, 2019 and 2025 alike, despite
-the same header's `TIMESYS = 'UTC'` (its `SHUTOPEN` card, labelled TAI, is
-the same instant as `MJD-OBS`). Reading `MJD-OBS` put every epoch 37 s late —
-caught by comparing this pipeline's MPC report for a real object with
-Astrometrica's. ZTF has no `DATE-OBS`; its `OBSMJD` (UTC) is found.
+time in **TAI**, 37 s later than its `DATE-OBS` (UTC), despite
+`TIMESYS = 'UTC'`. ZTF has no `DATE-OBS`; its `OBSMJD` (UTC) is found.
 
 If the header has `exptime_key` (seconds), half of it is added: both surveys
 stamp the *start* of the exposure. `exptime_key=nothing` skips that, for a

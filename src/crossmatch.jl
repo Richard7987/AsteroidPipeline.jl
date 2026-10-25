@@ -12,57 +12,37 @@ const _CDS_BATCH_SIZE = 50
                        observatory::Union{Nothing,AbstractString}=nothing, mpcorb=nothing)
 
 Cross-match candidate tracklets against a known-object catalog
-(`:skybot`, `:vsx`, or `:simbad`) within `radius` arcseconds, to separate
-known objects from candidates warranting human verification.
+(`:skybot`, `:mpcorb`, `:vsx` or `:simbad`) within `radius` arcseconds, to
+separate known objects from candidates warranting human verification.
 
 `candidates` is an iterable of rows with `id`, `ra`, `dec` fields (degrees,
-J2000), such as the table returned by [`astrometric_calibrate`](@ref).
-SkyBoT additionally requires an `epoch` field (Julian Date) on each row,
-since it computes solar-system-object ephemerides for a specific instant
-rather than querying a static catalog. `:vsx` and `:simbad` are each
-queried directly against their own CDS TAP service (ADQL cone search),
-batched `_CDS_BATCH_SIZE` (50) candidates per request instead of the
-single batched request the old CDS X-Match service used to offer
-(replaced since X-Match itself became unreliable — extended, total
-outages; see the [Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/ztf-investigation#Batching-crossmatch_catalog...;-:vsx/...;-:simbad) — while the underlying SIMBAD and
-VizieR TAP services stayed up). A real TAP `UPLOAD`-based batch (one
-request for *any* N) was tried first and rejected: verified directly
-against both services that it doesn't work simply here — SIMBAD accepts
-an uploaded CSV but fails to resolve its columns, VizieR rejects anything
-that isn't a full VOTable document — and ADQL `UNION` (the other
-obvious batching route) is rejected outright by SIMBAD's parser. What
-*does* work, confirmed against a real multi-candidate query: `OR`-chaining
-one `CONTAINS(...)=1` clause per candidate in a single request, then
-resolving which candidate each returned row matches client-side (no
-`UNION`/per-row tag available in one `OR`-chained query, so each
-returned row's distance is checked against every candidate in that
-batch). Cuts N requests to `ceil(N / 50)`.
+J2000), such as the table returned by [`astrometric_calibrate`](@ref);
+`:skybot` and `:mpcorb` also need each row's `epoch` (Julian Date).
 
-Returns a table with one row per (candidate, catalog match) pair found
-within `radius`; `:vsx` and `:simbad` return different columns (VSX
-carries variability class/magnitude/period, SIMBAD doesn't), matching
-what each catalog actually offers, but both always include `id`, `ra`,
-`dec`, and `distance_arcsec`. Candidate `id`s absent from the returned
-table have no known counterpart in `catalog`.
+- `:skybot` asks IMCCE's SkyBoT for the solar-system objects at each row's
+  epoch.
+- `:mpcorb` propagates the Minor Planet Center's orbits in an `MPCORB.DAT`
+  file (`mpcorb`: its path, or [`read_mpcorb`](@ref)'s result) to each
+  row's epoch (see [`_crossmatch_mpcorb`](@ref)); same columns as `:skybot`.
+- `:vsx` and `:simbad` query each CDS TAP service with one `OR`-chained
+  ADQL cone per candidate, `_CDS_BATCH_SIZE` (50) per request, and assign
+  each returned row to its candidates client-side. (TAP `UPLOAD` and ADQL
+  `UNION` don't work on these services.) VSX rows carry variability class,
+  magnitudes and period.
 
-`:mpcorb` matches against the Minor Planet Center's own orbits in an
-`MPCORB.DAT` file (`mpcorb`: its path, or [`read_mpcorb`](@ref)'s result),
-propagated to each row's epoch — see [`_crossmatch_mpcorb`](@ref) for why
-that is needed beside SkyBoT. It returns the same columns as `:skybot`.
+Every result has `id`, `ra`, `dec` and `distance_arcsec`, one row per
+(candidate, match) pair; a candidate `id` absent from it has no known
+counterpart in `catalog`.
 
-For `:skybot` and `:mpcorb`, `observatory` (a 3-character MPC observatory code, e.g.
-`"F51"` for Pan-STARRS1, `"I41"` for ZTF) makes SkyBoT compute each
-ephemeris for that site instead of the Earth's centre. Leave it unset only
-for distant objects: parallax moves a nearby one by many arcseconds — on
-a real IASC set the known Mars-crosser 2018 LT sat ~15" from its
-geocentric position, <3" from its `"F51"` one.
+For `:skybot` and `:mpcorb`, `observatory` (an MPC code, e.g. `"F51"` for
+Pan-STARRS1, `"I41"` for ZTF) computes each position from that site rather
+than the Earth's centre. Leave it unset only for distant objects: parallax
+moves a near one by many arcseconds (~15" for a Mars-crosser seen from F51).
 
-Each candidate row is matched at its own `epoch`, so passing *every* row
-of a tracklet (not just its first) and counting matches per
-`(id, name)` checks that the tracklet actually *follows* the object
-frame by frame. Matching only one point is a weak test: on the real IASC
-sets, 7 of 9 "recoveries" counted that way were static stars that
-happened to lie within 15" of a known asteroid at one epoch.
+Each row is matched at its own `epoch`, so passing *every* row of a
+tracklet and counting matches per `(id, name)` checks that the tracklet
+follows the object frame by frame. One matched point is a weak test: a
+static star near a known asteroid's track matches once.
 """
 function crossmatch_catalog(candidates, catalog::Symbol; radius::Real,
                             observatory::Union{Nothing,AbstractString}=nothing, mpcorb=nothing)
@@ -92,18 +72,9 @@ returning the CSV response parsed by `CSV.File`. Shared by
 `_crossmatch_simbad`, `_crossmatch_vsx` and [`gaia_reference_stars`](@ref).
 
 A request that stops receiving data for `_CATALOG_IDLE_TIMEOUT` seconds
-is abandoned (`HTTP.TimeoutError`) instead of waiting forever: a real
-run over the IASC practice sets sat at 0% CPU for 30 minutes on one
-catalog request that never answered, with nothing to end it.
-
-Retries — `_TAP_ATTEMPTS` tries in all, waiting 2 s then 4 s — on any
-failure of the service itself (see [`_is_service_failure`](@ref)), never
-on a 4xx answer. This began as a single retry for one case,
-`HTTP.ParseError` ("unexpected EOF while reading HTTP/1 data"), confirmed
-via repeated direct `curl` requests to be a connection-reuse quirk on our
-end, not a real outage; validating `refine_astrometry` against the IASC
-sets then hit a timeout, a 503 and a broken TLS handshake in one
-evening, so it now covers the whole class. The last failure propagates.
+is abandoned (`HTTP.TimeoutError`) instead of waiting forever. Retried
+`_TAP_ATTEMPTS` tries in all on a failure of the service itself (see
+[`_is_service_failure`](@ref)), never on a 4xx answer.
 """
 function _tap_query(url::AbstractString, query::AbstractString)
     make_body() = HTTP.Form(Dict(
@@ -134,11 +105,7 @@ const _TAP_ATTEMPTS = 3
 Whether `e` is the catalog *service* failing — unreachable, reset, TLS
 or protocol trouble, a timeout, a 5xx status — which a retry (or another
 copy of the catalog) can get past, as opposed to a 4xx status, which
-means the query itself is wrong and would fail anywhere. Every one of
-the transient kinds has turned up for real while validating this
-package: a `ParseError` from connection reuse, an idle hang with no
-answer at all, a sustained VizieR 503 outage, and a TLS handshake broken
-mid-write ("Broken pipe").
+means the query itself is wrong and would fail anywhere.
 """
 _is_service_failure(e) = e isa Base.IOError ||
                          (e isa HTTP.HTTPError && !(e isa HTTP.StatusError && e.status < 500))
@@ -153,14 +120,9 @@ const _CATALOG_IDLE_TIMEOUT = 60
 An ADQL synchronous query matching rows of `table` against *any* member
 of `batch` (an iterable of rows with `ra`/`dec` fields): one
 `CONTAINS(...) = 1` cone-search clause per candidate, `OR`-chained into a
-single request — TAP's `UNION` is unsupported here (confirmed against a
-real query) and table `UPLOAD` doesn't work simply on these services
-either (confirmed too — see [`crossmatch_catalog`](@ref)'s docstring),
-so this is the batching approach that's actually verified to work.
-Shared by `_crossmatch_simbad` and `_crossmatch_vsx`, which differ only
-in `select`/`table`/coordinate column names. Since a single `OR`-chained
-query can't tag which candidate a row matched, that's resolved
-separately, client-side, after the query runs.
+single request (see [`crossmatch_catalog`](@ref)). Shared by
+`_crossmatch_simbad` and `_crossmatch_vsx`; which candidate a row matched
+is resolved client-side.
 """
 function _cds_batch_query(select::AbstractString, table::AbstractString,
                            ra_col::AbstractString, dec_col::AbstractString,
@@ -243,42 +205,23 @@ function _crossmatch_vsx(candidates, radius::Real)
         end
     end
 
-# A request to an online service that failed: callers leave a warning instead.
-_is_unavailable(e) = e isa HTTP.HTTPError || e isa Base.IOError || e isa SkyBoTServiceError
-
     return Table(; id, name, class, ra, dec, mag_max, mag_min, period, distance_arcsec)
 end
 
 """
     _skybot_matches(c, radius_deg) -> Vector{NamedTuple}
 
-One SkyBoT cone-search request for a single candidate `c`. Factored out
-of [`_crossmatch_skybot`](@ref) so it can be run concurrently, one task
-per candidate — see that function's docstring for why.
+One SkyBoT cone-search request for a single candidate `c`, run one task
+per candidate by [`_crossmatch_skybot`](@ref).
 
-Retries on any `HTTP.HTTPError` (covers `HTTP.ConnectError`, the
-`_CATALOG_IDLE_TIMEOUT` `HTTP.TimeoutError`,
-`HTTP.ParseError`, etc.): confirmed real on a long real crossmatch run
-(thousands of candidates, several thousand real SkyBoT requests) — a
-"tls write failed: connection is closed" error killed the whole run
-partway through a large candidate list, after running cleanly for over
-two hours.
+Up to `_SKYBOT_ATTEMPTS` tries on any `HTTP.HTTPError` or
+[`SkyBoTServiceError`](@ref) (SkyBoT failing server-side behind HTTP 200,
+which clears on a resend). `fetch` is the HTTP call itself, injectable so
+the retries can be tested without the network.
 
-Also retries on a [`SkyBoTServiceError`](@ref) — SkyBoT failing
-server-side but still answering HTTP 200 (see `_parse_skybot`). Seen
-directly against the live service (2026-10): identical cone searches
-intermittently came back `# Flag: -1` with a crashed ephemeris process's
-backtrace in place of results, then succeeded on a plain resend.
-
-The cone asked of SkyBoT is never smaller than `_SKYBOT_MIN_CONE` (2′);
-matches beyond `radius_deg` are dropped here. Asked for 5″, SkyBoT's old
-service returned nothing for a known asteroid 0.94″ from the centre, in
-two of four real ZTF frames — and found it in all four with a 60″ cone —
-so a known object could go unidentified and pass for a new one.
-
-Up to `_SKYBOT_ATTEMPTS` tries total, with exponential backoff between
-them; the last failure propagates. `fetch` is the HTTP call itself,
-injectable so the retry logic can be tested without the network.
+The cone asked of SkyBoT is never smaller than `_SKYBOT_MIN_CONE` (2′),
+and matches beyond `radius_deg` are dropped here: asked for 5″, SkyBoT
+missed a known asteroid 0.94″ from the centre in two of four ZTF frames.
 """
 function _skybot_matches(c, radius_deg::Real;
                          observatory::Union{Nothing,AbstractString}=nothing,
@@ -299,6 +242,9 @@ end
 
 # The smallest cone _skybot_matches asks for, in degrees (see its docstring).
 const _SKYBOT_MIN_CONE = 2 / 60
+
+# A request to an online service that failed: callers leave a warning instead.
+_is_unavailable(e) = e isa HTTP.HTTPError || e isa Base.IOError || e isa SkyBoTServiceError
 
 # The exception at the root of a failed @sync/@async block.
 _task_root(e) = e isa CompositeException && !isempty(e.exceptions) ? _task_root(first(e.exceptions)) :

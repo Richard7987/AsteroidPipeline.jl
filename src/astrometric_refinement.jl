@@ -81,15 +81,9 @@ rotation, shear — is fitted by least squares to those matches, rejecting
 matches beyond `clip_sigma` times the residual RMS and refitting until
 none are rejected.
 
-Why this is needed rather than optional for real IASC/Pan-STARRS1 data:
-on a real 2025 practice set (field `XY54_p10`), matched against 38 Gaia
-stars, the header WCS was off by a near-constant ~26.6 px (6.8") — far
-beyond the <1" an MPC report needs, though PS1's own `CERROR` keyword
-claims 0.06". Refit this way, the residual RMS fell to ~0.17", and an
-unknown object's positions agreed with Astrometrica's own
-Gaia-calibrated measurement of it. The header's `PCA*` polynomial
-distortion terms were checked as the explanation first and ruled out:
-evaluated at the chip's corners they move a position by <0.5 px.
+Pan-STARRS1 headers can be off by several arcseconds, although their
+`CERROR` claims 0.06", far beyond the <1" an MPC report needs; refitted,
+the residual RMS is ~0.2".
 
 Returns a named tuple: the refined `wcs` (a plain TAN `WCSTransform`,
 tangent point at `wcs`'s own `crval`), `refined` (`false` if fewer than
@@ -100,13 +94,13 @@ global `(dx, dy)` offset found, detected minus predicted), and `n_detections`
 (sources detected at `threshold` — compared with the catalog's star count it
 flags frames full of detector defects; see [`run_pipeline`](@ref)), and
 `matches` (the matched stars, `(x, y, ra, dec)`, before the fit's clipping —
-    detections = detect_sources(image; threshold, mask)
 what [`refine_wcs_set`](@ref) pools across frames).
 """
 function refine_wcs(image::AbstractMatrix{<:Real}, wcs::WCSTransform, stars;
                     threshold::Real=10.0, mask::Union{Nothing,AbstractMatrix{Bool}}=nothing,
                     max_offset::Real=60.0, match_radius::Real=2.0,
                     min_matches::Integer=6, clip_sigma::Real=3.0)
+    detections = detect_sources(image; threshold, mask)
     unrefined(n, offset, matches=_NO_MATCHES) = (wcs=wcs, refined=false, n_matches=n, rms_arcsec=NaN,
                                                  offset_px=offset, n_detections=length(detections), matches)
     det_xy = [(d.xcen, d.ycen) for d in detections]
@@ -142,30 +136,26 @@ together: one result per frame, as `refine_wcs`'s, plus `joint` (whether
 the frame's solution came from the joint fit) and `shift_only` (whether only
 the header's offset was corrected — see below).
 
-Fitted one frame at a time, a frame's solution rests on the few Gaia stars
-matched in it — 6 to 16 on IASC's Pan-STARRS1 chips — and between frames
-the solutions disagreed by up to 9 px (2.3″) on two 2026-10-14 sets,
-where the header solutions agreed with each other to 0.2 px: every star then
-seemed to move ~3″/h, and dozens were reported as candidates. The headers'
-*relative* alignment is the reliable part even when their absolute position
-is 30″ off, so each frame's matches are carried to every other frame's
-pixels through the headers, and each frame is fitted to all of them. The
-joint solutions are kept if the headers bear that out: fitted again with
-an offset of their own, the stars matched in any one frame may not need one
-larger than their scatter allows (3 standard errors, plus 0.25 px), and the
-fit's RMS may not exceed `max_rms` arcseconds.
-On those two sets the joint fit's RMS was 0.34–0.55″, from 38 stars.
+Fitted one frame at a time, a solution rests on the few reference stars
+matched in that frame (6 to 16 on IASC's Pan-STARRS1 chips), and frames
+can disagree by several pixels, which makes every star seem to move. The
+headers' *relative* alignment is reliable even when their absolute
+position is 30″ off, so each frame's matches are carried to every other
+frame's pixels through the headers, and each frame is fitted to all of
+them. The joint solutions are kept if the headers bear that out: fitted
+again with an offset of their own, no frame's stars may need one larger
+than 3 standard errors plus 0.25 px, and the RMS may not exceed `max_rms`
+arcseconds.
 
 Each frame is first matched as [`refine_wcs`](@ref) does (`kwargs` are
-passed on); one that fails is retried searching `wide_offset_arcsec` — some
-Pan-STARRS1 headers are 32″ (128 px) off, beyond `refine_wcs`'s default
-search. Then the stars are matched again from the fitted solution (within
-`rematch_arcsec`), up to `iterations` times while more of them match:
-the header's error is not one offset across a whole chip, so the first
-match finds only part of the stars — 6 to 13 of ~250 on those sets, 70 to
-90 after rematching, with residuals of ~0.1″. If the joint fit is rejected, a frame whose own fit failed but with 4 or more
-stars agreeing on the header's offset gets that offset corrected
-(`shift_only`), which keeps it aligned with the others.
+passed on); one that fails is retried searching `wide_offset_arcsec`, as
+some headers are further off than `refine_wcs`'s default search. Then the
+stars are matched again from the fitted solution (within `rematch_arcsec`),
+up to `iterations` times while more of them match: the header's error
+isn't one offset across a whole chip, so the first match finds only part
+of the stars. If the joint fit is rejected, a frame whose own fit failed
+but with 4 or more stars agreeing on the header's offset gets that offset
+corrected (`shift_only`), which keeps it aligned with the others.
 """
 function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
                         masks=nothing, wide_offset_arcsec::Real=77.0, max_rms::Real=1.0,

@@ -26,14 +26,8 @@ an upload failure, a job that fails to solve, or either poll loop timing
 out — a frame astrometry.net cannot solve is a real failure, not
 something to silently pass through.
 
-Validated end-to-end against the live service: a real ZTF frame (with
-its existing WCS ignored) solved successfully, recovering sky coordinates
-consistent with that frame's known field centre; a synthetic image with
-no genuine star pattern correctly failed to solve rather than silently
-returning a wrong answer. `test/runtests.jl`'s live round-trip test runs
-whenever `ENV["ASTROMETRY_API_KEY"]` is set; the individual
-request/response steps are always tested directly against fabricated
-JSON, without a live connection.
+The live round trip is tested when `ENV["ASTROMETRY_API_KEY"]` is set; the
+individual steps are always tested against fabricated JSON.
 """
 function plate_solve(image_path::AbstractString; api_key::AbstractString,
                       timeout::Real=300, poll_interval::Real=5)

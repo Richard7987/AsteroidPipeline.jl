@@ -6,75 +6,28 @@ from `frames`, each a `(image, wcs, magzp, sigma)` tuple (raw FITS pixel
 order — see [`load_frame`](@ref)).
 
 Every frame is reprojected onto the target grid with `Reproject.reproject`
-(bilinear interpolation; each frame's own WCS legitimately differs from
-`target_wcs` by a few pixels of dither even within one night), rescaled to
-`target_magzp` by `10^(-0.4*(magzp - target_magzp))`, and combined
-per pixel with the **median** — chosen specifically because it rejects
-whatever moved between epochs (asteroids, satellite trails, cosmic rays),
-which a mean would instead bake into the reference as ghost artifacts.
-Reprojection dominates this function's real runtime by roughly two
-orders of magnitude over the per-pixel combine step below (~24s/frame
-vs. ~1s total, on real ZTF data; see the Investigation Log).
+(bilinear), rescaled to `target_magzp` by `10^(-0.4*(magzp - target_magzp))`,
+and combined per pixel with the **median**, which rejects whatever moved
+between epochs (asteroids, satellite trails, cosmic rays). Reprojection
+dominates the runtime.
 
-By default (`workers=nothing`) reprojection runs sequentially, one frame
-at a time. Parallelizing this loop with `Threads.@threads` was tried and
-reverted after it crashed (a real segfault, confirmed via a real
-multi-threaded run on real data, not a hypothetical): `Reproject.reproject`
-itself has no shared mutable state, but it calls into `WCS.jl`'s
-`pix_to_world!`, which wraps `wcslib` (a C library) via `ccall` — and
-concurrent calls into that library from multiple Julia **threads**
-(sharing one process) are not safe. Checking a Julia package's own source
-for global state, as was done here, is not sufficient to establish
-thread-safety when it wraps a C library; the transitive dependency needs
-the same scrutiny, which this hadn't had until the crash forced it.
+By default (`workers=nothing`) frames are reprojected one at a time: not
+with `Threads.@threads`, since `wcslib`, which `WCS.jl` wraps, isn't
+thread-safe. With `workers` (process ids from `Distributed.addprocs`, each
+with `@everywhere using AsteroidPipeline` already done) frames go through
+`pmap`; a `WCSTransform` holds C pointers that can't cross processes, so
+each WCS is sent as a FITS header string and rebuilt on the worker. On a
+30-frame ZTF reference, 8 workers ran 3.2× faster with identical output.
+`build_reference` never starts or stops workers itself.
 
-Multiple **processes** (`Distributed.jl`) sidestep that specific hazard —
-each process has its own independent `wcslib` state — but naively passing
-a `WCSTransform` itself to a worker (e.g. inside a `pmap` closure) still
-segfaults: `WCSTransform` holds pointers into `wcslib`-allocated C memory
-that's only valid in the process that created it, and Julia's generic
-serialization doesn't know to reconstruct that state on the receiving
-end (confirmed via a real crash inside `WCS.jl`'s `getproperty`/
-`convert_string` on a worker, deserializing a `WCSTransform` sent from
-the main process). Passing `workers` here avoids that: each frame's WCS
-is converted to a plain FITS header string (`WCS.to_header`, no pointers,
-serializes safely) before being sent, and each worker reconstructs its
-own local `WCSTransform` from that string (`load_wcs`) before calling
-`Reproject.reproject` — confirmed end to end, on this actual function
-(not just the technique in isolation), on real data (real 30-frame ZTF
-field-451 reference set, 8 worker processes) to run without crashing,
-in 295.92s vs. 951.31s sequential, both measured back to back with
-identical output (`image`/`sigma`/`mask` all exactly equal) — a real
-3.21x, not full 8x core-count scaling, since each worker still does its
-own `load_wcs` parsing per call and `pmap`'s own scheduling and
-serialization overhead isn't free. `workers` must be pre-existing worker
-process ids (e.g. from `Distributed.addprocs`), each of which the caller
-must have already loaded this package on (`@everywhere using
-AsteroidPipeline`) — `build_reference` itself never spawns or manages
-worker processes, since process-pool lifecycle is an environment concern
-the caller controls, not something a data-processing function should own
-as a side effect.
+`sigma` is the reference's per-pixel background RMS,
+`1.2533 * median(sigma_i) / sqrt(n)`: the standard error of the median
+under Gaussian noise. It ignores the noise correlation interpolation
+introduces, which is adequate for ZOGY's normalization.
 
-`sigma` is the reference's per-pixel background RMS, propagated from each
-frame's own (pre-reprojection) noise estimate and combined as
-`1.2533 * median(sigma_i) / sqrt(n)`, the asymptotic standard error of the
-median under Gaussian noise (efficiency `sqrt(pi/2)` relative to the mean).
-This is an approximation — reprojection correlates adjacent-pixel noise via
-interpolation, which this does not model — adequate for ZOGY's per-pixel
-normalization but not for e.g. certifying it as a strict statistical
-guarantee.
-
-`mask` is `true` where at least one input frame had a valid (in-footprint,
-non-NaN) sample at that pixel; elsewhere `image` is filled with 0.
-Reprojection legitimately leaves a thin NaN border where a frame's rotated
-footprint doesn't fully cover the target grid — real, not a bug — and
-callers must exclude `!mask` pixels from detection.
-
-The per-pixel median-combine below uses one reusable buffer rather than
-allocating a fresh array per pixel — a real, measured 2x speedup on real
-data (1.39s → 0.68s, 9.46M → 4.20M allocations; see the Investigation
-Log for the full comparison), though small next to reprojection's own
-cost above.
+`mask` is `true` where at least one frame had a valid sample; elsewhere
+`image` is 0. A frame's rotated footprint leaves a thin border uncovered,
+so callers must exclude `!mask` pixels from detection.
 """
 function build_reference(frames, target_wcs::WCSTransform, shape::NTuple{2,Integer};
                           workers::Union{Nothing,AbstractVector{Int}}=nothing)
@@ -86,7 +39,7 @@ function build_reference(frames, target_wcs::WCSTransform, shape::NTuple{2,Integ
     sigmas = Vector{Float64}(undef, nframes)
 
     if workers === nothing
-        # Sequential, not Threads.@threads — see the docstring above.
+        # not Threads.@threads: wcslib isn't thread-safe
         for k in 1:nframes
             frame = frames[k]
             resampled, frame_mask = Reproject.reproject((frame.image, frame.wcs), target_wcs; shape_out=shape)
@@ -96,7 +49,7 @@ function build_reference(frames, target_wcs::WCSTransform, shape::NTuple{2,Integ
             sigmas[k] = frame.sigma * scale
         end
     else
-        # WCSTransform never crosses the wire — see the docstring above.
+        # a WCSTransform can't cross processes; its header string can
         target_header = WCS.to_header(target_wcs)
         jobs = [(frames[k].image, WCS.to_header(frames[k].wcs), frames[k].magzp) for k in 1:nframes]
         pool = WorkerPool(collect(workers))
@@ -114,7 +67,6 @@ function build_reference(frames, target_wcs::WCSTransform, shape::NTuple{2,Integ
 
     image = zeros(Float64, shape)
     mask = falses(shape)
-    # Reusable buffer, not a fresh array per pixel — see the docstring above.
     buffer = Vector{Float64}(undef, length(frames))
     for ci in CartesianIndices(image)
         n = 0

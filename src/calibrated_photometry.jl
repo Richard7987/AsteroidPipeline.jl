@@ -99,11 +99,9 @@ in that frame. Working from `ra`/`dec` rather than the table's `x`/`y` keeps
 this independent of which pixel grid the pipeline linked on.
 
 `NaN` where a row's aperture falls off the frame or measures no positive flux.
-Each frame gets its own zero point, so a frame taken through thin cloud (a
-real IASC set had one ~29% fainter) doesn't make an object look fainter.
-
-Validated against Astrometrica on a real IASC practice set: see
-`examples/iasc_demo.jl`, which compares the reports both produce.
+Each frame gets its own zero point, so a frame taken through thin cloud
+doesn't make an object look fainter. `examples/iasc_demo.jl` compares the
+result with Astrometrica's.
 """
 function candidate_magnitudes(fits_paths::AbstractVector{<:AbstractString}, candidates;
                               timestamp_key::Union{Nothing,AbstractString}=nothing,

@@ -116,7 +116,7 @@ class ResultsScreen(Screen):
         self._update_caption()
         self.query_one("#objects", OptionList).focus()
 
-    # -- side panel ---------------------------------------------------------
+    # Side panel
     def _candidate_ids(self) -> list[int]:
         return [t["id"] for t in self.result.get("tracklets", []) if not t.get("known")]
 
@@ -252,7 +252,7 @@ class ResultsScreen(Screen):
         if event.option_list.id == "objects" and event.option.id is not None:
             self.action_toggle_zoom()
 
-    # -- the human check -------------------------------------------------------
+    # The human check
     def _selected_candidate(self) -> int | None:
         key = self.query_one(SkyViewer).selected
         obj = self.images.find(key)
@@ -320,7 +320,7 @@ class ResultsScreen(Screen):
         if tid is not None and tid in self.decisions:
             self._decide(tid, None)
 
-    # -- viewer -------------------------------------------------------------
+    # Viewer
     def _update_caption(self) -> None:
         viewer = self.query_one(SkyViewer)
         frames = self.result.get("frames", [])
@@ -388,7 +388,7 @@ class ResultsScreen(Screen):
             self.app.notify("Choose an object in the list first.")
         self._update_caption()
 
-    # -- other screens -------------------------------------------------------
+    # Other screens
     def action_report(self) -> None:
         from asteroid_ui.screens.report import ReportScreen
 

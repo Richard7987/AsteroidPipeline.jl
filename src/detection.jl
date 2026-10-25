@@ -14,61 +14,33 @@ boxes of `box_size` pixels, are extracted with `Photometry.PeakMesh`. Each
 detection's flux is then measured with circular aperture photometry of
 radius `aperture_radius` pixels on the background-subtracted image.
 
-Each aperture is centered on a sub-pixel-refined position (a flux-weighted
-centroid within `aperture_radius` of `PeakMesh`'s own integer-pixel peak
-— falls back to that raw peak whenever the refinement isn't trustworthy;
-see [`_refine_centroid`](@ref)), not the raw integer peak itself: a real
-star's true position doesn't move frame to frame, but which *integer*
-pixel reads highest does, under noise — and since `aperture_radius` is
-comparable to a typical PSF scale, that alone changes how much flux a
-fixed aperture encloses, frame to frame, for no real reason. This was the
-actual cause of a real, measured false-positive floor in
-[`find_variable_sources`](@ref)'s variability test (see the
-[Investigation Log](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/ztf-investigation#The-centroid-fix-barely-moved-the-false-positive-floor-—-the-real-cause-was-a-systematic-error-floor)) — the refinement only affects where the aperture
-is centered, never the returned `x`/`y` (still `PeakMesh`'s own integer
-position, unchanged). That refined position is returned separately, as
-`xcen`/`ycen`: for astrometry the integer peak alone is a real error
-source — up to half a pixel, i.e. ~0.13" at Pan-STARRS1's 0.257"/px,
-comparable to PS1's own whole astrometric solution (`CERROR` ~0.06" in
-real IASC headers). [`link_candidates`](@ref) uses `xcen`/`ycen` when a
-table has them.
+Each aperture is centered on a sub-pixel centroid (flux-weighted, within
+`aperture_radius` of the peak, or the peak itself when the refinement isn't
+trustworthy; see [`_refine_centroid`](@ref)), so the enclosed flux doesn't
+change with which integer pixel reads highest under noise. The centroid is
+returned as `xcen`/`ycen`, while `x`/`y` stay the integer peak; for
+astrometry the difference is up to half a pixel, and
+[`link_candidates`](@ref) uses `xcen`/`ycen` when a table has them.
 
-`mask` (same size as `image`, `true` = invalid) excludes pixels that
-carry no real sky signal: they are left out of the background/noise
-estimate and set to the background level before peak finding, so they
-can neither be detected nor bias the noise. Real IASC/Pan-STARRS1 frames
-need this — the gaps between the detector's cells are filled with one
-constant value (not `BLANK`, not `NaN`), ~14% of every frame in a real
-2025 practice set (see [`fill_value_mask`](@ref)).
+`mask` (same size as `image`, `true` = invalid) excludes pixels with no sky
+signal: they are left out of the background estimate and set to the
+background level before peak finding. IASC/Pan-STARRS1 frames need it for
+the constant-valued gaps between detector cells (see [`fill_value_mask`](@ref)).
 
 `sharpness` is the mean of a peak's four direct neighbours over the peak
-itself (background-subtracted): a star or asteroid spreads its light
-over several pixels (real IASC objects measured 0.46-0.82 at PS1's
-seeing), a cosmic ray or hot pixel doesn't (≈0). Peaks below
-`min_sharpness` are dropped — off by default. On a real 2019 IASC set
-(`XY14_p10`), single-pixel spikes were 94-98% of every frame's 6σ
-detections on [`stack_difference`](@ref) images, about 3,800 in its worst
-frame; `min_sharpness=0.3` removes them and keeps every real object.
+itself (background-subtracted): a star or asteroid spreads its light over
+several pixels (0.46-0.82 for IASC objects), a cosmic ray or hot pixel
+doesn't (≈0). Peaks below `min_sharpness` are dropped, off by default;
+`0.3` removes single-pixel spikes on [`stack_difference`](@ref) images and
+keeps real objects.
 
 Returns a table with columns `x`, `y` (pixel position), `peak` (background-
-subtracted peak pixel value), `flux` (aperture sum), `flux_err`, and
-`xcen`, `ycen` (the sub-pixel centroid, in the same sense as `x`/`y`), and
-`sharpness` (see below). By
-default (`gain=nothing`) `flux_err` is `Photometry.photometry`'s propagated
-aperture error from the uniform per-pixel `noise` used for detection alone
-— not a full per-pixel variance map, the same caveat [`light_curve`](@ref)
-documents. Passing `gain` (electrons/ADU, from the frame's own `GAIN`
-header keyword) adds each pixel's own Poisson (shot) noise,
-`sqrt(noise^2 + max(pixel, 0) / gain)`: background noise alone
-underestimates a bright star's real flux uncertainty — on real ZTF data
-this barely moves the *median* `flux_err/flux` (2.97% vs 3.16%, most
-detections being near-threshold and background-noise-dominated either
-way), but for the single brightest star in that same frame, shot noise
-was ~10x the background-only estimate (0.039% vs 0.004%) — exactly where
-underestimating the error bar would most distort
-[`find_variable_sources`](@ref)'s chi-squared test. Left `nothing`
-(background noise only) for [`link_candidates`](@ref), which only uses
-positions and has no use for a flux uncertainty at all.
+subtracted peak pixel value), `flux` (aperture sum), `flux_err`, `xcen`,
+`ycen` and `sharpness`. By default (`gain=nothing`) `flux_err` propagates
+only the uniform background `noise` used for detection. Passing `gain`
+(electrons/ADU, from the frame's `GAIN` keyword) adds each pixel's shot
+noise, `sqrt(noise^2 + max(pixel, 0) / gain)`, which dominates for bright
+stars and matters for [`find_variable_sources`](@ref)'s chi-squared test.
 """
 function detect_sources(image::AbstractMatrix{<:Real}; threshold::Real,
                          box_size::NTuple{2,<:Integer}=(5, 5), aperture_radius::Real=3.0,
@@ -161,15 +133,11 @@ even a smooth background carries per-pixel noise — so a plateau is
 always something written into the frame rather than measured: a fill
 value, or a saturated star's clipped core.
 
-Real IASC/Pan-STARRS1 frames need it: the gaps between the detector's
-cells are filled with one constant value (160 ADU in a real 2025
-practice set, ~14% of every frame), marked neither with `BLANK` nor
-`NaN`, so nothing else flags them. Unmasked, each gap edge is a sharp
-step that background estimation and peak finding treat as real signal,
-and an object crossing a gap simply vanishes for those frames —
-confirmed on the same set, where the known asteroid 2018 LT's
-SkyBoT-predicted track ran through a gap. Detecting plateaus instead of
-assuming a particular fill value keeps this survey-agnostic.
+IASC/Pan-STARRS1 frames need it: the gaps between the detector's cells hold
+one constant value, marked neither with `BLANK` nor `NaN`. Unmasked, each
+gap edge is a sharp step that background estimation and peak finding
+treat as signal. Finding plateaus, rather than a particular fill value,
+works for any survey.
 
 Pass the result to [`detect_sources`](@ref) as `mask`.
 """
