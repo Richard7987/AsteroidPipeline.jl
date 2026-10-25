@@ -142,7 +142,7 @@ function neocp_check(candidates; observatory::AbstractString, radius_arcmin::Rea
             checks[id] = (verdict=any(o -> o.agreement === :motion, found) ? :on_neocp : :none, objects=found)
         end
     catch e
-        (e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || e isa ArgumentError) || rethrow()
+        (_is_unavailable(e) || e isa ArgumentError) || rethrow()
         push!(warnings, "NEO Confirmation Page unavailable: $(sprint(showerror, e))")
     end
     return (checks=checks, warnings=warnings)

@@ -476,7 +476,7 @@ function known_objects_in_field(wcs_per_frame::AbstractVector, epochs::AbstractV
                 add!(o.name, o.packed, mag, "MPCORB", [q.ra for q in ps], [q.dec for q in ps])
             end
         catch e
-            _is_service_failure(e) || e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            _is_unavailable(e) || rethrow()
             push!(warnings, "MPCORB positions unavailable (JPL Horizons): $(sprint(showerror, e))")
         end
     end
@@ -494,7 +494,7 @@ function known_objects_in_field(wcs_per_frame::AbstractVector, epochs::AbstractV
                      [d[name].dec for d in per_epoch])
             end
         catch e
-            (e isa HTTP.Exceptions.HTTPError || e isa SkyBoTServiceError || e isa Base.IOError) || rethrow()
+            _is_unavailable(e) || rethrow()
             push!(warnings, "SkyBoT unavailable: $(sprint(showerror, e))")
         end
     end
@@ -691,8 +691,7 @@ function _identify_tracklets(candidates, mpcorb, observatory, min_frames, warnin
         matches = try
             crossmatch_catalog(rows, catalog; kw...)
         catch e
-            (_is_service_failure(e) || e isa HTTP.Exceptions.HTTPError || e isa SkyBoTServiceError ||
-             e isa Base.IOError) || rethrow()
+            _is_unavailable(e) || rethrow()
             push!(warnings, "$catalog unavailable: $(sprint(showerror, e))")
             continue
         end

@@ -111,7 +111,7 @@ function nearby_known_objects(candidates; observatory::AbstractString, mpcorb=no
                 consider!(id, o.name, "MPC orbit", pred)
             end
         catch e
-            _is_service_failure(e) || e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            _is_unavailable(e) || rethrow()
             push!(warnings, "MPC orbits unavailable for the nearby-object check: $(sprint(showerror, e))")
         end
     end
@@ -135,7 +135,7 @@ function nearby_known_objects(candidates; observatory::AbstractString, mpcorb=no
                 end
             end
         catch e
-            (e isa HTTP.Exceptions.HTTPError || e isa SkyBoTServiceError || e isa Base.IOError) || rethrow()
+            _is_unavailable(e) || rethrow()
             push!(warnings, "SkyBoT unavailable for the nearby-object check: $(sprint(showerror, e))")
         end
     end

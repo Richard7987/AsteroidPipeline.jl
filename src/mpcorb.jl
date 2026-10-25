@@ -85,16 +85,9 @@ function _observer_heliocentric(jds_utc::AbstractVector{<:Real}, observatory)
                  "TLIST" => "'$tlist'", "TLIST_TYPE" => "JD", "TIME_TYPE" => "TT", "REF_PLANE" => "FRAME",
                  "REF_SYSTEM" => "ICRF", "VEC_TABLE" => "1", "OUT_UNITS" => "AU-D", "CSV_FORMAT" => "YES",
                  "OBJ_DATA" => "NO")
-    local body
-    for attempt in 1:_TAP_ATTEMPTS
-        try
-            body = String(HTTP.get("https://ssd.jpl.nasa.gov/api/horizons.api"; query,
-                                   read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
-            break
-        catch e
-            (_is_service_failure(e) && attempt < _TAP_ATTEMPTS) || rethrow()
-            sleep(2.0^attempt)
-        end
+    body = _with_retries(_TAP_ATTEMPTS) do
+        String(HTTP.get("https://ssd.jpl.nasa.gov/api/horizons.api"; query,
+                        read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
     end
     result = JSON.parse(body)["result"]
     block = match(r"\$\$SOE(.*)\$\$EOE"s, result)
@@ -139,13 +132,8 @@ against the orbits in `mpcorb` (a path to `MPCORB.DAT`, or what
 `radius` arcsec. Orbits are first screened at one epoch to the ones within a
 degree of any candidate, so only those are propagated per row.
 
-Why this exists next to SkyBoT: on a real IASC set (`XY72_p01`, 2026-10-04)
-a moving object the pipeline found was 2019 UA185 — an orbit the MPC had
-just updated (MPEC 2026-T35, observed through 2026-10-04) — while SkyBoT and
-JPL Horizons, on older orbits, put it degrees away (Horizons' 3-sigma
-uncertainty was ~78°). Astrometrica, reading this same MPCORB.DAT,
-identified it within 0.1'. The MPC's own current orbits are what identify
-recently-linked or poorly-observed objects.
+Next to SkyBoT because the MPC's current orbits identify recently linked
+or poorly observed objects that older orbits place degrees away.
 """
 function _crossmatch_mpcorb(candidates, radius::Real; mpcorb, observatory=nothing)
     rows = collect(candidates)

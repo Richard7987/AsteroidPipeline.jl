@@ -1103,7 +1103,7 @@ end
             @test length(then) == length(stars)
             @test any(i -> stars.ra[i] != then.ra[i] || stars.dec[i] != then.dec[i], eachindex(stars))
         catch e
-            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
         end
     end
@@ -1231,7 +1231,7 @@ end
                 @test only(m).distance_arcsec < 10
                 @test 19 < only(m).mv < 23
             catch e
-                e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+                AsteroidPipeline._is_unavailable(e) || rethrow()
                 @test_skip "network unavailable"
             end
         end
@@ -1505,7 +1505,7 @@ end
             @test c.checks[7].verdict === :possibly_known
             @test only(c.checks[7].objects).separation_arcsec ≈ 120 atol = 5
         catch e
-            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
         end
     end
@@ -1558,7 +1558,7 @@ end
                 @test first(c.checks[1].objects).designation == o.designation
             end
         catch e
-            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
         end
     end
@@ -1572,7 +1572,7 @@ end
             @test length(matches) >= 1
             @test matches[1].id == 1
         catch e
-            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
         end
 
@@ -1584,7 +1584,7 @@ end
             @test any(==("RS"), matches.class)
             @test matches[1].id == 1
         catch e
-            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
         end
 
@@ -1600,7 +1600,7 @@ end
             @test only(matches[matches.id.==10].class) == "RS"
             @test only(matches[matches.id.==20].class) == "EW"
         catch e
-            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
         end
 
@@ -1611,7 +1611,7 @@ end
             @test length(matches) == 0
             @test isempty(matches.id)
         catch e
-            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
         end
 
@@ -1622,7 +1622,7 @@ end
             matches = crossmatch_catalog(known, :skybot; radius=200.0)
             @test any(==("2002 JB99"), matches.name)
         catch e
-            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
         end
 
@@ -1633,7 +1633,7 @@ end
             @test length(matches) == 0
             @test isempty(matches.id)
         catch e
-            e isa HTTP.Exceptions.HTTPError || e isa Base.IOError || rethrow()
+            AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
         end
     end

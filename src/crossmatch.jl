@@ -108,12 +108,20 @@ evening, so it now covers the whole class. The last failure propagates.
 function _tap_query(url::AbstractString, query::AbstractString)
     make_body() = HTTP.Form(Dict(
         "REQUEST" => "doQuery", "LANG" => "ADQL", "FORMAT" => "csv", "QUERY" => query))
-    for attempt in 1:_TAP_ATTEMPTS
+    return _with_retries(_TAP_ATTEMPTS) do
+        CSV.File(HTTP.post(url, [], make_body(); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+    end
+end
+
+# `f()`, tried up to `attempts` times while `retryable(e)`, waiting `backoff`
+# seconds and doubling it each time; the last failure propagates.
+function _with_retries(f, attempts::Integer; retryable=_is_service_failure, backoff::Real=2.0)
+    for attempt in 1:attempts
         try
-            return CSV.File(HTTP.post(url, [], make_body(); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+            return f()
         catch e
-            (_is_service_failure(e) && attempt < _TAP_ATTEMPTS) || rethrow()
-            sleep(2.0^attempt)
+            (retryable(e) && attempt < attempts) || rethrow()
+            sleep(backoff * 2.0^(attempt - 1))
         end
     end
 end
@@ -235,6 +243,9 @@ function _crossmatch_vsx(candidates, radius::Real)
         end
     end
 
+# A request to an online service that failed: callers leave a warning instead.
+_is_unavailable(e) = e isa HTTP.HTTPError || e isa Base.IOError || e isa SkyBoTServiceError
+
     return Table(; id, name, class, ra, dec, mag_max, mag_min, period, distance_arcsec)
 end
 
@@ -280,14 +291,9 @@ function _skybot_matches(c, radius_deg::Real;
         "-ep" => @sprintf("%.6f", c.epoch), "-mime" => "text", "-output" => "object",
     )
     observatory === nothing || (query["-loc"] = observatory)
-    for attempt in 1:_SKYBOT_ATTEMPTS
-        try
-            return filter(m -> m.distance_arcsec <= radius_deg * 3600, _parse_skybot(fetch(query)))
-        catch e
-            (e isa HTTP.HTTPError || e isa SkyBoTServiceError) || rethrow()
-            attempt == _SKYBOT_ATTEMPTS && rethrow()
-            sleep(backoff_seconds * 2^(attempt - 1))
-        end
+    retryable(e) = e isa HTTP.HTTPError || e isa SkyBoTServiceError
+    return _with_retries(_SKYBOT_ATTEMPTS; retryable, backoff=backoff_seconds) do
+        filter(m -> m.distance_arcsec <= radius_deg * 3600, _parse_skybot(fetch(query)))
     end
 end
 
