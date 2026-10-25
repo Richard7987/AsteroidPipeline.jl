@@ -2,12 +2,9 @@
 Is a candidate really new? Identification ([`analyze_set`](@ref)) only
 accepts a known object within 5" (SkyBoT) or 15" (MPC orbits) of a
 candidate in three frames. An object whose catalogued orbit is poor can be
-much further off — on a real 2026-10-04 set SkyBoT placed 2019 UA185 far from
-where it was — and is then reported as a new candidate. What tells it apart
-is its motion: a known object predicted near the candidate, moving at the
-same rate in the same direction, is almost certainly that object. This is
-the check Astrometrica's known-object overlay and the MPC's MPChecker
-support by eye, done for every candidate.
+much further off, and is then reported as a new candidate. What tells it
+apart is its motion: a known object predicted near the candidate, moving at
+the same rate in the same direction, is almost certainly that object.
 =#
 
 """
@@ -35,10 +32,8 @@ end
 # Whether a known object predicted `offset` (arcsec east, north: measured
 # minus predicted) away from a tracklet is that tracklet with a poor orbit:
 # the same rate (10%, or 2"/h for slow objects) and direction (5°), and the
-# offset mostly *along* the track — an orbit's error is mostly in time, the
-# object running early or late on its own path. Looser tests matched
-# unrelated main-belt asteroids: a real candidate (XY54_p10's NHU0001)
-# had two within 8' moving within 25% and 20° of it, offset across the track.
+# offset mostly *along* the track, since an orbit's error is mostly in time.
+# Looser tests matched unrelated main-belt asteroids moving near a real candidate.
 function _same_motion(m, pred, offset)
     abs(m.rate_arcsec_h - pred.rate_arcsec_h) <= max(0.10 * m.rate_arcsec_h, 2.0) || return false
     abs(mod(m.pa_deg - pred.pa_deg + 180, 360) - 180) <= 5 || return false

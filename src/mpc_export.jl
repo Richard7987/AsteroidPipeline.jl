@@ -48,11 +48,9 @@ not just trusted from memory: `2451545.0` is the J2000.0 epoch
 function julian_date_to_iso8601(jd::Real)
     year, month, day, day_frac = _jd_to_calendar(jd)
 
-    # Round to the nearest millisecond, not truncate — otherwise a
-    # fractional day landing at (e.g.) 23:59:59.9997 truncates to
-    # 23:59:59.999 instead of correctly rolling to the next second.
+    # Rounded, not truncated, so 23:59:59.9997 rolls over to the next second.
     ms_of_day = round(Int, day_frac * 86_400_000)
-    ms_of_day == 86_400_000 && (ms_of_day = 0; day += 1)  # (only possible from rounding at the boundary; doesn't cascade into month/year — not worth the complexity for a sub-millisecond edge case that real ZTF timestamps won't hit)
+    ms_of_day == 86_400_000 && (ms_of_day = 0; day += 1)  # doesn't carry into month/year
     hour, rem1 = divrem(ms_of_day, 3_600_000)
     minute, rem2 = divrem(rem1, 60_000)
     second, ms = divrem(rem2, 1000)

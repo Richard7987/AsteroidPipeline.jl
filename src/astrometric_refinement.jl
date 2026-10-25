@@ -175,13 +175,12 @@ function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
     n = length(images)
     length(wcss) == n || throw(ArgumentError("images and wcss must have the same length"))
     masks === nothing && (masks = fill(nothing, n))
-    # searches in arcseconds, for any pixel scale: in each frame's own pixels
+    # tolerances are in arcseconds; each frame's search is in its own pixels
     scale = [_pixel_scale_arcsec(w, size(img)) for (w, img) in zip(wcss, images)]
     wide_px = wide_offset_arcsec ./ scale
     rematch_px = rematch_arcsec ./ scale
-    # Matched again from the fitted solution, until no more stars match:
-    # one offset for the whole chip matches only where the header's error is
-    # that offset (6-13 of ~250 stars on IASC chips); from the fit, 70-90 match.
+    # Matched again from each fit until no more stars match: one offset for the
+    # whole chip matches only the part where the header's error is that offset.
     function _rematched(r, k)
         for _ in 1:iterations
             r.refined || break
@@ -246,9 +245,7 @@ end
 # Whether the frames' headers agree with each other: the pooled stars are
 # fitted again with an offset of its own for each frame's stars (relative to
 # the first frame's), and no offset may exceed 3 standard errors plus 0.25 px.
-# A plain look at each frame's mean residual would not do: the 6-parameter
-# fit absorbs much of one frame's offset when its stars sit in one part of
-# the chip.
+# Mean residuals per frame would miss it: the joint fit absorbs much of an offset.
 function _frames_agree(pooled, source, crval)
     frames = unique(source)
     length(frames) < 2 && return true

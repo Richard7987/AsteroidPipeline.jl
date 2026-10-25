@@ -4,8 +4,7 @@ const _ASTROMETRY_SUBMISSIONS_URL = "https://nova.astrometry.net/api/submissions
 const _ASTROMETRY_JOBS_URL = "https://nova.astrometry.net/api/jobs"
 const _ASTROMETRY_WCS_URL = "https://nova.astrometry.net/wcs_file"
 
-# Required by nova.astrometry.net's own API docs for programmatic file
-# downloads, as an anti-scraper-bot check.
+# nova.astrometry.net requires it for programmatic file downloads.
 const _ASTROMETRY_REFERER_HEADER = ["Referer" => _ASTROMETRY_LOGIN_URL]
 
 """

@@ -3,9 +3,8 @@ const _VIZIER_TAP_URL = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync"
 
 const _SKYBOT_URL = "https://vo.imcce.fr/webservices/skybot/skybotconesearch_query.php"
 
-# Candidates per TAP request for :vsx/:simbad. Conservative, not measured
-# at higher N on these free, shared, anonymous-use CDS services — kept
-# well short of any observed limit rather than pushed to one.
+# Candidates per TAP request for :vsx/:simbad: kept small on these shared,
+# anonymous CDS services, not measured against their limit.
 const _CDS_BATCH_SIZE = 50
 
 """
@@ -136,9 +135,8 @@ mid-write ("Broken pipe").
 _is_service_failure(e) = e isa Base.IOError ||
                          (e isa HTTP.HTTPError && !(e isa HTTP.StatusError && e.status < 500))
 
-# Seconds a catalog request (VizieR/SIMBAD TAP, SkyBoT) may go without
-# receiving any data before it is abandoned — an idle limit, not a total
-# one, so a large result that keeps streaming is never cut off.
+# Seconds a catalog request may go without receiving data: an idle limit,
+# so a large result that keeps streaming is never cut off.
 const _CATALOG_IDLE_TIMEOUT = 60
 
 """
@@ -219,11 +217,7 @@ function _crossmatch_vsx(candidates, radius::Real)
         query = _cds_batch_query("Name, Type, RAJ2000, DEJ2000, max, min, Period", "\"B/vsx/vsx\"",
                                   "RAJ2000", "DEJ2000", batch, radius_deg)
         for row in _tap_query(_VIZIER_TAP_URL, query)
-            # VizieR's TAP service returns Name/Type as fixed-width,
-            # space-padded strings (e.g. "RS" arrives as "RS" followed by
-            # 28 spaces) — found via a real query, not documented anywhere
-            # obvious; strip or every string comparison against these
-            # silently fails.
+            # VizieR pads Name/Type with spaces; unstripped, every comparison fails.
             row_ra, row_dec = row.RAJ2000, row.DEJ2000
             for c in batch
                 d = _angular_distance_arcsec(c.ra, c.dec, row_ra, row_dec)
@@ -282,10 +276,7 @@ function _skybot_matches(c, radius_deg::Real;
                          backoff_seconds::Real=1.0)
     query = Dict(
         "-ra" => string(c.ra), "-dec" => string(c.dec), "-rd" => string(max(radius_deg, _SKYBOT_MIN_CONE)),
-        # Julian Dates are ~2.4e6, which Julia's default Float64 printing
-        # renders in scientific notation (e.g. "2.4592886174e6"); SkyBoT
-        # rejects that outright as an empty/null epoch, so every match
-        # silently came back empty. @sprintf forces fixed-point.
+        # SkyBoT reads a JD in scientific notation ("2.4592886174e6") as no epoch.
         "-ep" => @sprintf("%.6f", c.epoch), "-mime" => "text", "-output" => "object",
     )
     observatory === nothing || (query["-loc"] = observatory)
@@ -307,10 +298,8 @@ const _SKYBOT_MIN_CONE = 2 / 60
 _task_root(e) = e isa CompositeException && !isempty(e.exceptions) ? _task_root(first(e.exceptions)) :
                 e isa TaskFailedException ? _task_root(e.task.exception) : e
 
-# Total tries per candidate (first request + retries) in _skybot_matches.
-# SkyBoT's server-side failures seen so far cleared on the first resend;
-# 4 tries with 1/2/4 s backoff rides out a short burst of them without
-# stalling a large crossmatch for long on a real outage.
+# Tries per candidate in _skybot_matches (1/2/4 s backoff): enough for a short
+# burst of server errors, without stalling long on a real outage.
 const _SKYBOT_ATTEMPTS = 4
 
 """
@@ -329,19 +318,8 @@ end
 
 Base.showerror(io::IO, e::SkyBoTServiceError) = print(io, "SkyBoTServiceError: ", e.message)
 
-# Concurrent SkyBoT requests per crossmatch_catalog call. SkyBoT (unlike
-# :vsx/:simbad's CDS TAP services, batched in a single request — see
-# crossmatch_catalog's docstring) has no batch mode, only a one-candidate
-# cone search; measured directly, real candidate lists (500+ tracklets
-# from one IASC practice field) took ~9 minutes fully sequential, almost
-# entirely spent waiting on network round trips, not computing anything.
-# Benchmarked directly against the live service (20 real, identical
-# requests): concurrency=8 gave a real 2.6x speedup (12.5s vs 32.8s
-# sequential, same results); concurrency up to 60 ran clean with zero
-# errors, though per-wave latency stopped shrinking much past ~20-40
-# (IMCCE's own server-side queueing, not our bottleneck by then). Settled
-# on 20 — comfortably inside the tested-clean range, not pushed to it, in
-# the same spirit as `_CDS_BATCH_SIZE`'s conservative choice.
+# Concurrent SkyBoT requests: it has no batch mode, and requests are mostly
+# waiting on the network. Up to 60 ran clean; gains flatten past ~20.
 const _SKYBOT_CONCURRENCY = 20
 
 """
@@ -375,11 +353,7 @@ function _crossmatch_skybot(candidates, radius::Real;
             end
         end
     catch e
-        # @sync wraps a failed request in a TaskFailedException inside a
-        # CompositeException; callers handle the request's own error (an
-        # HTTP status, a SkyBoTServiceError) as SkyBoT being unavailable, and
-        # didn't recognise it wrapped: a SkyBoT outage stopped analyze_set
-        # instead of leaving a warning.
+        # Callers recognise the request's own error, not @sync's wrapping of it.
         throw(_task_root(e))
     end
 

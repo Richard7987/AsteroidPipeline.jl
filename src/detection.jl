@@ -99,20 +99,8 @@ function detect_sources(image::AbstractMatrix{<:Real}; threshold::Real,
         peaks, sharpness = peaks[keep], sharpness[keep]
     end
 
-    # `PeakMesh` reports x/y in the standard Cartesian sense (x=column,
-    # i.e. the array's 2nd dimension; y=row, the 1st — see
-    # Photometry.jl's own `extract_sources`, `to_nt(ci) = (x=ci[2],
-    # y=ci[1], ...)`). `CircularAperture`, in the very same package,
-    # does the opposite internally (its `x` field indexes the array's
-    # *1st* dimension, `y` the 2nd — see `bounds`/`overlap` in
-    # Photometry.jl's circular.jl). Passing `(row.x, row.y)` straight
-    # through silently centers the aperture at the transposed pixel
-    # whenever the true position isn't on the row==column diagonal —
-    # confirmed by comparing a measured flux against the analytic
-    # enclosed-energy integral for an isolated Gaussian, which came back
-    # ~140x too small before this swap and matched to ~1% after it.
-    # `(row.y, row.x)` here is the fix (dim1, dim2 order); `_refine_centroid`
-    # takes and returns positions in that same (dim1, dim2) order.
+    # PeakMesh's x is the array's 2nd dimension, CircularAperture's the 1st:
+    # positions are swapped to (dim1, dim2), or apertures land transposed.
     centroids = [_refine_centroid(subtracted, row.y, row.x, aperture_radius) for row in peaks]
     apertures = [CircularAperture(d1, d2, aperture_radius) for (d1, d2) in centroids]
     photom_error_map = gain === nothing ? detection_error_map :

@@ -216,10 +216,8 @@ function _local_noise(diff::AbstractMatrix, invalid::AbstractMatrix{Bool}, box::
         is, js = i0:min(n1, i0 + box - 1), j0:min(n2, j0 + box - 1)
         v = [diff[i, j] for i in is, j in js if !invalid[i, j]]
         length(v) >= box^2 ÷ 4 || continue
-        # Floored at half the frame's own noise: a box whose valid pixels
-        # are nearly constant (seen for real: one 2019 IASC frame, `XY25_p10`)
-        # has a near-zero MAD, and dividing by it blew that frame's whole
-        # normalized difference up to ~1e15, burying a real asteroid at 30σ.
+        # Floored: a nearly constant box has a near-zero MAD, and dividing by it
+        # blows the normalized difference up to ~1e15.
         noise[is, js] .= max(mad_sigma(v), fallback / 2)
     end
     return noise

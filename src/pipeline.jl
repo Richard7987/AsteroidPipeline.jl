@@ -279,9 +279,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
     refine_images = Matrix{Float64}[]
     refine_masks = Union{Nothing,BitMatrix}[]
 
-    # Computed once, not per frame: reference.image is the same every
-    # iteration, and this is what zogy_subtract's astrometric-noise term
-    # matches each frame's own bright stars against.
+    # The reference's stars, for zogy_subtract's astrometric-noise term.
     r_sources = reference === nothing ? nothing :
                 detect_sources(permutedims(reference.image); threshold=psf_threshold)
 
@@ -289,12 +287,8 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
         FITS(path, "r") do f
             hdu = f[1]
 
-            # FITSIO.jl preserves FITS's column-major storage, so `read`
-            # returns an (x, y)-ordered array; detect_sources (via
-            # Photometry.PeakMesh) expects the (y, x) ordering used
-            # throughout the rest of the pipeline. reference/zogy code
-            # (src/reference.jl, src/zogy.jl) works in raw (x, y) order
-            # throughout and only permutes at this same final step.
+            # FITSIO reads (x, y); detect_sources wants (y, x). The reference and
+            # ZOGY code work in (x, y) and are permuted only for detection.
             raw = Float64.(read(hdu))
             frame_wcs = try
                 load_wcs(read_header(hdu, String))
@@ -330,18 +324,11 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
 
                 resampled, frame_mask = Reproject.reproject((raw, frame_wcs), reference.wcs;
                                                               shape_out=size(reference.image))
-                # Reprojection legitimately leaves NaN at the border where
-                # the footprint doesn't fully cover the target grid; left
-                # in, a single NaN poisons zogy_subtract's whole-array
-                # median/fft, turning all of S_corr to NaN. Filled with the
-                # valid region's own level, not 0, since 0 would instead
-                # bias zogy_subtract's background-median computation
-                # (negligible at real ZTF scale, but not in general).
+                # One NaN from the reprojection's border turns all of S_corr NaN;
+                # filled with the valid level, as 0 would bias the background.
                 resampled[.!frame_mask] .= median(resampled[frame_mask])
 
-                # PSF and source positions measured on the resampled
-                # (post-reprojection) pixels, matching what zogy_subtract
-                # actually differences (see the docstring above).
+                # Measured on the resampled pixels, which are what zogy_subtract differences.
                 psf_n = estimate_psf(resampled; threshold=psf_threshold, min_separation=psf_min_separation)
                 n_sources = detect_sources(permutedims(resampled); threshold=psf_threshold)
 
@@ -360,9 +347,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                     image = permutedims(s_corr .* valid)
                 end
                 push!(wcs_per_frame, reference.wcs)
-                # No gain here: S_corr is already a normalized
-                # detection-significance map, not physical counts, so
-                # Poisson noise doesn't apply to it.
+                # No gain: S_corr is a significance map, not counts.
                 push!(detections_per_frame, detect_sources(image; threshold, box_size, aperture_radius))
             end
         end
@@ -386,9 +371,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
     if difference_stack
         masks = all(isnothing, stacked_masks) ? nothing : stacked_masks
         differences, diff_masks = stack_difference(stacked_images, wcs_per_frame; masks, subpixel=subpixel_alignment)
-        # No gain either: a difference image's noise is the frame's and the
-        # median's together, and a mover's own shot noise is negligible at
-        # the faint end this mode exists for.
+        # No gain: a mover's shot noise is negligible at the faint end this mode is for.
         per_frame = [_merge_clusters(detect_sources(diff; threshold, box_size, aperture_radius, mask=m, min_sharpness),
                                      _CLUSTER_RADIUS, _MAX_TRAIL_EXTENT)
                      for (diff, m) in zip(differences, diff_masks)]

@@ -1,12 +1,6 @@
 #=
 One image set end to end — a same-field sequence of frames, as a .zip, a
 folder or a list of FITS files — to the MPC report that is submitted for it.
-Built and validated on IASC (Pan-STARRS1) campaign sets; everything here was
-written after real sets from a live campaign (2026-10) went wrong in ways the
-detection code alone didn't cover: a report with no `COD` line, a known
-asteroid measured by mistake into a "no moving objects" report, another
-set's lines left in Astrometrica's report file, a set with one frame Astrometrica
-couldn't reduce, and an orbit SkyBoT didn't know.
 =#
 
 """
@@ -670,13 +664,8 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
             warnings=warnings)
 end
 
-# Tracklet id => known object's name, for tracklets SkyBoT (5") or MPCORB
-# (15") match in at least `min_frames` of their rows — a static star near a
-# known asteroid's track matches in one frame, not three. MPCORB's name wins
-# (it carries the number) when both catalogs identify a tracklet.
-# MPCORB's orbits osculate at one recent epoch; propagated two-body far from
-# it they drift (155" for a 2019 ZTF image and a 2026 file), so beyond
-# _MPCORB_MAX_DAYS the orbit file is set aside, with a warning.
+# MPCORB's orbits osculate at one epoch; propagated two-body further than
+# this from it they drift by arcminutes, so the file is set aside.
 const _MPCORB_MAX_DAYS = 365
 
 function _mpcorb_for(mpcorb, epochs, warnings)
@@ -691,6 +680,8 @@ function _mpcorb_for(mpcorb, epochs, warnings)
     return nothing
 end
 
+# Tracklet id => known object's name, matched in at least `min_frames` rows (a star
+# near a track matches in one); MPCORB's name wins, as it carries the number.
 function _identify_tracklets(candidates, mpcorb, observatory, min_frames, warnings)
     rows = collect(candidates)
     sources = Any[(:skybot, (; radius=5.0, observatory))]

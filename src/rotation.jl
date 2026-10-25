@@ -34,9 +34,7 @@ function light_curve(fits_paths::AbstractVector{<:AbstractString}, ra::Real, dec
             wcs = load_wcs(read_header(hdu, String))
             x, y = WCS.world_to_pix(wcs, Float64[ra, dec])
 
-            # raw FITS (x, y) order matches world_to_pix's convention directly
-            # (unlike detect_sources, which needs the permuted image) — see
-            # the axis-order note in src/pipeline.jl.
+            # raw (x, y) order, as world_to_pix gives positions; not permuted
             image = Float64.(read(hdu))
             background, noise = estimate_background(image; location=SourceExtractorBackground(), rms=MADStdRMS())
             error_map = fill(noise, size(image))
