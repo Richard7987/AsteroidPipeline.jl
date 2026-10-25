@@ -18,7 +18,7 @@ mpc = crossmatch_catalog(candidates, :mpcorb; radius=15.0, mpcorb=orbits, observ
 
 | Catalogue | Source | Up to date? | Use |
 |:--|:--|:--|:--|
-| `:skybot` | [SkyBoT](https://vo.imcce.fr/webservices/skybot/) (IMCCE), a web service | can lag days behind the MPC | quick, no download |
+| `:skybot` | [SkyBoT](https://ssp.imcce.fr/webservices/skybot/) (IMCCE), a web service | can lag days behind the MPC | quick, no download |
 | `:mpcorb` | the MPC's own orbit file, propagated here (two-body, light-time corrected) | as of the file's day | the current orbits; needs the ~70 MB file |
 | `:vsx`, `:simbad` | variable stars, other sources | — | for stationary variables |
 

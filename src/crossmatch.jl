@@ -1,7 +1,8 @@
 const _SIMBAD_TAP_URL = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
 const _VIZIER_TAP_URL = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync"
 
-const _SKYBOT_URL = "https://vo.imcce.fr/webservices/skybot/skybotconesearch_query.php"
+# The SkyBoT service moved here from vo.imcce.fr, which now answers 403.
+const _SKYBOT_URL = "https://ssp.imcce.fr/webservices/skybot/api/conesearch.php"
 
 # Candidates per TAP request for :vsx/:simbad: kept small on these shared,
 # anonymous CDS services, not measured against their limit.
@@ -225,15 +226,16 @@ missed a known asteroid 0.94″ from the centre in two of four ZTF frames.
 """
 function _skybot_matches(c, radius_deg::Real;
                          observatory::Union{Nothing,AbstractString}=nothing,
-                         fetch=query -> String(HTTP.get(_SKYBOT_URL; query=query,
-                                                       read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body),
+                         fetch=query -> _skybot_text(HTTP.get(_SKYBOT_URL; query=query,
+                                                             read_idle_timeout=_CATALOG_IDLE_TIMEOUT)),
                          backoff_seconds::Real=1.0)
     query = Dict(
         "-ra" => string(c.ra), "-dec" => string(c.dec), "-rd" => string(max(radius_deg, _SKYBOT_MIN_CONE)),
         # SkyBoT reads a JD in scientific notation ("2.4592886174e6") as no epoch.
         "-ep" => @sprintf("%.6f", c.epoch), "-mime" => "text", "-output" => "object",
     )
-    observatory === nothing || (query["-loc"] = observatory)
+    # this service ignores the old `-loc` and computes geocentric positions
+    observatory === nothing || (query["-observer"] = observatory)
     retryable(e) = e isa HTTP.HTTPError || e isa SkyBoTServiceError
     return _with_retries(_SKYBOT_ATTEMPTS; retryable, backoff=backoff_seconds) do
         filter(m -> m.distance_arcsec <= radius_deg * 3600, _parse_skybot(fetch(query)))
@@ -369,6 +371,10 @@ function _parse_skybot(text::AbstractString)
     end
     return matches
 end
+
+# SkyBoT's answer as text: it says "no objects in the field" with HTTP 204 and
+# no body, where an empty body with HTTP 200 is a failure.
+_skybot_text(r::HTTP.Response) = r.status == 204 ? "# Flag: 0\n" : String(r.body)
 
 function _skybot_hms_to_deg(s::AbstractString)
     h, m, sec = parse.(Float64, split(s))

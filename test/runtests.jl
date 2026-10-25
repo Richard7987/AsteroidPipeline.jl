@@ -1073,9 +1073,12 @@ end
         sent = Ref{Dict}()
         capture = q -> (sent[] = q; found)
         AsteroidPipeline._skybot_matches(c, 0.12; observatory="F51", fetch=capture)
-        @test sent[]["-loc"] == "F51"
+        @test sent[]["-observer"] == "F51"
         AsteroidPipeline._skybot_matches(c, 0.12; fetch=capture)
-        @test !haskey(sent[], "-loc")
+        @test !haskey(sent[], "-observer")
+        # an empty field is HTTP 204 with no body; an empty 200 is still a failure
+        @test isempty(AsteroidPipeline._parse_skybot(AsteroidPipeline._skybot_text(HTTP.Response(204))))
+        @test_throws SkyBoTServiceError AsteroidPipeline._parse_skybot(AsteroidPipeline._skybot_text(HTTP.Response(200, "")))
         # a small cone is asked of SkyBoT as 2′ (it loses objects in tiny ones),
         # and what lies beyond the radius asked for is dropped here
         @test isempty(AsteroidPipeline._skybot_matches(c, 5 / 3600; fetch=capture))      # 2018 LT is 140″ off

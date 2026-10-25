@@ -21,6 +21,11 @@ from the version picker at the top right.
 
 **Fixed**
 
+- SkyBoT moved to `ssp.imcce.fr`; its old address answers 403, so known
+  objects were identified from the MPC's orbit file alone. The new service
+  is used, with the observatory passed as `-observer` (it ignores `-loc` and
+  computes geocentric positions) and an empty field (HTTP 204) read as no
+  objects.
 - [`julian_date_to_iso8601`](@ref) gave day 32 when rounding to the
   millisecond reached midnight on a month's last day; it now moves to the
   next month. The MPC date field gave `.000001` instead of `.000000` in the
