@@ -1684,14 +1684,17 @@ end
     end
 
     @testset "julian_date_to_iso8601" begin
-        # Two independent, exactly known reference points — not just
-        # trusted from the algorithm's own derivation.
         @test AsteroidPipeline.julian_date_to_iso8601(2451545.0) == "2000-01-01T12:00:00.000Z"  # J2000.0
         @test AsteroidPipeline.julian_date_to_iso8601(2440587.5) == "1970-01-01T00:00:00.000Z"  # Unix epoch
 
         # 2451545.0 + 1 s must round up to the whole second, not truncate to :59.999
         one_second = 1.0 / 86400
         @test AsteroidPipeline.julian_date_to_iso8601(2451545.0 + one_second) == "2000-01-01T12:00:01.000Z"
+
+        # rounding up to midnight on the last day of a month moves to the next month
+        just_before = 2461345.5 - 1e-4 / 86400                # 2026-10-31 23:59:59.9999
+        @test AsteroidPipeline.julian_date_to_iso8601(just_before) == "2026-11-01T00:00:00.000Z"
+        @test AsteroidPipeline._mpc_date(just_before) == "2026 11 01.000000"
     end
 
     @testset "ades_psv" begin

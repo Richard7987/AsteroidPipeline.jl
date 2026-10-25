@@ -2,13 +2,8 @@
     _jd_to_calendar(jd::Real) -> (year, month, day, day_fraction)
 
 Break a Julian Date (UTC) into its Gregorian calendar year/month/integer
-day plus the leftover fraction of that day, via the standard algorithm
-(Meeus, *Astronomical Algorithms*, ch. 7). Shared by
-[`julian_date_to_iso8601`](@ref) and [`mpc80_report`](@ref)'s date
-field, which need the same calendar date at different sub-day
-precisions (milliseconds vs. 1e-6 day) — each rounds `day_fraction` to
-its own precision itself, since rounding here would fix one caller's
-precision at the expense of the other's.
+day plus the leftover fraction of that day (Meeus, *Astronomical
+Algorithms*, ch. 7). Callers round `day_fraction` to their own precision.
 """
 function _jd_to_calendar(jd::Real)
     Z = floor(Int, jd + 0.5)
@@ -39,18 +34,16 @@ end
 
 Convert a Julian Date (UTC) to an ISO 8601 UTC timestamp
 (`"YYYY-MM-DDTHH:MM:SS.sssZ"`), the format ADES requires for `obsTime`.
-
-Verified here against two independent, exactly known reference points,
-not just trusted from memory: `2451545.0` is the J2000.0 epoch
-(2000-01-01T12:00:00Z) and `2440587.5` is the Unix epoch
-(1970-01-01T00:00:00Z); both are exercised in the test suite.
 """
 function julian_date_to_iso8601(jd::Real)
     year, month, day, day_frac = _jd_to_calendar(jd)
 
-    # Rounded, not truncated, so 23:59:59.9997 rolls over to the next second.
+    # Rounded, not truncated, so 23:59:59.9997 rolls over to the next day.
     ms_of_day = round(Int, day_frac * 86_400_000)
-    ms_of_day == 86_400_000 && (ms_of_day = 0; day += 1)  # doesn't carry into month/year
+    if ms_of_day == 86_400_000
+        year, month, day, _ = _jd_to_calendar(jd + 1e-6)
+        ms_of_day = 0
+    end
     hour, rem1 = divrem(ms_of_day, 3_600_000)
     minute, rem2 = divrem(rem1, 60_000)
     second, ms = divrem(rem2, 1000)
@@ -63,18 +56,14 @@ end
 
 Format a Julian Date (UTC) as the MPC 80-column format's
 `"YYYY MM DD.dddddd"` date field (columns 16-32; 1e-6 day ≈ 0.0864s
-precision). Unlike [`julian_date_to_iso8601`](@ref)'s millisecond
-rollover, a rounding carry here is resolved by re-deriving the whole
-calendar date at a nudged `jd` (via [`_jd_to_calendar`](@ref)) rather
-than hand-incrementing `day`, so it stays correct across a month/year
-boundary too.
+precision). A rounding carry re-derives the date, across month and year ends.
 """
 function _mpc_date(jd::Real)
     year, month, day, day_frac = _jd_to_calendar(jd)
     micros = round(Int, day_frac * 1_000_000)
     if micros == 1_000_000
-        year, month, day, day_frac = _jd_to_calendar(jd + 1e-6)
-        micros = round(Int, day_frac * 1_000_000)
+        year, month, day, _ = _jd_to_calendar(jd + 1e-6)
+        micros = 0
     end
     return @sprintf("%04d %02d %02d.%06d", year, month, day, micros)
 end
@@ -83,10 +72,7 @@ end
     _mpc_ra(ra_deg::Real) -> String
 
 Format a right ascension in decimal degrees as the MPC 80-column
-format's `"HH MM SS.ddd"` field (columns 33-44). Working in integer
-milliseconds-of-time and reducing modulo a full day sidesteps the
-usual manual carry-the-1 logic for seconds/minutes/hours rollover
-entirely.
+format's `"HH MM SS.ddd"` field (columns 33-44).
 """
 function _mpc_ra(ra_deg::Real)
     hours = mod(ra_deg, 360.0) / 15.0
