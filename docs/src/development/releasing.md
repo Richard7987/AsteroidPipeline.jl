@@ -49,6 +49,11 @@ and why JuliaRegistries' TagBot is not used.
    `CI.yml` runs the tests on every push to `main`, on Julia 1.11 and the
    newest release, and uploads the newest's coverage to Codecov.
 
+7. **Publish `stable`** with the next push to `main`. GitHub Pages names a
+   deployment after its commit, and the tagged commit was already deployed
+   from `main`, so the tag's own deployment reports success but leaves the
+   site as it was: `stable` changes once a later commit is deployed.
+
 ## Set up once
 
 - **PyPI**: a trusted publisher for the project `asteroidpipeline`
