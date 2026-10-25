@@ -1,4 +1,5 @@
 using AsteroidPipeline
+using Aqua
 using TypedTables
 using HTTP
 using WCS
@@ -26,6 +27,10 @@ let env_file = joinpath(pkgdir(AsteroidPipeline), ".env")
 end
 
 @testset "AsteroidPipeline.jl" begin
+
+    @testset "package quality (Aqua)" begin
+        Aqua.test_all(AsteroidPipeline)
+    end
 
     @testset "detect_sources" begin
         Random.seed!(1)
