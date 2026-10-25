@@ -45,7 +45,7 @@ function estimate_psf(image::AbstractMatrix{<:Real}; stamp_size::Integer=25,
     nx, ny = size(image)
 
     function collect_stamps(sep::Real)
-        stamps = Matrix{Float64}[]
+        found = Matrix{Float64}[]
         for s in sources
             x, y = round(Int, s.x), round(Int, s.y)
             (half < x <= nx - half && half < y <= ny - half) || continue
@@ -69,18 +69,15 @@ function estimate_psf(image::AbstractMatrix{<:Real}; stamp_size::Integer=25,
             centered = _shift_bilinear(stamp, -cx, -cy)
             s2 = sum(centered)
             s2 > 0 || continue
-            push!(stamps, centered ./ s2)
+            push!(found, centered ./ s2)
         end
-        return stamps
+        return found
     end
 
-    stamps = Matrix{Float64}[]
-    sep = min_separation
-    for attempt in 0:relaxation_attempts
-        stamps = collect_stamps(sep)
+    stamps = collect_stamps(min_separation)
+    for k in 1:relaxation_attempts
         isempty(stamps) || break
-        attempt == relaxation_attempts && break
-        sep /= 2
+        stamps = collect_stamps(min_separation / 2^k)
     end
 
     if isempty(stamps)

@@ -100,6 +100,7 @@ global `(dx, dy)` offset found, detected minus predicted), and `n_detections`
 (sources detected at `threshold` — compared with the catalog's star count it
 flags frames full of detector defects; see [`run_pipeline`](@ref)), and
 `matches` (the matched stars, `(x, y, ra, dec)`, before the fit's clipping —
+    detections = detect_sources(image; threshold, mask)
 what [`refine_wcs_set`](@ref) pools across frames).
 """
 function refine_wcs(image::AbstractMatrix{<:Real}, wcs::WCSTransform, stars;
@@ -108,8 +109,6 @@ function refine_wcs(image::AbstractMatrix{<:Real}, wcs::WCSTransform, stars;
                     min_matches::Integer=6, clip_sigma::Real=3.0)
     unrefined(n, offset, matches=_NO_MATCHES) = (wcs=wcs, refined=false, n_matches=n, rms_arcsec=NaN,
                                                  offset_px=offset, n_detections=length(detections), matches)
-
-    detections = detect_sources(image; threshold, mask)
     det_xy = [(d.xcen, d.ycen) for d in detections]
     n1, n2 = size(image)
 
