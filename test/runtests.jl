@@ -1727,8 +1727,14 @@ end
         elseif !isfile(real_frame)
             @test_skip "real ZTF test frame not present — run examples/fetch_data.sh"
         else
-            solved = plate_solve(real_frame; api_key=api_key)
-            @test solved isa WCSTransform
+            try
+                solved = plate_solve(real_frame; api_key=api_key)
+                @test solved isa WCSTransform
+            catch e
+                # the service being down skips; a refused key still fails
+                AsteroidPipeline._is_service_failure(e) || rethrow()
+                @test_skip "astrometry.net unavailable"
+            end
         end
     end
 
