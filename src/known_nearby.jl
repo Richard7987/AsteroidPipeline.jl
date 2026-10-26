@@ -121,9 +121,9 @@ function nearby_known_objects(candidates; observatory::AbstractString, mpcorb=no
             for (id, pts) in tracklets
                 have = Set(_bare_name(o.name) for o in get(found, id, ObjT[]))
                 first_, last_ = pts[1], pts[end]
-                a = Dict(m.name => m for m in _skybot_matches(first_, radius / 3600; observatory))
+                a = Dict(m.name => m for m in _known_objects_near(first_, radius / 3600; observatory))
                 b = last_.epoch == first_.epoch ? a :
-                    Dict(m.name => m for m in _skybot_matches(last_, radius / 3600; observatory))
+                    Dict(m.name => m for m in _known_objects_near(last_, radius / 3600; observatory))
                 for name in keys(a)
                     (haskey(b, name) && !(_bare_name(name) in have)) || continue
                     # SkyBoT gives the first and last epochs; in between, linear
@@ -131,7 +131,7 @@ function nearby_known_objects(candidates; observatory::AbstractString, mpcorb=no
                     pred = [(ra=a[name].ra + f(p) * (b[name].ra - a[name].ra),
                              dec=a[name].dec + f(p) * (b[name].dec - a[name].dec), epoch=p.epoch, mag=a[name].mv)
                             for p in pts]
-                    consider!(id, name, "SkyBoT", pred)
+                    consider!(id, name, a[name].source, pred)
                 end
             end
         catch e

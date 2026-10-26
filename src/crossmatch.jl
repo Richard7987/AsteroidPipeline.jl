@@ -21,7 +21,8 @@ J2000), such as the table returned by [`astrometric_calibrate`](@ref);
 `:skybot` and `:mpcorb` also need each row's `epoch` (Julian Date).
 
 - `:skybot` asks IMCCE's SkyBoT for the solar-system objects at each row's
-  epoch.
+  epoch, or, while SkyBoT is unavailable, JPL's Small-Body Identification
+  service (see [`_known_objects_near`](@ref)).
 - `:mpcorb` propagates the Minor Planet Center's orbits in an `MPCORB.DAT`
   file (`mpcorb`: its path, or [`read_mpcorb`](@ref)'s result) to each
   row's epoch (see [`_crossmatch_mpcorb`](@ref)); same columns as `:skybot`.
@@ -245,6 +246,133 @@ end
 # The smallest cone _skybot_matches asks for, in degrees (see its docstring).
 const _SKYBOT_MIN_CONE = 2 / 60
 
+"""
+    _known_objects_near(c, radius_deg; observatory=nothing) -> Vector{NamedTuple}
+
+The known solar-system objects within `radius_deg` of `c` (`ra`, `dec`,
+`epoch`), as [`_skybot_matches`](@ref) returns them plus a `source` field:
+from SkyBoT, or, while SkyBoT is unavailable, from JPL's Small-Body
+Identification service ([`_jpl_field`](@ref)). Once SkyBoT fails it is not
+asked again for `_SKYBOT_RETRY_AFTER` seconds, so a list of candidates doesn't
+wait out its retries one by one. Throws only if both services fail.
+"""
+function _known_objects_near(c, radius_deg::Real; observatory::Union{Nothing,AbstractString}=nothing)
+    if time() >= _SKYBOT_DOWN_UNTIL[]
+        try
+            return [merge(m, (source="SkyBoT",)) for m in _skybot_matches(c, radius_deg; observatory)]
+        catch e
+            _is_unavailable(e) || rethrow()
+            # concurrent searches can fail together; one log line is enough
+            time() >= _SKYBOT_DOWN_UNTIL[] && @warn "SkyBoT unavailable; known objects from JPL" exception = e
+            _SKYBOT_DOWN_UNTIL[] = time() + _SKYBOT_RETRY_AFTER
+        end
+    end
+    _KNOWN_FROM_JPL[] = true
+    field = _jpl_field(c, radius_deg, something(observatory, "500"))
+    hours = (c.epoch - field.epoch) * 24
+    matches = NamedTuple[]
+    for o in field.objects
+        dec = o.dec + o.dec_rate * hours / 3600
+        ra = o.ra + o.ra_rate * hours / 3600 / cosd(o.dec)
+        d = _angular_distance_arcsec(c.ra, c.dec, ra, dec)
+        d <= radius_deg * 3600 &&
+            push!(matches, (name=o.name, ra=mod(ra, 360), dec=dec, class="", mv=o.mv, distance_arcsec=d, source="JPL"))
+    end
+    return matches
+end
+
+const _SKYBOT_RETRY_AFTER = 600
+const _SKYBOT_DOWN_UNTIL = Ref(0.0)
+# Set when a search fell back to JPL, so analyze_set can say so once.
+const _KNOWN_FROM_JPL = Ref(false)
+
+"""
+    _jpl_field(c, radius_deg, observatory) -> (ra, dec, half_width, epoch, observatory, objects)
+
+The objects JPL's Small-Body Identification service places in a square field
+around `c` at `c.epoch`, seen from `observatory` (an MPC code), with their
+positions (degrees) and rates (″/h, the RA rate times cos Dec): a field
+already fetched is reused when it covers the cone and lies within
+`_JPL_MAX_HOURS` of `c.epoch`, where its objects are moved along their rates.
+Its second pass, the one with precise positions, takes a minute or more,
+hence one query per field rather than one per candidate.
+"""
+function _jpl_field(c, radius_deg::Real, observatory::AbstractString)
+    lock(_JPL_LOCK) do
+        for f in _JPL_FIELDS
+            f.observatory == observatory && abs(c.epoch - f.epoch) * 24 <= _JPL_MAX_HOURS || continue
+            Δra = abs(mod(c.ra - f.ra + 180, 360) - 180) * cosd(c.dec)
+            (Δra + radius_deg <= f.half_width && abs(c.dec - f.dec) + radius_deg <= f.half_width) && return f
+        end
+        half_width = max(_JPL_HALF_WIDTH, 1.2 * radius_deg)
+        query = Dict("mpc-code" => observatory, "obs-time" => @sprintf("%.6f", c.epoch),
+                     "fov-ra-center" => _jpl_sexagesimal(c.ra / 15, "-"),
+                     "fov-dec-center" => _jpl_sexagesimal(c.dec, "M"),
+                     "fov-ra-hwidth" => string(half_width), "fov-dec-hwidth" => string(half_width),
+                     "two-pass" => "true", "suppress-first-pass" => "true")
+        body = _with_retries(_TAP_ATTEMPTS) do
+            String(HTTP.get(_JPL_SBIDENT_URL; query, read_idle_timeout=_JPL_TIMEOUT).body)
+        end
+        field = (ra=Float64(c.ra), dec=Float64(c.dec), half_width=half_width, epoch=Float64(c.epoch),
+                 observatory=String(observatory), objects=_parse_jpl_sbident(body))
+        push!(_JPL_FIELDS, field)
+        return field
+    end
+end
+
+const _JPL_SBIDENT_URL = "https://ssd-api.jpl.nasa.gov/sb_ident.api"
+const _JPL_HALF_WIDTH = 0.5      # degrees: a whole chip, and the candidates' surroundings
+const _JPL_MAX_HOURS = 2
+const _JPL_TIMEOUT = 600         # seconds; the precise second pass answers only when done
+const _JPL_FIELDS = NamedTuple[]
+const _JPL_LOCK = ReentrantLock()
+
+# "-10.78" -> "M10-46-52.80"; `minus` is what the API takes for a negative sign.
+function _jpl_sexagesimal(x::Real, minus::AbstractString)
+    s = round(Int, abs(x) * 360_000)              # hundredths of a second
+    d, r = divrem(s, 360_000)
+    m, r = divrem(r, 6000)
+    return @sprintf("%s%02d-%02d-%05.2f", x < 0 ? minus : "", d, m, r / 100)
+end
+
+"""
+    _parse_jpl_sbident(json) -> Vector{NamedTuple}
+
+The objects of a Small-Body Identification answer's second pass: `name` as
+SkyBoT gives it (a numbered object's name, else its designation: "610588 (2006
+CX81)" is "2006 CX81"), `ra`, `dec` (degrees), `mv`, and `ra_rate`
+(dRA·cos Dec), `dec_rate` in ″/h. Throws an `ErrorException` with the
+service's message if it reports one.
+"""
+function _parse_jpl_sbident(text::AbstractString)
+    d = JSON.parse(text)
+    haskey(d, "message") && error("JPL Small-Body Identification: $(d["message"])")
+    fields = get(d, "fields_second", String[])
+    col(prefix) = findfirst(f -> startswith(f, prefix), fields)
+    i_name, i_ra, i_dec, i_mag = col("Object name"), col("Astrometric RA"), col("Astrometric Dec"), col("Visual magnitude")
+    i_rar, i_decr = col("RA rate"), col("Dec rate")
+    objects = NamedTuple[]
+    for row in get(d, "data_second_pass", Any[])
+        h, m, s = parse.(Float64, split(row[i_ra], ':'))
+        dm = match(r"([+-]?)(\d+) (\d+)'([\d.]+)", row[i_dec])
+        dec = (dm[1] == "-" ? -1 : 1) * (parse(Float64, dm[2]) + parse(Float64, dm[3]) / 60 + parse(Float64, dm[4]) / 3600)
+        push!(objects, (name=_jpl_name(row[i_name]), ra=15 * (h + m / 60 + s / 3600), dec=dec,
+                        mv=something(tryparse(Float64, row[i_mag]), NaN),
+                        ra_rate=parse(Float64, row[i_rar]), dec_rate=parse(Float64, row[i_decr])))
+    end
+    return objects
+end
+
+# JPL's "610588 (2006 CX81)", "433 Eros (A898 PA)", "(2018 LT)" -> SkyBoT's
+# "2006 CX81", "Eros", "2018 LT"; comets ("29P/...", "C/2020 F3 (NEOWISE)") as given.
+function _jpl_name(s::AbstractString)
+    occursin('/', s) && return String(s)
+    m = match(r"^\s*(\d+)\s*(.*?)\s*\((.+)\)\s*$", s)
+    m === nothing || return String(isempty(m[2]) ? m[3] : m[2])
+    m = match(r"^\s*\((.+)\)\s*$", s)
+    return String(m === nothing ? strip(s) : m[1])
+end
+
 # A request to an online service that failed: callers leave a warning instead.
 _is_unavailable(e) = e isa HTTP.HTTPError || e isa Base.IOError || e isa SkyBoTServiceError
 
@@ -300,7 +428,7 @@ function _crossmatch_skybot(candidates, radius::Real;
             @async begin
                 Base.acquire(semaphore)
                 try
-                    per_candidate[i] = _skybot_matches(c, radius_deg; observatory)
+                    per_candidate[i] = _known_objects_near(c, radius_deg; observatory)
                 finally
                     Base.release(semaphore)
                 end

@@ -481,14 +481,14 @@ function known_objects_in_field(wcs_per_frame::AbstractVector, epochs::AbstractV
 
     if skybot
         try
-            per_epoch = [Dict(m.name => m for m in _skybot_matches((ra=centre[1], dec=centre[2], epoch=e),
-                                                                  radius + 0.02; observatory))
+            per_epoch = [Dict(m.name => m for m in _known_objects_near((ra=centre[1], dec=centre[2], epoch=e),
+                                                                       radius + 0.02; observatory))
                          for e in epochs]
             have = Set(_bare_name(o.name) for o in objects)
             for name in keys(per_epoch[1])
                 _bare_name(name) in have && continue
                 all(d -> haskey(d, name), per_epoch) || continue
-                add!(name, "", per_epoch[1][name].mv, "SkyBoT", [d[name].ra for d in per_epoch],
+                add!(name, "", per_epoch[1][name].mv, per_epoch[1][name].source, [d[name].ra for d in per_epoch],
                      [d[name].dec for d in per_epoch])
             end
         catch e
@@ -527,7 +527,7 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
    (15"), confirmed in at least 3 frames (all, with 3 frames). `mpcorb` is
    used only for images within a year of its orbits' epoch: propagated
    two-body further than that they drift by arcminutes, and SkyBoT's
-   integrated orbits are used instead;
+   integrated orbits are used instead (JPL's, while SkyBoT is unavailable);
 6. check every candidate left against the known objects within 10' of it
    ([`nearby_known_objects`](@ref)): one there moving the same way is
    most likely a known object with a poor orbit — and, for recent images,
@@ -562,6 +562,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
                      extract_to::AbstractString=dirname(abspath(source isa AbstractString ? source : first(source))),
                      config=nothing, reference_stars=nothing, progress=(stage, fraction) -> nothing)
     warnings = String[]
+    _KNOWN_FROM_JPL[] = false
     progress(:extract, 0.0)
     set_name, paths = if source isa AbstractVector
         (basename(dirname(abspath(first(source)))), collect(String, source))
@@ -653,6 +654,7 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
         mpc_report(Table(filter(r -> r.id in unknown_ids, collect(candidates))), observatory;
                    trksub_prefix="P", header...), :candidates
     end
+    _KNOWN_FROM_JPL[] && pushfirst!(warnings, "SkyBoT unavailable: known objects from JPL's Small-Body Identification service")
     progress(:done, 1.0)
     return (name=name, paths=paths, epochs=epochs, wcs=wcs, image_size=image_size, ratios=ratios,
             frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, known=known,

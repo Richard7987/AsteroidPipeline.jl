@@ -3,6 +3,16 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Added**
+
+- While SkyBoT is unavailable, known objects come from JPL's Small-Body
+  Identification service: one query per field (a minute or two), its objects
+  moved along their rates to each frame. Identification, the nearby-object
+  check and the objects expected in the field keep working through a SkyBoT
+  outage, with one short warning instead of one per search.
+
 ## 1.1.0 — 2026-10-25
 
 **Added**

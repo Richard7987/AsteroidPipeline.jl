@@ -1097,6 +1097,47 @@ end
         @test_throws ArgumentError crossmatch_catalog([c], :skybot; radius=5.0, observatory="Palomar")
     end
 
+    @testset "JPL Small-Body Identification, while SkyBoT is unavailable" begin
+        A = AsteroidPipeline
+        @test A._jpl_sexagesimal(3.0416 / 15, "-") == "00-12-09.98"
+        @test A._jpl_sexagesimal(-10.7814, "M") == "M10-46-53.04"
+        @test A._jpl_name("610588 (2006 CX81)") == "2006 CX81"
+        @test A._jpl_name("(2018 LT)") == "2018 LT"
+        @test A._jpl_name("433 Eros (A898 PA)") == "Eros"
+        @test A._jpl_name("C/2020 F3 (NEOWISE)") == "C/2020 F3 (NEOWISE)"
+
+        # the answer's shape, from the live service (2025-09-16 10:02 UTC, F51)
+        answer = """{"fields_second":["Object name","Astrometric RA (hh:mm:ss)","Astrometric Dec (dd mm'ss\\")",
+            "Dist. from center RA (\\")","Dist. from center Dec (\\")","Dist. from center Norm (\\")",
+            "Visual magnitude (V)","RA rate (\\"/h)","Dec rate (\\"/h)"],"n_second_pass":2,
+            "data_second_pass":[["610588 (2006 CX81)","00:12:33.19","-10 49'06.9\\"","342.","-134.","367.0","21.4","-2.507E+01","-1.950E+01"],
+                                ["(2018 LT)","00:12:09.98","-10 46'52.9\\"","-.340",".111",".3579","20.0","-2.249E+01","-3.664E+01"]]}"""
+        objects = A._parse_jpl_sbident(answer)
+        @test [o.name for o in objects] == ["2006 CX81", "2018 LT"]
+        lt = objects[2]
+        @test lt.ra ≈ 15 * (12 / 60 + 9.98 / 3600) && lt.dec ≈ -(10 + 46 / 60 + 52.9 / 3600)
+        @test (lt.mv, lt.ra_rate, lt.dec_rate) == (20.0, -22.49, -36.64)
+        @test isempty(A._parse_jpl_sbident("""{"signature":{},"n_second_pass":0}"""))
+        @test_throws ErrorException A._parse_jpl_sbident("""{"message":"invalid MPC code"}""")
+
+        # with SkyBoT marked down, a search is answered from a fetched field,
+        # its objects moved along their rates: 2018 LT 48 min later, per Horizons
+        t0 = 2460934.918246
+        down, fields = A._SKYBOT_DOWN_UNTIL[], copy(A._JPL_FIELDS)
+        try
+            A._SKYBOT_DOWN_UNTIL[] = time() + 600
+            empty!(A._JPL_FIELDS)
+            push!(A._JPL_FIELDS, (ra=lt.ra, dec=lt.dec, half_width=0.5, epoch=t0, observatory="F51", objects=objects))
+            later = (ra=3.036479058, dec=-10.789470924, epoch=2460934.951521)
+            m = only(A._known_objects_near(later, 5 / 3600; observatory="F51"))
+            @test m.name == "2018 LT" && m.source == "JPL"
+            @test m.distance_arcsec < 0.5
+        finally
+            A._SKYBOT_DOWN_UNTIL[] = down
+            empty!(A._JPL_FIELDS); append!(A._JPL_FIELDS, fields)
+        end
+    end
+
     @testset "gaia_reference_stars" begin
         @test_throws ArgumentError gaia_reference_stars(3.05, -10.74, 10.0; epoch_jd=2460934.9)
         try

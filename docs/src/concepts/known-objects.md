@@ -10,8 +10,10 @@ A catalogue holds orbits, not positions. The position at the moment of an
 exposure, seen from the observatory, is computed: here, from the MPC's orbit
 file (two-body motion from the orbit's epoch, light-time corrected, the
 observatory's position from [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/)),
-and from [SkyBoT](https://ssp.imcce.fr/webservices/skybot/). A prediction is
-as good as the orbit:
+and from [SkyBoT](https://ssp.imcce.fr/webservices/skybot/), or, while
+SkyBoT is unavailable, from JPL's
+[Small-Body Identification](https://ssd-api.jpl.nasa.gov/doc/sb_ident.html)
+service. A prediction is as good as the orbit:
 
 | Orbit | Error of the prediction |
 |:--|:--|
