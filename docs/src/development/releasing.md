@@ -52,7 +52,9 @@ and why JuliaRegistries' TagBot is not used.
 7. **Publish `stable`** with the next push to `main`. GitHub Pages names a
    deployment after its commit, and the tagged commit was already deployed
    from `main`, so the tag's own deployment reports success but leaves the
-   site as it was: `stable` changes once a later commit is deployed.
+   site as it was: `stable` changes once a later commit is deployed. With
+   nothing else to push, an empty commit does it:
+   `git commit --allow-empty -m "Docs: publish X.Y.Z as stable"`.
 
 ## Set up once
 
