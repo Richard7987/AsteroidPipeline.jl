@@ -3,7 +3,7 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
-## Unreleased
+## 1.2.0 — 2026-10-25
 
 **Added**
 
