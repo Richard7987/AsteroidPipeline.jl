@@ -3,6 +3,19 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Fixed**
+
+- [`refine_wcs`](@ref) no longer accepts a solution made of random matches
+  on a damaged frame (smeared, or full of detector defects): thousands of
+  spurious detections made a false offset win the vote, and the frame was
+  reported refined with hundreds of matches. Such a frame now keeps its
+  header WCS (`min_significance`). Found on 6 smeared ZTF frames of Hektor,
+  where the magnitudes were wrong; the two damaged Pan-STARRS1 sets
+  (`XY14_p10`, `XY73_p00`) were affected the same way. Every other frame
+  checked, crowded Galactic-plane fields included, is refined as before.
+
 ## 1.2.0 — 2026-10-25
 
 **Added**
