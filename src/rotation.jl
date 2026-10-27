@@ -131,7 +131,6 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
         ra, dec = pix_to_world(wcs, Float64[x, y])
         good = isfinite(zp) && m.flux > 0
         mag = good ? zp - 2.5 * log10(m.flux) : NaN
-        # a star counts if it could add a tenth of the object's flux
         near = 2 * aperture_radius * _pixel_scale_arcsec(wcs, size(image))
         star_nearby = any(s -> !(s.gmag > mag + 2.5) && _angular_distance_arcsec(ra, dec, s.ra, s.dec) <= near,
                           reference_stars)
