@@ -82,8 +82,9 @@ Returns a table, one row per frame: `frame`, `epoch`, `ra`, `dec` (where it
 was measured), `x`, `y`, `recentred`, `star_nearby`, `flux`, `flux_err`, `mag`,
 `mag_err` (Gaia G-equivalent; `NaN` where the frame has no zero point or the
 flux isn't positive) and `zeropoint`. `star_nearby` marks a frame where a
-reference star lies within two aperture radii of the object: crossing a
-star makes it look brighter, so leave those frames out before passing
+reference star bright enough to add a tenth of the object's flux (at most
+2.5 mag fainter) lies within two aperture radii of it: crossing a star
+makes it look brighter, so leave those frames out before passing
 `epoch` and `mag` (or `flux`) to [`recover_rotation_period`](@ref).
 """
 function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positions;
@@ -128,12 +129,15 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
             end
         end
         ra, dec = pix_to_world(wcs, Float64[x, y])
-        near = 2 * aperture_radius * _pixel_scale_arcsec(wcs, size(image))
-        star_nearby = any(s -> _angular_distance_arcsec(ra, dec, s.ra, s.dec) <= near, reference_stars)
         good = isfinite(zp) && m.flux > 0
+        mag = good ? zp - 2.5 * log10(m.flux) : NaN
+        # a star counts if it could add a tenth of the object's flux
+        near = 2 * aperture_radius * _pixel_scale_arcsec(wcs, size(image))
+        star_nearby = any(s -> !(s.gmag > mag + 2.5) && _angular_distance_arcsec(ra, dec, s.ra, s.dec) <= near,
+                          reference_stars)
         (frame=k, epoch=epoch, ra=ra, dec=dec, x=x, y=y, recentred=recentred, star_nearby=star_nearby,
          flux=m.flux, flux_err=m.flux_err,
-         mag=good ? zp - 2.5 * log10(m.flux) : NaN,
+         mag=mag,
          mag_err=good ? 2.5 / log(10) * m.flux_err / m.flux : NaN, zeropoint=zp)
     end
     return Table(rows)
