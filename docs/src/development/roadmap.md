@@ -37,14 +37,15 @@ Branch `feature/moving-light-curve`.
 
 **Missing before merging**
 
-- [ ] A validation page (`validation/moving-light-curve.md`) with the Hektor
-      results and their limits: ZTF's sparse sampling does not recover the
-      period; the periodogram's highest peak is a daily alias of half the
-      period.
-- [ ] A period recovered from real data: a dense series of one asteroid
-      with a known period (tens of exposures over 3–6 hours in a night),
-      from an observatory of our own or an IASC partner, or from TESS
-      full-frame images.
+- [ ] A period recovered from real data: several nights of one object with
+      a known period, from a Mexican telescope (data expected), and with it
+      the validation page (`validation/moving-light-curve.md`).
+      `examples/moving_light_curve_demo.jl` runs the same checks on ZTF
+      frames of Hektor; ZTF's sparse sampling does not recover the period
+      (the periodogram's highest peak is a daily alias of half the period).
+- [ ] Rerun the Hektor checks once `refine_wcs` rejects random matches (see
+      below): 6 of its 107 frames are smeared, and their magnitudes are
+      wrong.
 - [ ] Reduced magnitudes in the package: correcting for distance
       (m − 5 log₁₀ rΔ), light time and phase angle, so that several nights
       can be combined. It currently lives only in the validation scripts.
@@ -59,6 +60,10 @@ Branch `feature/moving-light-curve`.
 
 ## Pending on `main`
 
+- [ ] [`refine_wcs`](@ref) accepts a solution made of random matches when a
+      frame is damaged (smeared, thousands of spurious detections): the
+      offset vote picks a false peak and the fit's RMS is that of random
+      pairs, match radius / √2. Branch `fix/refine-wcs-random-matches`.
 - [ ] Shorter warning texts in [`analyze_set`](@ref) when SkyBoT or other
       services fail.
 - [ ] Tests for `neocp.jl` and plate solving using recorded responses, so
