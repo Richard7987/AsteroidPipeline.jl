@@ -177,6 +177,21 @@ end
         too_few = refine_wcs(image, header, stars[1:3])
         @test !too_few.refined
         @test too_few.wcs === header
+
+        # a damaged frame: thousands of sources, none of them the catalogue's stars
+        damaged = 100.0 .+ 5.0 .* randn(ny, nx)
+        for _ in 1:2000
+            x, y = 1 + (nx - 1)rand(), 1 + (ny - 1)rand()
+            for j in max(1, floor(Int, x) - 4):min(nx, ceil(Int, x) + 4), i in max(1, floor(Int, y) - 4):min(ny, ceil(Int, y) + 4)
+                damaged[i, j] += 2000.0 * exp(-((j - x)^2 + (i - y)^2) / (2 * 1.0^2))
+            end
+        end
+        sky = [pix_to_world(truth, [1 + (nx - 1)rand(), 1 + (ny - 1)rand()]) for _ in 1:400]
+        many = Table(ra=[s[1] for s in sky], dec=[s[2] for s in sky])
+        r = refine_wcs(damaged, header, many)
+        @test !r.refined
+        @test r.wcs === header
+        @test refine_wcs(damaged, header, many; min_significance=0).refined   # what it accepted before
     end
 
     @testset "refine_wcs_set" begin
