@@ -3,6 +3,14 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Added**
+
+- [`moving_light_curve`](@ref): the light curve of a moving asteroid, measured
+  where it is in each frame (its motion fitted from a few positions), with
+  frames where it crosses a star marked.
+
 ## 1.2.0 — 2026-10-25
 
 **Added**

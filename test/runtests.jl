@@ -1372,6 +1372,73 @@ end
         @test isempty(r.dropped)
     end
 
+    @testset "moving_light_curve" begin
+        # 24 frames over 6 h; an asteroid at 10″/h whose brightness swings ±0.3 mag
+        # with a 0.15 d period, given only by its positions in the first 4 frames.
+        # In frame 10 it is missing: measured where predicted, not recentred.
+        Random.seed!(31)
+        nx, ny, scale = 500, 500, 0.26
+        truth = WCSTransform(2; crpix=[250.0, 250.0], crval=[150.0, 10.0],
+                             cdelt=[-scale / 3600, scale / 3600], ctype=["RA---TAN", "DEC--TAN"])
+        mover(h) = (130.0 + 38.0 * h, 150.0 + 12.0 * h)                    # px; ~10″/h
+        # no star within 20 px of the track: crossing one is real, but not what this measures
+        clear(x, y) = minimum(hypot(x - mover(h)[1], y - mover(h)[2]) for h in 0:0.05:6) > 20
+        star_xy = Tuple{Float64,Float64}[]
+        while length(star_xy) < 60
+            xy = (20 + 460rand(), 20 + 460rand())
+            clear(xy...) && push!(star_xy, xy)
+        end
+        gmag = 15 .+ 4 .* rand(60)
+        push!(star_xy, mover(5.75) .+ (2.0, 1.0)); push!(gmag, 17.5)    # one on the track, in frame 24
+        sky = [pix_to_world(truth, [x, y]) for (x, y) in star_xy]
+        stars = Table(ra=first.(sky), dec=last.(sky), gmag=gmag)
+        zp, sigma = 27.0, 1.6
+        add!(img, x, y, flux) = for i in max(1, floor(Int, x) - 8):min(nx, ceil(Int, x) + 8),
+                                    j in max(1, floor(Int, y) - 8):min(ny, ceil(Int, y) + 8)
+            img[i, j] += flux * exp(-((i - x)^2 + (j - y)^2) / (2sigma^2)) / (2pi * sigma^2)
+        end
+        hours = [0.25 * (k - 1) for k in 1:24]
+        period = 0.15
+        mover_mag(h) = 17.0 + 0.3 * sin(2pi * h / 24 / period)
+        start = datetime2julian(DateTime(2020, 3, 1, 4))
+        dir = mktempdir()
+        paths = map(enumerate(hours)) do (k, h)
+            img = 200.0 .+ 10.0 .* randn(nx, ny)
+            for ((x, y), g) in zip(star_xy, gmag)
+                add!(img, x, y, 10^((zp - g) / 2.5))
+            end
+            k == 10 || add!(img, mover(h)..., 10^((zp - mover_mag(h)) / 2.5))
+            minutes = round(Int, 60h)
+            header = FITSHeader(
+                ["CTYPE1", "CTYPE2", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2", "DATE-OBS"],
+                Any["RA---TAN", "DEC--TAN", 250.0 + 4, 250.0 - 3, 150.0, 10.0, -scale / 3600, scale / 3600,
+                    "2020-03-01T$(lpad(4 + minutes ÷ 60, 2, '0')):$(lpad(minutes % 60, 2, '0')):00"],
+                fill("", 9))
+            path = joinpath(dir, "frame$k.fits")
+            FITS(f -> write(f, img; header), path, "w")
+            path
+        end
+        tracklet = [(ra=p[1], dec=p[2], epoch=start + h / 24)
+                    for (h, p) in ((h, pix_to_world(truth, collect(mover(h)))) for h in hours[1:4])]
+
+        lc = moving_light_curve(paths, tracklet; reference_stars=stars)
+        @test length(lc) == 24 && lc.epoch ≈ start .+ hours ./ 24
+        @test findall(lc.star_nearby) == [24]
+        seen = [k != 10 for k in 1:24]
+        @test all(lc.recentred[seen]) && !lc.recentred[10]
+        seen[24] = false
+        for r in lc[seen]
+            x, y = mover(hours[r.frame])
+            @test hypot(r.x - x, r.y - y) < 0.3                            # extrapolated 6 h, then recentred
+            @test r.mag ≈ mover_mag(hours[r.frame]) atol = 0.05
+        end
+        @test abs(lc.flux[10]) < 3 * lc.flux_err[10]                      # nothing there, measured anyway
+        @test hypot(lc.x[10] - mover(hours[10])[1], lc.y[10] - mover(hours[10])[2]) < 0.3
+        p = recover_rotation_period(lc.epoch[seen], lc.mag[seen]; minimum_period=0.05, maximum_period=0.5)
+        @test p.period ≈ period rtol = 0.05
+        @test_throws ArgumentError moving_light_curve(paths, NamedTuple[])
+    end
+
     @testset "image sets, MPC reports and their checks" begin
         P = AsteroidPipeline
         # packed designations, as Astrometrica wrote them in real reports

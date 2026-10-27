@@ -43,3 +43,32 @@ periods that make physical sense for the object, and cover more than one
 full period: on real data, a light curve covering a third of a 0.32-day
 period gave a highly significant — and wrong — 0.5-day period
 ([Validation: a variable star](../validation/variable-star.md)).
+
+## A moving asteroid's light curve
+
+[`moving_light_curve`](@ref) measures an asteroid where it is in each frame.
+Give it the frames of a night and a few of the object's positions, such as
+its tracklet from a set the pipeline analyzed:
+
+```julia
+r = analyze_set("set.zip"; workdir="work", observatory="F51")
+tracklet = [c for c in r.candidates if c.id == 1]
+lc = moving_light_curve(night_paths, tracklet)
+good = .!lc.star_nearby .& isfinite.(lc.mag)
+p = recover_rotation_period(lc.epoch[good], lc.mag[good]; minimum_period=0.05, maximum_period=1.0)
+```
+
+Its motion is fitted as a straight line in RA and Dec, which holds within a
+night, and the aperture follows it into every frame. Where the object is
+bright enough the aperture moves onto its centroid; where it isn't, the flux
+is measured at the predicted position, so frames where the pipeline didn't
+detect it still count. Each frame has its own zero point against Gaia, so
+thin cloud doesn't show up as a dip in the light curve.
+
+Drop the frames marked `star_nearby`. An asteroid crossing a star looks
+brighter: on ZTF frames, 2002 UY45 measured 16.8 on a star and 18.0–18.4
+in the other frames.
+
+An IASC set's four exposures in 45 minutes are too few for a period, which
+needs a series covering one or more full rotations: hours, or several
+nights.

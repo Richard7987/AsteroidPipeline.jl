@@ -11,11 +11,19 @@ both. `NaN` if the aperture leaves the image or its annulus has no valid pixel.
 function aperture_flux(image::AbstractMatrix{<:Real}, x::Real, y::Real;
                        aperture_radius::Real=5.0, annulus=(10.0, 15.0),
                        mask::Union{Nothing,AbstractMatrix{Bool}}=nothing)
+    px = _aperture_pixels(image, x, y, aperture_radius, annulus, mask)
+    px === nothing && return NaN
+    return sum(px.inside) - median(px.ring) * length(px.inside)
+end
+
+# The valid pixel values inside the aperture and in the background annulus
+# around (x, y); `nothing` if the annulus leaves the image or either is empty.
+function _aperture_pixels(image, x, y, aperture_radius, annulus, mask)
     n1, n2 = size(image)
     r_out = annulus[2]
     i0, i1 = floor(Int, y - r_out), ceil(Int, y + r_out)
     j0, j1 = floor(Int, x - r_out), ceil(Int, x + r_out)
-    (1 <= i0 && i1 <= n1 && 1 <= j0 && j1 <= n2) || return NaN
+    (1 <= i0 && i1 <= n1 && 1 <= j0 && j1 <= n2) || return nothing
     inside = Float64[]; ring = Float64[]
     for j in j0:j1, i in i0:i1
         mask === nothing || !mask[i, j] || continue
@@ -26,8 +34,8 @@ function aperture_flux(image::AbstractMatrix{<:Real}, x::Real, y::Real;
             push!(ring, image[i, j])
         end
     end
-    (isempty(inside) || isempty(ring)) && return NaN
-    return sum(inside) - median(ring) * length(inside)
+    (isempty(inside) || isempty(ring)) && return nothing
+    return (inside=inside, ring=ring)
 end
 
 """
