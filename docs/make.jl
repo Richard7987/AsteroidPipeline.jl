@@ -92,6 +92,7 @@ makedocs(;
             "ZTF investigation log" => "development/ztf-investigation.md",
             "Pan-STARRS1 working notes" => "development/pan-starrs1-notes.md",
             "Design decisions" => "development/design-decisions.md",
+            "Roadmap" => "development/roadmap.md",
         ],
     ],
 )

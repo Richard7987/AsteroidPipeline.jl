@@ -12,3 +12,4 @@ evidence, for anyone checking a result or changing the code it concerns.
 | [Setting up for development](setup.md) | the library and this documentation from a checkout, on any Linux |
 | [Releasing a version](releasing.md) | how a version goes out: the tag, PyPI, the documentation, Julia's registry |
 | [Design decisions](design-decisions.md) | choices revisited: the PSF fallback, ZOGY's astrometric noise term, performance of reference building, technologies tried and rejected |
+| [Roadmap](roadmap.md) | work in progress, what is missing before each release, branch names |
