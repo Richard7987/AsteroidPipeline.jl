@@ -14,7 +14,6 @@ using AsteroidPipeline, HTTP, Printf, Random, Statistics
 const DATA_DIR = joinpath(@__DIR__, "..", "data", "real", "hektor")
 const IRSA = "https://irsa.ipac.caltech.edu"
 const PERIOD = 6.9205 / 24
-const LIGHT_DAY_PER_AU = 0.0057755183
 
 function read_ipac(text)
     lines = split(text, '\n')
@@ -79,15 +78,16 @@ for n in unique(night.(obs))
     positions = [(ra=parse(Float64, obs[i]["ra_obj"]), dec=parse(Float64, obs[i]["dec_obj"]),
                   epoch=parse(Float64, obs[i]["obsjd"])) for i in k]
     lc = moving_light_curve(paths[k], positions)
-    for (i, m) in zip(k, lc)
-        push!(rows, (; m.epoch, m.mag, m.mag_err, m.star_nearby, night=n,
-                     r=parse(Float64, obs[i]["sun_dist"]), Δ=parse(Float64, obs[i]["geo_dist"]),
-                     phase=parse(Float64, obs[i]["phase"])))
+    for m in lc
+        push!(rows, (; m.epoch, m.mag, m.mag_err, m.star_nearby, night=n))
     end
 end
 @printf("%d frames over %d nights; %d near a star, %d not measured\n", length(rows), length(unique(night.(obs))),
         count(r -> r.star_nearby, rows), count(r -> !isfinite(r.mag), rows))
 t = [r for r in rows if isfinite(r.mag) && !r.star_nearby]
+# ZTF observes from Palomar (I41)
+reduced = reduced_magnitudes([r.epoch for r in t], [r.mag for r in t],
+                             object_geometry(624, [r.epoch for r in t]; observatory="I41"))
 
 # precision without a rotation model: scatter about a straight line through each night's exposures
 within = Float64[]
@@ -101,27 +101,23 @@ end
 @printf("within a night: %d points, RMS about a line %.3f mag; reported errors %.3f–%.3f (10th–90th percentile)\n",
         length(within), sqrt(mean(within .^ 2)), quantile([r.mag_err for r in t], [0.1, 0.9])...)
 
-function fold_rms(s, P)
-    time = [r.epoch - LIGHT_DAY_PER_AU * r.Δ for r in s]
-    reduced = [r.mag - 5log10(r.r * r.Δ) for r in s]
+function fold_rms(k, P)
+    time, mag = reduced.epoch[k], reduced.mag[k]
     ω = 2π / P
-    X = hcat(ones(length(s)), [r.phase for r in s], sin.(ω .* time), cos.(ω .* time), sin.(2ω .* time), cos.(2ω .* time))
-    return sqrt(mean((reduced .- X * (X \ reduced)) .^ 2))
+    X = hcat(ones(length(k)), sin.(ω .* time), cos.(ω .* time), sin.(2ω .* time), cos.(2ω .* time))
+    return sqrt(mean((mag .- X * (X \ mag)) .^ 2))
 end
 
 alias = 2 / (2 / PERIOD - 1)
 Random.seed!(1)
 random_periods = (2 .+ 18 .* rand(2000)) ./ 24
-for (label, s) in [("Jul–Dec", t), ("Jul–Aug", [r for r in t if r.epoch < 2459823.5])]
+for (label, s) in [("Jul–Dec", eachindex(t)), ("Jul–Aug", findall(r -> r.epoch < 2459823.5, t))]
     others = [fold_rms(s, P) for P in random_periods]
     @printf("%s, %d points: published %.3f mag, alias %.4f h %.3f, random periods median %.3f; %.1f%% fit better than the published\n",
             label, length(s), fold_rms(s, PERIOD), 24alias, fold_rms(s, alias), median(others),
             100 * mean(others .< fold_rms(s, PERIOD)))
 end
 
-time = [r.epoch - LIGHT_DAY_PER_AU * r.Δ for r in t]
-reduced = [r.mag - 5log10(r.r * r.Δ) for r in t]
-X = hcat(ones(length(t)), [r.phase for r in t])
-p = recover_rotation_period(time, reduced .- X * (X \ reduced); minimum_period=2 / 24, maximum_period=20 / 24)
+p = recover_rotation_period(reduced.epoch, reduced.mag; minimum_period=2 / 24, maximum_period=20 / 24)
 @printf("periodogram's highest peak: %.3f h (half the period: %.3f h; its daily alias: %.3f h)\n",
         24p.period, 12PERIOD, 24 / (2 / PERIOD - 1))
