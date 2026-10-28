@@ -1454,6 +1454,35 @@ end
         @test_throws ArgumentError moving_light_curve(paths, NamedTuple[])
     end
 
+    @testset "reduced_magnitudes / object geometry" begin
+        # H = 10 seen at three geometries, through the H-G model the MPC uses
+        H, G = 10.0, 0.15
+        geometry = [(r=2.0, delta=1.0, phase=0.0), (r=2.5, delta=1.6, phase=12.0), (r=3.0, delta=2.2, phase=19.0)]
+        mags = [H + 5log10(g.r * g.delta) + AsteroidPipeline._hg_phase_dimming(deg2rad(g.phase), G) for g in geometry]
+        epochs = [2460000.5, 2460010.5, 2460020.5]
+        red = reduced_magnitudes(epochs, mags, geometry; G)
+        @test red.mag ≈ fill(H, 3)
+        @test (epochs[1] - red.epoch[1]) * 86400 ≈ 499.0 atol = 0.1       # light time for 1 AU
+        @test reduced_magnitudes(epochs, mags, geometry; G=nothing).mag ≈ mags .- 5log10.([2.0, 4.0, 6.6])
+        @test AsteroidPipeline._hg_phase_dimming(0.0, G) ≈ 0 atol = 1e-12
+        @test_throws ArgumentError reduced_magnitudes(epochs[1:2], mags, geometry)
+
+        response = """
+            *******************************************************************************
+             Date__(UT)__HR:MN:SC.fff, , ,               r,       rdot,             delta,     deldot,     S-T-O,
+            *******************************************************************************
+            \$\$SOE
+             2022-Aug-09 00:00:00.000, , ,  5.268747694354, -0.2950553,  5.76723809407072,-21.2813335,    9.1862,
+             2022-Sep-28 04:48:00.000,*, ,  5.260182936355, -0.2954448,  5.05448490840793,-25.7287738,   10.9186,
+            \$\$EOE
+            """
+        rows = AsteroidPipeline._horizons_geometry(response)
+        @test length(rows) == 2
+        @test rows[2] == (r=5.260182936355, delta=5.05448490840793, phase=10.9186)
+        @test_throws ErrorException AsteroidPipeline._horizons_geometry("No matches found.")
+        @test length(object_geometry(624, Float64[])) == 0
+    end
+
     @testset "image sets, MPC reports and their checks" begin
         P = AsteroidPipeline
         # packed designations, as Astrometrica wrote them in real reports

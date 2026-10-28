@@ -189,3 +189,76 @@ function recover_rotation_period(times::AbstractVector{<:Real}, flux::AbstractVe
     return (period=period, power=power, false_alarm_probability=false_alarm_probability,
             periodogram=periodogram)
 end
+
+"""
+    object_geometry(object, epochs; observatory=nothing) -> Table
+
+A solar-system object's geometry at each UTC Julian Date of `epochs`, from
+JPL Horizons (a live request): `r` and `delta`, its distances from the Sun
+and from the observer (AU), and `phase`, the Sun–object–observer angle
+(degrees). `object` is looked up among small bodies: a number (`624`), a
+designation (`"2019 UA185"`) or a name. The observer is the MPC site
+`observatory`, or the Earth's centre.
+"""
+function object_geometry(object, epochs::AbstractVector{<:Real}; observatory=nothing)
+    isempty(epochs) && return Table(r=Float64[], delta=Float64[], phase=Float64[])
+    center = observatory === nothing ? "500@399" : "$(observatory)@399"
+    jds = sort(unique(Float64.(epochs)))
+    at = Dict{Float64,NamedTuple{(:r, :delta, :phase),NTuple{3,Float64}}}()
+    # a few hundred epochs make a URL longer than Horizons accepts (HTTP 502)
+    for chunk in Iterators.partition(jds, 50)
+        tlist = join((@sprintf("%.8f", jd) for jd in chunk), " ")
+        query = Dict("format" => "json", "COMMAND" => "'$(object);'", "EPHEM_TYPE" => "OBSERVER",
+                     "CENTER" => "'$center'", "TLIST" => "'$tlist'", "TLIST_TYPE" => "JD", "TIME_TYPE" => "UT",
+                     "QUANTITIES" => "'19,20,24'", "CSV_FORMAT" => "YES", "OBJ_DATA" => "NO")
+        body = _with_retries(_TAP_ATTEMPTS) do
+            String(HTTP.get("https://ssd.jpl.nasa.gov/api/horizons.api"; query,
+                            read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+        end
+        rows = _horizons_geometry(JSON.parse(body)["result"])
+        length(rows) == length(chunk) || error("Horizons returned $(length(rows)) rows for $(length(chunk)) epochs")
+        # Horizons answers in time order
+        merge!(at, Dict(zip(chunk, rows)))
+    end
+    return Table([at[Float64(jd)] for jd in epochs])
+end
+
+function _horizons_geometry(result::AbstractString)
+    m = match(r"([^\n]*)\n\*+\n\$\$SOE\n(.*)\$\$EOE"s, result)
+    m === nothing && error("unexpected Horizons response: $(first(result, 300))")
+    names = strip.(split(m[1], ','))
+    col(name) = something(findfirst(==(name), names), 0)
+    ir, id, ip = col("r"), col("delta"), col("S-T-O")
+    min(ir, id, ip) > 0 || error("Horizons response lacks r, delta or S-T-O: $(m[1])")
+    return map(split(strip(m[2]), '\n')) do line
+        f = strip.(split(line, ','))
+        (r=parse(Float64, f[ir]), delta=parse(Float64, f[id]), phase=parse(Float64, f[ip]))
+    end
+end
+
+"""
+    reduced_magnitudes(epochs, mags, geometry; G=0.15) -> (epoch, mag)
+
+A moving object's light curve made comparable from night to night. Each
+magnitude becomes the object's at 1 AU from the Sun and from the observer,
+`mag - 5 log10(r * delta)`, and each epoch moves back by the light time, to
+when the light left the object. `geometry` holds `r`, `delta` (AU) and
+`phase` (degrees) for each epoch, as [`object_geometry`](@ref) returns.
+
+With `G`, the brightening toward opposition is removed as well, by the H-G
+phase function, which leaves the absolute magnitude H plus the rotation's
+variation; 0.15 is the usual slope when the object's own isn't known.
+`G=nothing` leaves it in, to be fitted together with the period.
+
+Pass the result to [`recover_rotation_period`](@ref).
+"""
+function reduced_magnitudes(epochs::AbstractVector{<:Real}, mags::AbstractVector{<:Real}, geometry;
+                            G::Union{Nothing,Real}=0.15)
+    g = collect(geometry)
+    length(epochs) == length(mags) == length(g) ||
+        throw(ArgumentError("epochs, mags and geometry must have the same length"))
+    epoch = [t - p.delta / _AU_PER_DAY_LIGHT for (t, p) in zip(epochs, g)]
+    mag = [m - 5log10(p.r * p.delta) - (G === nothing ? 0.0 : _hg_phase_dimming(deg2rad(p.phase), G))
+           for (m, p) in zip(mags, g)]
+    return (epoch=epoch, mag=mag)
+end

@@ -117,10 +117,14 @@ end
 # H-G apparent V magnitude at heliocentric r, geocentric Δ and phase angle.
 function _hg_magnitude(H, G, r, Δ, obs_r)
     cosα = clamp((r^2 + Δ^2 - obs_r^2) / (2r * Δ), -1, 1)
-    α = acos(cosα)
+    return H + 5log10(r * Δ) + _hg_phase_dimming(acos(cosα), G)
+end
+
+# The H-G phase function's dimming (magnitudes) at phase angle α (radians).
+function _hg_phase_dimming(α, G)
     φ1 = exp(-3.33 * tan(α / 2)^0.63)
     φ2 = exp(-1.87 * tan(α / 2)^1.22)
-    return H + 5log10(r * Δ) - 2.5log10((1 - G) * φ1 + G * φ2)
+    return -2.5log10((1 - G) * φ1 + G * φ2)
 end
 
 """
