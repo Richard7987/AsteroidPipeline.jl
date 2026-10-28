@@ -32,7 +32,10 @@ Branch `feature/moving-light-curve`.
 - Synthetic tests: motion, recentring, a star on the track, missing frames.
 - ZTF check on (624) Hektor, 107 exposures in r, July–December 2022:
   scatter within a night 0.009 mag, consistent with the reported errors of
-  0.006–0.009 mag.
+  0.003–0.012 mag. Folded on the published 6.9205 h period, July–December
+  leaves 0.050 mag, better than every random period tried; the
+  periodogram's highest peak is 3.460 h, half the period, as for any
+  double-peaked light curve.
 
 **Missing before merging**
 
@@ -40,10 +43,8 @@ Branch `feature/moving-light-curve`.
       a known period, from a Mexican telescope (data expected), and with it
       the validation page (`validation/moving-light-curve.md`).
       `examples/moving_light_curve_demo.jl` runs the same checks on ZTF
-      frames of Hektor; ZTF's sparse sampling does not recover the period
-      (the periodogram's highest peak is a daily alias of half the period).
-- [ ] Rerun the Hektor checks now that `refine_wcs` rejects random matches: 6 of its 107 frames are smeared, and their magnitudes are
-      wrong.
+      frames of Hektor, whose period is already known; a team's own
+      frames test the whole path, from its telescope to a period.
 - [ ] Reduced magnitudes in the package: correcting for distance
       (m − 5 log₁₀ rΔ), light time and phase angle, so that several nights
       can be combined. It currently lives only in the validation scripts.
