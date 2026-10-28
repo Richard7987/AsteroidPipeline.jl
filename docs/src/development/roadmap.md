@@ -16,10 +16,9 @@ own branch until it is finished:
 | `release-<x.y.z>` | fixes to an already released version |
 
 Names are lowercase words separated by hyphens. A branch starts from `main`,
-is rebased onto it before merging, and its release notes go under
-"Unreleased". CI runs only on `main` and on pull requests, so before merging,
-run the tests and the docs build locally ([Setting up for
-development](setup.md)).
+takes `main`'s later changes by merging it (a pushed branch is never
+rewritten), and its release notes go under "Unreleased". CI runs on every
+pushed branch; a branch is merged once it passes.
 
 ## In progress: light curves of moving objects
 
@@ -43,8 +42,7 @@ Branch `feature/moving-light-curve`.
       `examples/moving_light_curve_demo.jl` runs the same checks on ZTF
       frames of Hektor; ZTF's sparse sampling does not recover the period
       (the periodogram's highest peak is a daily alias of half the period).
-- [ ] Rerun the Hektor checks once `refine_wcs` rejects random matches (see
-      below): 6 of its 107 frames are smeared, and their magnitudes are
+- [ ] Rerun the Hektor checks now that `refine_wcs` rejects random matches: 6 of its 107 frames are smeared, and their magnitudes are
       wrong.
 - [ ] Reduced magnitudes in the package: correcting for distance
       (m − 5 log₁₀ rΔ), light time and phase angle, so that several nights
@@ -60,10 +58,6 @@ Branch `feature/moving-light-curve`.
 
 ## Pending on `main`
 
-- [ ] [`refine_wcs`](@ref) accepts a solution made of random matches when a
-      frame is damaged (smeared, thousands of spurious detections): the
-      offset vote picks a false peak and the fit's RMS is that of random
-      pairs, match radius / √2. Branch `fix/refine-wcs-random-matches`.
 - [ ] Shorter warning texts in [`analyze_set`](@ref) when SkyBoT or other
       services fail.
 - [ ] Tests for `neocp.jl` and plate solving using recorded responses, so
