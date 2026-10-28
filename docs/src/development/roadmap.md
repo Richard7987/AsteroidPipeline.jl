@@ -30,10 +30,12 @@ Branch `feature/moving-light-curve`.
   frame to frame, with a zero point per frame against Gaia and a flag for
   frames where a star bright enough to matter lies in the aperture.
 - Synthetic tests: motion, recentring, a star on the track, missing frames.
+- [`reduced_magnitudes`](@ref) and [`object_geometry`](@ref): distance, phase
+  angle and light time, with the geometry from JPL Horizons.
 - ZTF check on (624) Hektor, 107 exposures in r, July–December 2022:
   scatter within a night 0.009 mag, consistent with the reported errors of
   0.003–0.012 mag. Folded on the published 6.9205 h period, July–December
-  leaves 0.050 mag, better than every random period tried; the
+  leaves 0.049 mag, better than every random period tried; the
   periodogram's highest peak is 3.460 h, half the period, as for any
   double-peaked light curve.
 
@@ -45,9 +47,6 @@ Branch `feature/moving-light-curve`.
       `examples/moving_light_curve_demo.jl` runs the same checks on ZTF
       frames of Hektor, whose period is already known; a team's own
       frames test the whole path, from its telescope to a period.
-- [ ] Reduced magnitudes in the package: correcting for distance
-      (m − 5 log₁₀ rΔ), light time and phase angle, so that several nights
-      can be combined. It currently lives only in the validation scripts.
 
 **After**
 

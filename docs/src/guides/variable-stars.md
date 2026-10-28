@@ -72,3 +72,24 @@ in the other frames.
 An IASC set's four exposures in 45 minutes are too few for a period, which
 needs a series covering one or more full rotations: hours, or several
 nights.
+
+## Several nights
+
+From one night to the next the asteroid's distances from the Sun and from
+Earth change, and so does its phase angle: its magnitude drifts by more than
+its rotation changes it. [`reduced_magnitudes`](@ref) removes that drift,
+with the geometry of each epoch from JPL Horizons
+([`object_geometry`](@ref)), and moves each epoch back by the light time:
+
+```julia
+epochs, mags = lc.epoch[good], lc.mag[good]      # every night's, together
+g = object_geometry(624, epochs; observatory="I41")
+red = reduced_magnitudes(epochs, mags, g)
+p = recover_rotation_period(red.epoch, red.mag; minimum_period=2/24, maximum_period=20/24)
+```
+
+The phase angle's effect follows the H-G model with `G=0.15` unless another
+slope is given. Most asteroids' light curves have two maxima per rotation,
+so the periodogram's highest peak is usually half the period: on 107 ZTF
+frames of (624) Hektor over six months, it gave 3.460 h for a 6.9205 h
+period.

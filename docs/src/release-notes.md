@@ -10,6 +10,9 @@ from the version picker at the top right.
 - [`moving_light_curve`](@ref): the light curve of a moving asteroid, measured
   where it is in each frame (its motion fitted from a few positions), with
   frames where it crosses a star marked.
+- [`reduced_magnitudes`](@ref) and [`object_geometry`](@ref): magnitudes
+  corrected for distance, phase angle and light time with the geometry
+  from JPL Horizons, so several nights make one light curve.
 
 **Fixed**
 
