@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
+    # every branch: they arrive through the Forgejo mirror, never as pull requests
     branches:
-      - main
+      - '**'
   pull_request:
   workflow_dispatch:
 

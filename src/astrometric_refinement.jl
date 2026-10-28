@@ -60,7 +60,7 @@ const _GAIA_ARCHIVE_TAP_URL = "https://gea.esac.esa.int/tap-server/tap/sync"
 
 """
     refine_wcs(image, wcs, stars; threshold=10.0, mask=nothing, max_offset=60.0,
-               match_radius=2.0, min_matches=6, clip_sigma=3.0)
+               match_radius=2.0, min_matches=6, clip_sigma=3.0, min_significance=8.0)
         -> (wcs, refined, n_matches, rms_arcsec, offset_px, n_detections, matches)
 
 Re-derive a frame's astrometric solution from reference stars actually
@@ -81,6 +81,12 @@ rotation, shear — is fitted by least squares to those matches, rejecting
 matches beyond `clip_sigma` times the residual RMS and refitting until
 none are rejected.
 
+If the offset's vote stands less than `min_significance` robust standard
+deviations above the other offsets', the frame is left unrefined: a
+damaged frame (smeared, or full of detector defects) gives thousands of
+detections, and random pairs then make a false offset win, with hundreds
+of matches whose RMS is that of chance, `match_radius / √2`.
+
 Pan-STARRS1 headers can be off by several arcseconds, although their
 `CERROR` claims 0.06", far beyond the <1" an MPC report needs; refitted,
 the residual RMS is ~0.2".
@@ -99,7 +105,7 @@ what [`refine_wcs_set`](@ref) pools across frames).
 function refine_wcs(image::AbstractMatrix{<:Real}, wcs::WCSTransform, stars;
                     threshold::Real=10.0, mask::Union{Nothing,AbstractMatrix{Bool}}=nothing,
                     max_offset::Real=60.0, match_radius::Real=2.0,
-                    min_matches::Integer=6, clip_sigma::Real=3.0)
+                    min_matches::Integer=6, clip_sigma::Real=3.0, min_significance::Real=8.0)
     detections = detect_sources(image; threshold, mask)
     unrefined(n, offset, matches=_NO_MATCHES) = (wcs=wcs, refined=false, n_matches=n, rms_arcsec=NaN,
                                                  offset_px=offset, n_detections=length(detections), matches)
@@ -114,7 +120,8 @@ function refine_wcs(image::AbstractMatrix{<:Real}, wcs::WCSTransform, stars;
     end
     (isempty(det_xy) || isempty(predicted)) && return unrefined(0, (NaN, NaN))
 
-    offset = _vote_offset(det_xy, predicted, max_offset)
+    offset, significance = _vote_offset(det_xy, predicted, max_offset)
+    significance < min_significance && return unrefined(0, offset)
     matches = _match_stars(det_xy, predicted, offset, match_radius)
     length(matches) < min_matches && return unrefined(length(matches), offset, matches)
 
@@ -174,7 +181,7 @@ function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
         for _ in 1:iterations
             r.refined || break
             again = refine_wcs(images[k], r.wcs, stars; mask=masks[k], clip_sigma, min_matches, kwargs...,
-                               max_offset=rematch_px[k])
+                               max_offset=rematch_px[k], min_significance=0)
             again.refined && again.n_matches > r.n_matches || break
             # the offset stays the header's
             r = merge(again, (offset_px=r.offset_px,))
@@ -199,7 +206,7 @@ function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
             (k == best || single[k].n_matches >= 0.6 * single[best].n_matches) && continue
             guess = _carried_wcs(wcss[k], wcss[best], single[best].wcs, size(images[k]))
             r = refine_wcs(images[k], guess, stars; mask=masks[k], clip_sigma, min_matches, kwargs...,
-                           max_offset=rematch_px[k])
+                           max_offset=rematch_px[k], min_significance=0)
             r.refined || continue
             r = _rematched(merge(r, (offset_px=single[k].offset_px,)), k)
             r.n_matches > single[k].n_matches && (single[k] = r)
@@ -279,7 +286,7 @@ function _shifted_wcs(wcs::WCSTransform, offset, image_size)
 end
 
 """
-    _vote_offset(det_xy, predicted, max_offset; bin=2.0) -> (dx, dy)
+    _vote_offset(det_xy, predicted, max_offset; bin=2.0) -> ((dx, dy), significance)
 
 The global pixel offset (detected minus predicted) most detection/star
 pairs agree on: every pair within `max_offset` votes for its own offset
@@ -287,6 +294,13 @@ in `bin`-pixel cells, and the winning cell's pairs are averaged. Random
 pairings spread their votes thinly over the whole `max_offset` square;
 true pairings all land in one cell, so this finds the header's error
 without needing it to already be small.
+
+Also returns the winning cell's significance: its excess over the median
+cell, in robust standard deviations of the cells (at least the median's
+Poisson noise). A frame with thousands of spurious detections fills every
+cell, and its winner is no higher than chance makes the highest of a few
+thousand cells, about 4. `Inf` when most cells are empty: random pairs
+can't fill a winner then, however few stars a frame holds.
 """
 function _vote_offset(det_xy, predicted, max_offset::Real; bin::Real=2.0)
     votes = Dict{Tuple{Int,Int},Vector{Tuple{Float64,Float64}}}()
@@ -295,13 +309,19 @@ function _vote_offset(det_xy, predicted, max_offset::Real; bin::Real=2.0)
         (abs(ox) <= max_offset && abs(oy) <= max_offset) || continue
         push!(get!(votes, (floor(Int, ox / bin), floor(Int, oy / bin)), Tuple{Float64,Float64}[]), (ox, oy))
     end
-    isempty(votes) && return (0.0, 0.0)
+    isempty(votes) && return (0.0, 0.0), 0.0
     # Count each cell together with its 8 neighbours, so a true offset
     # sitting on a cell boundary isn't split across two cells.
     neighbourhood(c) = (get(votes, (c[1] + a, c[2] + b), ()) for a in -1:1, b in -1:1)
-    best = argmax(c -> sum(length, neighbourhood(c)), collect(keys(votes)))
+    count_at(c) = sum(length, neighbourhood(c))
+    best = argmax(count_at, collect(keys(votes)))
     pairs = collect(Iterators.flatten(neighbourhood(best)))
-    return (median(first.(pairs)), median(last.(pairs)))
+    offset = (median(first.(pairs)), median(last.(pairs)))
+    lo, hi = floor(Int, -max_offset / bin), floor(Int, max_offset / bin)
+    counts = [count_at((a, b)) for a in lo:hi, b in lo:hi]
+    m = median(counts)
+    σ = max(1.4826 * median(abs.(counts .- m)), sqrt(m))
+    return offset, σ == 0 ? Inf : (count_at(best) - m) / σ
 end
 
 function _match_stars(det_xy, predicted, offset, match_radius::Real)
