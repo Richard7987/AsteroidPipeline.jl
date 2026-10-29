@@ -32,6 +32,10 @@ Branch `feature/moving-light-curve`.
 - Synthetic tests: motion, recentring, a star on the track, missing frames.
 - [`reduced_magnitudes`](@ref) and [`object_geometry`](@ref): distance, phase
   angle and light time, with the geometry from JPL Horizons.
+- Zero points from the same comparison stars in every frame, their error
+  in `mag_err`. One night of 4775 Hansen (0.84 m, San Pedro Mártir, 40
+  unfiltered frames over 29 min): scatter 0.008 mag, reported errors
+  0.006; it fades 0.11 mag, part of its 3.12 h rotation.
 - ZTF check on (624) Hektor, 107 exposures in r, July–December 2022:
   scatter within a night 0.009 mag, consistent with the reported errors of
   0.003–0.012 mag. Folded on the published 6.9205 h period, July–December
