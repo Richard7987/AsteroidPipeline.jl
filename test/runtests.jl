@@ -194,6 +194,43 @@ end
         @test refine_wcs(damaged, header, many; min_significance=0).refined   # what it accepted before
     end
 
+    @testset "solve_wcs / frame_pointing" begin
+        # a frame with no WCS: 0.73″/px, rotated 37°, east to the right (mirrored),
+        # pointed 2′ from where the header says; the catalogue covers 0.3°
+        Random.seed!(17)
+        nx, ny, scale = 400, 380, 0.73
+        R = [cosd(37) -sind(37); sind(37) cosd(37)] .* (scale / 3600)
+        truth = WCSTransform(2; crpix=[200.0, 190.0], crval=[150.0, 10.0], cdelt=[1.0, 1.0],
+                             pc=R, ctype=["RA---TAN", "DEC--TAN"])
+        n = 900
+        ra = 150.0 .+ 0.3 .* (2 .* rand(n) .- 1) ./ cosd(10.0)
+        dec = 10.0 .+ 0.3 .* (2 .* rand(n) .- 1)
+        stars = Table(ra=ra, dec=dec, gmag=12.0 .+ 7.0 .* rand(n))
+        image = 100.0 .+ 5.0 .* randn(ny, nx)
+        for k in 1:n
+            x, y = world_to_pix(truth, [ra[k], dec[k]])
+            1 <= x <= nx && 1 <= y <= ny || continue
+            for j in max(1, floor(Int, x) - 8):min(nx, ceil(Int, x) + 8), i in max(1, floor(Int, y) - 8):min(ny, ceil(Int, y) + 8)
+                image[i, j] += 10^(-0.4 * (stars.gmag[k] - 22)) * exp(-((j - x)^2 + (i - y)^2) / (2 * 1.5^2))
+            end
+        end
+        r = solve_wcs(image, 150.0 + (2 / 60) / cosd(10.0), 10.0, stars)
+        @test r.refined
+        @test r.scale ≈ scale rtol = 0.005
+        for (x, y) in ((1.0, 1.0), (Float64(nx), Float64(ny)), (1.0, Float64(ny)))
+            a, b = pix_to_world(r.wcs, [x, y]), pix_to_world(truth, [x, y])
+            @test hypot((a[1] - b[1]) * cosd(b[2]), a[2] - b[2]) * 3600 < 0.1
+        end
+        # another field's stars: no solution, rather than a false one
+        other = Table(ra=150.0 .+ 0.3 .* (2 .* rand(n) .- 1) ./ cosd(10.0), dec=10.0 .+ 0.3 .* (2 .* rand(n) .- 1),
+                      gmag=stars.gmag)
+        @test solve_wcs(image, 150.0, 10.0, other).wcs === nothing
+
+        @test all(frame_pointing(Dict("OBJCTRA" => "23:29:55.92", "OBJCTDEC" => "-6:40:22.93")) .≈
+                  (15 * (23 + 29 / 60 + 55.92 / 3600), -(6 + 40 / 60 + 22.93 / 3600)))
+        @test frame_pointing(Dict("RA" => 352.48, "DEC" => -0.5)) == (352.48, -0.5)
+        @test frame_pointing(Dict("OBJCTRA" => "x", "DEC" => 1.0)) === nothing
+    end
 
     @testset "refine_wcs_set" begin
         Random.seed!(17)
