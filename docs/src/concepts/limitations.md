@@ -6,7 +6,7 @@ fix it.
 | Limitation | Measured | Why | What would help |
 |:--|:--|:--|:--|
 | Faint objects | ~80% found to V≈21.5; 16% at 22–22.5; none fainter (Pan-STARRS1, 45 s) | single-frame noise | a deep reference ([ZOGY](../guides/difference-imaging.md)), or stacking along trial motions |
-| Slow objects | 50% found at 5–10″/h | they overlap their own positions in the set's median and partly subtract themselves | a reference from other nights |
+| Slow objects | 50% found at 5–10″/h; in general, lost below about 4 × seeing ÷ the sequence's span ([`analyze_set`](@ref) warns when that passes 10″/h: a 5-minute sequence at 1.9″ seeing lost an asteroid at 83″/h) | they overlap their own positions in the set's median and partly subtract themselves | a longer sequence, or a reference from other nights |
 | Fast objects | 44% at 100–400″/h, 7% above 700″/h | they leave the frame, or trail beyond recognition, within one or two frames | detection of trails |
 | Objects on bright stars | lost in that frame (2 of 180 in a test) | masked as star light | — (3 frames out of 4 still give a tracklet) |
 | Known objects with poor orbits | flagged `:possibly_known` only if displaced along the track | an orbit's error can be in any direction | — |
