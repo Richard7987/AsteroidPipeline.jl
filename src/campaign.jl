@@ -581,6 +581,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     header_wcs = WCSTransform[]; epochs = Float64[]; image_size = (0, 0)
     images = Matrix{Float64}[]; masks = BitMatrix[]
     stars = reference_stars
+    solve_cache = Ref{Any}(nothing)
     for (k, p) in enumerate(cleaned)
         progress(:refine, 0.05 + 0.2 * (k - 1) / length(cleaned))
         image, hstr, hdr = FITS(p, "r") do f
@@ -588,7 +589,9 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
         end
         image_size = size(image)
         epoch = frame_epoch(hdr)
-        w = load_wcs(hstr)
+        w, solved = _header_or_solved_wcs(image, hstr, hdr, epoch, solve_cache)
+        # run_pipeline reads the WCS from the cleaned copy
+        solved && _write_wcs!(p, w)
         stars === nothing && (stars = _field_reference_stars(image, w, epoch))
         push!(images, image); push!(masks, fill_value_mask(image))
         push!(header_wcs, w); push!(epochs, epoch)

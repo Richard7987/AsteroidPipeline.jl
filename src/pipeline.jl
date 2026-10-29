@@ -50,9 +50,10 @@ from the median by more than `photometric_outlier_threshold` (20%) gets a
 warning, never an exclusion. It catches a uniform flux-scale change
 (transparency, focus); a thin passing cloud can leave it unchanged.
 
-If a frame's header has no WCS, [`load_wcs`](@ref) raises an error; with
-`plate_solve_api_key` (a nova.astrometry.net API key) the frame is solved
-by [`plate_solve`](@ref) instead, a network round trip.
+A frame whose header has no WCS is solved from its pointing
+([`solve_wcs`](@ref), against Gaia DR3 stars fetched once per field); if
+that fails, with `plate_solve_api_key` (a nova.astrometry.net API key) it is
+solved by [`plate_solve`](@ref) instead.
 
 These options, all off by default and all on the raw path only, are what
 IASC/Pan-STARRS1 sets need:
@@ -176,6 +177,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
     r_sources = reference === nothing ? nothing :
                 detect_sources(permutedims(reference.image); threshold=psf_threshold)
 
+    solve_cache = Ref{Any}(nothing)
     for path in fits_paths
         FITS(path, "r") do f
             hdu = f[1]
@@ -183,15 +185,17 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
             # FITSIO reads (x, y); detect_sources wants (y, x). The reference and
             # ZOGY code work in (x, y) and are permuted only for detection.
             raw = Float64.(read(hdu))
+            epoch = frame_epoch(read_header(hdu); timestamp_key, exptime_key)
             frame_wcs = try
-                load_wcs(read_header(hdu, String))
+                first(_header_or_solved_wcs(permutedims(raw), read_header(hdu, String), read_header(hdu),
+                                            epoch, solve_cache))
             catch e
                 plate_solve_api_key === nothing && rethrow(e)
                 plate_solve(path; api_key=plate_solve_api_key)
             end
             gain = haskey(read_header(hdu), "GAIN") ? read_key(hdu, "GAIN")[1] : 1.0
 
-            push!(timestamps, frame_epoch(read_header(hdu); timestamp_key, exptime_key))
+            push!(timestamps, epoch)
 
             if reference === nothing
                 image = permutedims(raw)
