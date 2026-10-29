@@ -340,14 +340,24 @@ function _header_or_solved_wcs(image, header_string, header, epoch, cache::Ref)
     end
 end
 
-# The WCS as header keywords, for a copy of a frame that had none.
-function _write_wcs!(path, w::WCSTransform)
-    cd = w.pc .* w.cdelt
-    FITS(path, "r+") do f
+# A copy of the frame in `dir` with the WCS as header keywords: the original
+# is never written to, even through a symbolic link. A frame already in `dir`
+# (a cleaned copy) is written in place.
+function _copy_with_wcs(path, w::WCSTransform, dir)
+    out = joinpath(dir, basename(path))
+    if abspath(out) != abspath(path)
+        mkpath(dir)
+        cp(path, out; force=true, follow_symlinks=true)
+        chmod(out, 0o644)
+    end
+    # WCS.jl's `pc` field reads transposed from the FITS PCi_j it was built with
+    cd = permutedims(w.pc) .* w.cdelt
+    FITS(out, "r+") do f
         for (k, v) in (("CTYPE1", w.ctype[1]), ("CTYPE2", w.ctype[2]), ("CRVAL1", w.crval[1]),
                        ("CRVAL2", w.crval[2]), ("CRPIX1", w.crpix[1]), ("CRPIX2", w.crpix[2]),
                        ("CD1_1", cd[1, 1]), ("CD1_2", cd[1, 2]), ("CD2_1", cd[2, 1]), ("CD2_2", cd[2, 2]))
             write_key(f[1], k, v)
         end
     end
+    return out
 end
