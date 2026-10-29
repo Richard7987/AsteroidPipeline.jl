@@ -194,6 +194,7 @@ end
         @test refine_wcs(damaged, header, many; min_significance=0).refined   # what it accepted before
     end
 
+
     @testset "refine_wcs_set" begin
         Random.seed!(17)
         nx, ny = 300, 260
@@ -434,6 +435,12 @@ end
         ra3, dec3 = pix_to_sky(loaded_cnpix, 500.0, 500.0)
         @test ra3 ≈ ra atol=1e-9
         @test dec3 ≈ dec atol=1e-9
+
+        # what IRAF leaves in frames it processed: a pixel-to-pixel WCS, not a solution
+        iraf = join(rpad(c, 80) for c in ("WCSDIM  =                    2", "LTV1    =               1025.0",
+                                          "LTM1_2  =                  1.0", "LTM2_1  =                 -1.0",
+                                          "WAT0_001= 'system=physical'"))
+        @test_throws "no celestial WCS" load_wcs(iraf)
 
         tracklets = [[(frame=1, x=500.0, y=500.0), (frame=2, x=501.0, y=500.0)]]
         timestamps = [2460000.5, 2460000.51]

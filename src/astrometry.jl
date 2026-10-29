@@ -4,9 +4,11 @@
 Parse the astrometric solution (WCS) from a raw FITS header string — e.g.
 `FITSIO.read_header(hdu, String)` — returning the primary `WCS.WCSTransform`.
 
-Throws an error if the header defines no WCS solution. If it defines more
+Throws an error if the header defines no celestial (RA/Dec) WCS solution:
+IRAF writes a pixel-to-pixel one (`WCSDIM`, `LTM1_1`…) into frames it
+processed, which would otherwise pass for a solution. If it defines more
 than one (e.g. alternate WCS descriptions with an `a`/`b`/... suffix), the
-first one is returned.
+first celestial one is returned.
 
 Pan-STARRS1 headers carry `CNPIX1`/`CNPIX2`, a legacy IRAF keyword pair
 that wcslib takes for the start of a second, implicit WCS; it builds that
@@ -15,8 +17,8 @@ state ("singular", "Invalid parameter value"). On any wcslib error from a
 header carrying those keywords, the parse is retried with only those two
 removed.
 
-For a frame with no WCS at all, see [`plate_solve`](@ref) — `run_pipeline`
-uses it as a fallback when given `plate_solve_api_key`.
+For a frame with no WCS at all, see [`solve_wcs`](@ref), which needs only
+the pointing, or [`plate_solve`](@ref) (nova.astrometry.net).
 """
 function load_wcs(header::AbstractString)
     solutions = try
@@ -25,8 +27,9 @@ function load_wcs(header::AbstractString)
         (e isa ErrorException && _has_fits_card(header, ("CNPIX1", "CNPIX2"))) || rethrow()
         WCS.from_header(_strip_fits_cards(String(header), ("CNPIX1", "CNPIX2")))
     end
-    isempty(solutions) && error("no WCS solution found in header")
-    return first(solutions)
+    celestial = filter(w -> startswith(w.ctype[1], "RA") && startswith(w.ctype[2], "DEC"), solutions)
+    isempty(celestial) && error("no celestial WCS solution found in header")
+    return first(celestial)
 end
 
 """
