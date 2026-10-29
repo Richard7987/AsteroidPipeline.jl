@@ -5,7 +5,19 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Added**
+
+- [`solve_wcs`](@ref): an astrometric solution for a frame whose header has
+  none, from the telescope's pointing alone ([`frame_pointing`](@ref)) —
+  pixel scale, orientation and a mirrored axis found against Gaia DR3,
+  without a web service. [`run_pipeline`](@ref) and [`analyze_set`](@ref)
+  use it for every frame without a WCS, before nova.astrometry.net.
+
 **Fixed**
+
+- [`load_wcs`](@ref) took the pixel coordinates IRAF writes into frames it
+  processed (`WCSDIM`, `LTM1_1`…) for an astrometric solution, with no RA
+  or Dec; it now requires a celestial one.
 
 - [`refine_wcs`](@ref) no longer accepts a solution made of random matches
   on a damaged frame (smeared, or full of detector defects): thousands of

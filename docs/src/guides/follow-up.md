@@ -2,13 +2,32 @@
 
 ## Plate solving
 
-For an image with no WCS in its header, [`plate_solve`](@ref) gets one from
-[nova.astrometry.net](https://nova.astrometry.net/) (a free account gives
-the API key):
+An image with no WCS in its header is solved from where the telescope
+pointed, which most headers record ([`frame_pointing`](@ref)): within 10′ of
+it, [`solve_wcs`](@ref) finds the pixel scale (0.2–3″/pixel), the
+orientation and a mirrored axis by matching triangles of stars against Gaia
+DR3. [`run_pipeline`](@ref) and [`analyze_set`](@ref) do this by themselves
+for every frame without a WCS:
+
+```julia
+img = permutedims(Float64.(read(FITS("frame.fits")[1])))
+ra, dec = frame_pointing(read_header(FITS("frame.fits")[1]))
+stars = gaia_reference_stars(ra, dec, 0.3; epoch_jd=2457618.8, mag_range=(6.0, 19.0))
+r = solve_wcs(img, ra, dec, stars)       # r.wcs, r.scale, r.rms_arcsec
+```
+
+Frames from the 0.84 m telescope at San Pedro Mártir, whose headers hold
+only IRAF's pixel coordinates, solved at 0.478″/pixel with 0.08–0.18″
+residuals; ZTF frames with their WCS removed and the pointing 4′ off, at
+1.014″/pixel, within 0.13″ of ZTF's own solution.
+
+For a frame without its pointing in the header, [`plate_solve`](@ref) gets
+a solution from [nova.astrometry.net](https://nova.astrometry.net/) (a free
+account gives the API key):
 
 ```julia
 plate_solve("frame.fits"; api_key=key)                 # one frame
-run_pipeline(paths; plate_solve_api_key=key)           # every frame without a WCS
+run_pipeline(paths; plate_solve_api_key=key)           # where solve_wcs fails
 ```
 
 It uploads the image and waits for the solution: allow a minute or more per
