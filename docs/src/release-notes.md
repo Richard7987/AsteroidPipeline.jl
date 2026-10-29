@@ -14,9 +14,34 @@ from the version picker at the top right.
 - [`reduced_magnitudes`](@ref) and [`object_geometry`](@ref): magnitudes
   corrected for distance, phase angle and light time with the geometry
   from JPL Horizons, so several nights make one light curve.
+- [`solve_wcs`](@ref): an astrometric solution for a frame whose header has
+  none, from the telescope's pointing alone ([`frame_pointing`](@ref)) —
+  pixel scale, orientation and a mirrored axis found against Gaia DR3,
+  without a web service. [`run_pipeline`](@ref) and [`analyze_set`](@ref)
+  use it for every frame without a WCS, before nova.astrometry.net.
+- [`analyze_set`](@ref) warns when the frames span too little time for
+  slow objects: below about 4 × seeing ÷ the span, an object is in the
+  sequence's median and subtracts itself away.
+
+**Changed**
+
+- [`pipeline_config`](@ref) takes `n_frames`: a tracklet needs half of
+  them, and at least 3. [`analyze_set`](@ref) passes the set's; a 4-frame
+  set is unchanged.
 
 **Fixed**
 
+- Long sequences at short cadence, checked on 40 frames of 4775 Hansen
+  (0.84 m, San Pedro Mártir, 30 s apart), which gave the asteroid in
+  overlapping tracklets of at most 26 of its 40 frames, and false ones of
+  3–4 frames: the hot-pixel filter took a slow mover, within 2 px of itself in the frames
+  next to it, for a hot pixel (a hot pixel's recurrences now have to cover
+  half the sequence's span), and a tracklet sharing two or more detections
+  with a longer one is dropped as the same object. It is now one tracklet
+  of 40 frames, and nothing else.
+- [`load_wcs`](@ref) took the pixel coordinates IRAF writes into frames it
+  processed (`WCSDIM`, `LTM1_1`…) for an astrometric solution, with no RA
+  or Dec; it now requires a celestial one.
 - [`refine_wcs`](@ref) no longer accepts a solution made of random matches
   on a damaged frame (smeared, or full of detector defects): thousands of
   spurious detections made a false offset win the vote, and the frame was

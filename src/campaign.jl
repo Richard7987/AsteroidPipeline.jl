@@ -4,7 +4,7 @@ folder or a list of FITS files — to the MPC report that is submitted for it.
 =#
 
 """
-    pipeline_config(pixel_scale_arcsec) -> NamedTuple
+    pipeline_config(pixel_scale_arcsec; n_frames=4) -> NamedTuple
 
 [`run_pipeline`](@ref) keywords for a same-field sequence of frames at this
 pixel scale (arcsec/pixel): the configuration validated against every local
@@ -13,13 +13,15 @@ in arcseconds and converted to this scale's pixels — a 2" linking radius,
 speeds of 3"/h to ~210"/h. Detection on each frame minus the sequence's
 median at 6σ, fill-value gaps masked, single-pixel spikes, hot pixels and
 bright-star light dropped, each frame's WCS refit to Gaia DR3, tracklets held
-to straight-line, constant-brightness tests, and 3 frames enough for a
-tracklet.
+to straight-line, constant-brightness tests. A tracklet needs half of the
+sequence's `n_frames`, and at least 3 (3 for a 4-frame IASC set): in a long
+sequence a real object is in most frames, while a few frames' noise can
+line up by chance.
 """
-pipeline_config(pixel_scale_arcsec::Real) = (
+pipeline_config(pixel_scale_arcsec::Real; n_frames::Integer=4) = (
     threshold=6.0, match_radius=2.0 / pixel_scale_arcsec, max_speed=5050.0 / pixel_scale_arcsec,
     mask_fill_values=true, refine_astrometry=true, difference_stack=true, min_sharpness=0.3,
-    min_speed=3.0 * 24 / pixel_scale_arcsec, max_flux_ratio=2.5, max_residual=1.0, min_frames=3,
+    min_speed=3.0 * 24 / pixel_scale_arcsec, max_flux_ratio=2.5, max_residual=1.0, min_frames=max(3, cld(n_frames, 2)),
     max_background_excess=1.0, detector_artifact_radius=2.0)
 
 """
@@ -581,6 +583,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     header_wcs = WCSTransform[]; epochs = Float64[]; image_size = (0, 0)
     images = Matrix{Float64}[]; masks = BitMatrix[]
     stars = reference_stars
+    solve_cache = Ref{Any}(nothing)
     for (k, p) in enumerate(cleaned)
         progress(:refine, 0.05 + 0.2 * (k - 1) / length(cleaned))
         image, hstr, hdr = FITS(p, "r") do f
@@ -588,12 +591,15 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
         end
         image_size = size(image)
         epoch = frame_epoch(hdr)
-        w = load_wcs(hstr)
+        w, solved = _header_or_solved_wcs(image, hstr, hdr, epoch, solve_cache)
+        # run_pipeline reads the WCS from the cleaned copy
+        solved && _write_wcs!(p, w)
         stars === nothing && (stars = _field_reference_stars(image, w, epoch))
         push!(images, image); push!(masks, fill_value_mask(image))
         push!(header_wcs, w); push!(epochs, epoch)
     end
     progress(:refine, 0.25)
+    _warn_short_sequence!(warnings, images[1], masks[1], header_wcs[1], epochs)
     refined = refine_wcs_set(images, header_wcs, stars; masks)
     images = masks = nothing
     for (k, r) in enumerate(refined)
@@ -613,7 +619,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     known = Dict{Int,String}()
     if reliable
         progress(:search, 0.3)
-        cfg = something(config, pipeline_config(_pixel_scale_arcsec(wcs[used[1]], image_size)))
+        cfg = something(config, pipeline_config(_pixel_scale_arcsec(wcs[used[1]], image_size); n_frames=length(used)))
 found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
         if !isempty(found)
             mags = candidate_magnitudes(cleaned[used], found; reference_stars=stars)
@@ -660,6 +666,23 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
             frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, known=known,
             unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, expected=expected, report=report, report_kind=report_kind,
             warnings=warnings)
+end
+
+# The difference images subtract the sequence's median: an object moving
+# less than about 4 times the seeing across all the frames is in that median
+# and subtracts itself away. Warned past 10"/h, which IASC sets (~50 min,
+# ~1" seeing: 4-5"/h) don't reach.
+function _warn_short_sequence!(warnings, image, mask, wcs, epochs)
+    fwhm = try
+        _measure_fwhm(image, mask) * _pixel_scale_arcsec(wcs, size(image))
+    catch
+        return
+    end
+    hours = (maximum(epochs) - minimum(epochs)) * 24
+    slowest = 4 * fwhm / hours
+    slowest > 10.0 || return
+    push!(warnings, "the frames span $(round(Int, 60hours)) min: objects slower than $(round(Int, slowest))\"/h " *
+                    "move less than 4 times the seeing ($(round(fwhm; digits=1))\") across them and are subtracted with the stars")
 end
 
 # MPCORB's orbits osculate at one epoch; propagated two-body further than

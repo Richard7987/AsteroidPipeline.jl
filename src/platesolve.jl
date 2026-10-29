@@ -135,3 +135,219 @@ function _astrometry_fetch_wcs(job_id)
     rm(path)
     return load_wcs(header)
 end
+
+"""
+    frame_pointing(header) -> Union{Nothing,Tuple{Float64,Float64}}
+
+Where the telescope pointed, `(ra, dec)` in degrees, from the first pair of
+the usual header keywords: `OBJCTRA`/`OBJCTDEC`, `RA`/`DEC`, `TELRA`/`TELDEC`,
+`RA_OBJ`/`DEC_OBJ`, `OBJRA`/`OBJDEC`. A number is degrees; text is
+sexagesimal, hours for RA. `nothing` if none is there.
+"""
+function frame_pointing(header)
+    for (a, d) in (("OBJCTRA", "OBJCTDEC"), ("RA", "DEC"), ("TELRA", "TELDEC"),
+                   ("RA_OBJ", "DEC_OBJ"), ("OBJRA", "OBJDEC"))
+        haskey(header, a) && haskey(header, d) || continue
+        ra, dec = _angle(header[a], 15.0), _angle(header[d], 1.0)
+        ra === nothing || dec === nothing || return (mod(ra, 360.0), dec)
+    end
+    return nothing
+end
+
+function _angle(v, unit)
+    v isa Real && return Float64(v)
+    v isa AbstractString || return nothing
+    s = strip(v)
+    parts = split(s, r"[:\s]+"; keepempty=false)
+    vals = tryparse.(Float64, parts)
+    any(isnothing, vals) && return nothing
+    length(vals) == 1 && return vals[1]
+    x = sum(abs(p) / 60.0^(i - 1) for (i, p) in enumerate(vals))
+    return unit * (startswith(s, "-") ? -x : x)
+end
+
+"""
+    solve_wcs(image, ra, dec, stars; scale_range=(0.2, 3.0), search_radius=600.0,
+              threshold=10.0, mask=nothing, n_bright=30, min_matches=6)
+        -> (wcs, refined, n_matches, rms_arcsec, offset_px, n_detections, matches, scale)
+
+A frame's astrometric solution when its header has none, found here rather
+than by a web service: only the approximate pointing `(ra, dec)` (degrees,
+within `search_radius` arcseconds; [`frame_pointing`](@ref) reads it from a
+header) is needed. The pixel scale, anywhere in `scale_range` (″/px), the
+orientation and a mirrored axis are found from the stars themselves.
+
+`image` is in [`detect_sources`](@ref)'s `(y, x)` order, and `stars` has
+`ra`, `dec` and `gmag` for every star the field could hold, e.g. from
+[`gaia_reference_stars`](@ref) around the pointing. Triangles of
+neighbouring stars are compared by the ratios of their sides, which no
+shift, rotation, scale or mirror changes: the `n_bright` brightest
+detections against as many catalogue stars per field area, for each scale
+tried. Each matching pair of triangles gives a transformation, kept if
+the most detections land on catalogue stars, and [`refine_wcs`](@ref)
+then fits the solution to every star. `scale` is the solution's pixel
+scale; `refined` is `false`, and `wcs` `nothing`, when no transformation
+put `min_matches` detections on stars.
+"""
+function solve_wcs(image::AbstractMatrix{<:Real}, ra::Real, dec::Real, stars;
+                   scale_range=(0.2, 3.0), search_radius::Real=600.0, threshold::Real=10.0,
+                   mask::Union{Nothing,AbstractMatrix{Bool}}=nothing, n_bright::Integer=30,
+                   min_matches::Integer=6)
+    det = detect_sources(image; threshold, mask)
+    order = sortperm(det.flux; rev=true)[1:min(n_bright, length(det))]
+    D = [(det.xcen[i], det.ycen[i]) for i in order]
+    failed = (wcs=nothing, refined=false, n_matches=0, rms_arcsec=NaN, offset_px=(0.0, 0.0),
+              n_detections=length(det), matches=nothing, scale=NaN)
+    length(D) >= 3 || return failed
+
+    ny, nx = size(image)
+    half_diagonal = hypot(nx, ny) / 2
+    tangent(r, d) = _tangent_arcsec(r, d, ra, dec)
+    S = [tangent(r, d) for (r, d) in zip(stars.ra, stars.dec)]
+    by_mag = sortperm(collect(stars.gmag))
+    image_triangles = _neighbour_triangles(D, 20.0)
+
+    best = (n=0, s=0.0, a=0.0, b=0.0, t=(0.0, 0.0))
+    lo, hi = scale_range
+    s = lo
+    while s <= hi * 1.2
+        region = search_radius + half_diagonal * s
+        inside = [i for i in by_mag if hypot(S[i]...) <= region]
+        # as many stars per area as there are bright detections per frame area
+        n = clamp(round(Int, length(D) * π * region^2 / (nx * ny * s^2)), length(D), 600)
+        C = S[inside[1:min(n, length(inside))]]
+        catalogue_triangles = sort!(_neighbour_triangles(C, 20.0 * s); by=first)
+        firsts = first.(catalogue_triangles)
+        for (u, v, idx) in image_triangles
+            for k in searchsortedfirst(firsts, u - 0.01):searchsortedlast(firsts, u + 0.01)
+                _, v2, cidx = catalogue_triangles[k]
+                abs(v - v2) < 0.01 || continue
+                fit = _similarity(D[idx], C[cidx])
+                lo / 1.2 <= fit.s <= hi * 1.2 && fit.max_residual < 2.0 * fit.s || continue
+                hits = count(D) do p
+                    q = _apply_similarity(fit, p)
+                    any(c -> hypot(q[1] - c[1], q[2] - c[2]) < 2.0 * fit.s, C)
+                end
+                hits > best.n && (best = (n=hits, fit=fit))
+            end
+        end
+        s *= 1.2
+    end
+    best.n >= min_matches || return failed
+
+    M = _similarity_matrix(best.fit)
+    t = best.fit.t
+    # the pixel the pointing falls on: M * p + t = 0
+    crpix = -(M \ [t[1], t[2]])
+    header = WCSTransform(2; crpix=crpix, crval=[Float64(ra), Float64(dec)], cdelt=[1.0, 1.0],
+                          pc=M ./ 3600, ctype=["RA---TAN", "DEC--TAN"])
+    r = refine_wcs(image, header, stars; threshold, mask, max_offset=10.0, min_matches)
+    return (; r..., wcs=r.refined ? r.wcs : nothing, scale=best.fit.s)
+end
+
+# Gnomonic projection about (ra0, dec0), arcseconds: ξ toward east, η north.
+function _tangent_arcsec(ra, dec, ra0, dec0)
+    c = sind(dec0) * sind(dec) + cosd(dec0) * cosd(dec) * cosd(ra - ra0)
+    ξ = cosd(dec) * sind(ra - ra0) / c
+    η = (cosd(dec0) * sind(dec) - sind(dec0) * cosd(dec) * cosd(ra - ra0)) / c
+    return (rad2deg(ξ) * 3600, rad2deg(η) * 3600)
+end
+
+# Each point with every pair of its 5 nearest neighbours, as
+# (shortest / longest side, middle / longest, vertices ordered by opposite side).
+function _neighbour_triangles(P, min_side)
+    seen = Set{NTuple{3,Int}}()
+    out = Tuple{Float64,Float64,Vector{Int}}[]
+    dist(i, j) = hypot(P[i][1] - P[j][1], P[i][2] - P[j][2])
+    for i in eachindex(P)
+        nn = sort([j for j in eachindex(P) if j != i]; by=j -> dist(i, j))[1:min(5, length(P) - 1)]
+        for a in 1:length(nn), b in a+1:length(nn)
+            tri = (i, nn[a], nn[b])
+            key = Tuple(sort([tri...]))
+            key in seen && continue
+            push!(seen, key)
+            d = [dist(tri[2], tri[3]), dist(tri[1], tri[3]), dist(tri[1], tri[2])]
+            p = sortperm(d)
+            d[p[3]] >= min_side || continue
+            push!(out, (d[p[1]] / d[p[3]], d[p[2]] / d[p[3]], [tri[k] for k in p]))
+        end
+    end
+    return out
+end
+
+# Least-squares similarity P -> Q, with or without a mirrored x axis:
+# q = s * R(θ) * (mirror ? (-x, y) : (x, y)) + t, as a = s cos θ, b = s sin θ.
+function _similarity(P, Q)
+    fits = map((false, true)) do mirror
+        P2 = [(mirror ? -p[1] : p[1], p[2]) for p in P]
+        mp = (sum(first, P2) / length(P2), sum(last, P2) / length(P2))
+        mq = (sum(first, Q) / length(Q), sum(last, Q) / length(Q))
+        num_a = num_b = den = 0.0
+        for (p, q) in zip(P2, Q)
+            x, y, u, v = p[1] - mp[1], p[2] - mp[2], q[1] - mq[1], q[2] - mq[2]
+            num_a += x * u + y * v
+            num_b += x * v - y * u
+            den += x^2 + y^2
+        end
+        a, b = num_a / den, num_b / den
+        t = (mq[1] - (a * mp[1] - b * mp[2]), mq[2] - (b * mp[1] + a * mp[2]))
+        fit = (a=a, b=b, mirror=mirror, t=t, s=hypot(a, b))
+        residual = maximum(hypot((_apply_similarity(fit, p) .- q)...) for (p, q) in zip(P, Q))
+        (; fit..., max_residual=residual)
+    end
+    return argmin(f -> f.max_residual, fits)
+end
+
+_apply_similarity(f, p) = Tuple(_similarity_matrix(f) * [p[1], p[2]] .+ [f.t[1], f.t[2]])
+
+_similarity_matrix(f) = [f.a -f.b; f.b f.a] * [(f.mirror ? -1.0 : 1.0) 0.0; 0.0 1.0]
+
+# Scale ranges tried in turn, with the faintest Gaia magnitude each needs:
+# the wider the field, the larger the sky to query and the brighter its limit.
+const _SOLVE_LADDER = ((0.2, 0.6, 19.0), (0.6, 1.8, 18.0), (1.8, 3.0, 16.5))
+
+"""
+    _header_or_solved_wcs(image, header_string, header, epoch, cache) -> (wcs, solved)
+
+The frame's WCS from its header ([`load_wcs`](@ref)) or, when it has none,
+from [`solve_wcs`](@ref) at its pointing ([`frame_pointing`](@ref)). Gaia
+stars are fetched for the first frame and kept in `cache` (a `Ref`, initially
+`nothing`) with the scale found, so the other frames of the field are solved
+from them. `solved` says which.
+"""
+function _header_or_solved_wcs(image, header_string, header, epoch, cache::Ref)
+    try
+        return load_wcs(header_string), false
+    catch e
+        pointing = frame_pointing(header)
+        pointing === nothing && rethrow(e)
+        ra, dec = pointing
+        c = cache[]
+        if c !== nothing && _angular_distance_arcsec(ra, dec, c.ra, c.dec) < 600
+            r = solve_wcs(image, ra, dec, c.stars; scale_range=(0.95, 1.05) .* c.scale)
+            r.wcs === nothing || return r.wcs, true
+        end
+        ny, nx = size(image)
+        for (lo, hi, faintest) in _SOLVE_LADDER
+            radius = (600 + hypot(nx, ny) / 2 * hi) / 3600
+            stars = gaia_reference_stars(ra, dec, radius; epoch_jd=epoch, mag_range=(6.0, faintest))
+            r = solve_wcs(image, ra, dec, stars; scale_range=(lo, hi))
+            r.wcs === nothing && continue
+            cache[] = (ra=ra, dec=dec, stars=stars, scale=r.scale)
+            return r.wcs, true
+        end
+        error("no WCS in the header, and none found around its pointing ($ra, $dec)")
+    end
+end
+
+# The WCS as header keywords, for a copy of a frame that had none.
+function _write_wcs!(path, w::WCSTransform)
+    cd = w.pc .* w.cdelt
+    FITS(path, "r+") do f
+        for (k, v) in (("CTYPE1", w.ctype[1]), ("CTYPE2", w.ctype[2]), ("CRVAL1", w.crval[1]),
+                       ("CRVAL2", w.crval[2]), ("CRPIX1", w.crpix[1]), ("CRPIX2", w.crpix[2]),
+                       ("CD1_1", cd[1, 1]), ("CD1_2", cd[1, 2]), ("CD2_1", cd[2, 1]), ("CD2_2", cd[2, 2]))
+            write_key(f[1], k, v)
+        end
+    end
+end

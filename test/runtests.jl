@@ -194,6 +194,44 @@ end
         @test refine_wcs(damaged, header, many; min_significance=0).refined   # what it accepted before
     end
 
+    @testset "solve_wcs / frame_pointing" begin
+        # a frame with no WCS: 0.73″/px, rotated 37°, east to the right (mirrored),
+        # pointed 2′ from where the header says; the catalogue covers 0.3°
+        Random.seed!(17)
+        nx, ny, scale = 400, 380, 0.73
+        R = [cosd(37) -sind(37); sind(37) cosd(37)] .* (scale / 3600)
+        truth = WCSTransform(2; crpix=[200.0, 190.0], crval=[150.0, 10.0], cdelt=[1.0, 1.0],
+                             pc=R, ctype=["RA---TAN", "DEC--TAN"])
+        n = 900
+        ra = 150.0 .+ 0.3 .* (2 .* rand(n) .- 1) ./ cosd(10.0)
+        dec = 10.0 .+ 0.3 .* (2 .* rand(n) .- 1)
+        stars = Table(ra=ra, dec=dec, gmag=12.0 .+ 7.0 .* rand(n))
+        image = 100.0 .+ 5.0 .* randn(ny, nx)
+        for k in 1:n
+            x, y = world_to_pix(truth, [ra[k], dec[k]])
+            1 <= x <= nx && 1 <= y <= ny || continue
+            for j in max(1, floor(Int, x) - 8):min(nx, ceil(Int, x) + 8), i in max(1, floor(Int, y) - 8):min(ny, ceil(Int, y) + 8)
+                image[i, j] += 10^(-0.4 * (stars.gmag[k] - 22)) * exp(-((j - x)^2 + (i - y)^2) / (2 * 1.5^2))
+            end
+        end
+        r = solve_wcs(image, 150.0 + (2 / 60) / cosd(10.0), 10.0, stars)
+        @test r.refined
+        @test r.scale ≈ scale rtol = 0.005
+        for (x, y) in ((1.0, 1.0), (Float64(nx), Float64(ny)), (1.0, Float64(ny)))
+            a, b = pix_to_world(r.wcs, [x, y]), pix_to_world(truth, [x, y])
+            @test hypot((a[1] - b[1]) * cosd(b[2]), a[2] - b[2]) * 3600 < 0.1
+        end
+        # another field's stars: no solution, rather than a false one
+        other = Table(ra=150.0 .+ 0.3 .* (2 .* rand(n) .- 1) ./ cosd(10.0), dec=10.0 .+ 0.3 .* (2 .* rand(n) .- 1),
+                      gmag=stars.gmag)
+        @test solve_wcs(image, 150.0, 10.0, other).wcs === nothing
+
+        @test all(frame_pointing(Dict("OBJCTRA" => "23:29:55.92", "OBJCTDEC" => "-6:40:22.93")) .≈
+                  (15 * (23 + 29 / 60 + 55.92 / 3600), -(6 + 40 / 60 + 22.93 / 3600)))
+        @test frame_pointing(Dict("RA" => 352.48, "DEC" => -0.5)) == (352.48, -0.5)
+        @test frame_pointing(Dict("OBJCTRA" => "x", "DEC" => 1.0)) === nothing
+    end
+
     @testset "refine_wcs_set" begin
         Random.seed!(17)
         nx, ny = 300, 260
@@ -434,6 +472,12 @@ end
         ra3, dec3 = pix_to_sky(loaded_cnpix, 500.0, 500.0)
         @test ra3 ≈ ra atol=1e-9
         @test dec3 ≈ dec atol=1e-9
+
+        # what IRAF leaves in frames it processed: a pixel-to-pixel WCS, not a solution
+        iraf = join(rpad(c, 80) for c in ("WCSDIM  =                    2", "LTV1    =               1025.0",
+                                          "LTM1_2  =                  1.0", "LTM2_1  =                 -1.0",
+                                          "WAT0_001= 'system=physical'"))
+        @test_throws "no celestial WCS" load_wcs(iraf)
 
         tracklets = [[(frame=1, x=500.0, y=500.0), (frame=2, x=501.0, y=500.0)]]
         timestamps = [2460000.5, 2460000.51]
@@ -1307,12 +1351,18 @@ end
                             flux_err=fill(5.0, length(xs)), xcen=Float64.(xs), ycen=Float64.(ys), sharpness=fill(0.6, length(xs)))
         # a hot pixel at (40, 40) in every frame's own grid; a mover elsewhere
         frames = [det([40.0, 100.0 + 10k], [40.0, 60.0]) for k in 1:4]
-        kept = P._drop_detector_fixed(frames, 2.0)
+        times = [0.0, 0.01, 0.02, 0.03]
+        kept = P._drop_detector_fixed(frames, 2.0, times)
         @test all(f -> !any(d -> d.xcen == 40.0, f), kept)
         @test all(length.(kept) .== 1)
         # only twice: could be chance, kept
         twice = [det([40.0], [40.0]), det([40.0], [40.0]), det([70.0], [70.0]), det([90.0], [90.0])]
-        @test length.(P._drop_detector_fixed(twice, 2.0)) == [1, 1, 1, 1]
+        @test length.(P._drop_detector_fixed(twice, 2.0, times)) == [1, 1, 1, 1]
+        # 20 exposures 30 s apart: a mover 1.5 px per frame meets itself in the
+        # frames next to it, the hot pixel in all of them
+        dense = [det([40.0, 100.0 + 1.5k], [40.0, 60.0]) for k in 1:20]
+        kept = P._drop_detector_fixed(dense, 2.0, (1:20) .* (30 / 86400))
+        @test all(f -> length(f) == 1 && f[1].xcen != 40.0, kept)
 
         Random.seed!(16)
         img = 100.0 .+ 5.0 .* randn(120, 120)
@@ -1516,6 +1566,7 @@ end
         cfg = IASC_PS1_CONFIG
         @test cfg.match_radius ≈ 2.0 / 0.2563
         @test pipeline_config(1.0).match_radius ≈ 2.0 && pipeline_config(1.0).min_speed ≈ 72.0
+        @test pipeline_config(1.0).min_frames == 3 && pipeline_config(1.0; n_frames=40).min_frames == 20
 
         header = mpc_report_header("F51"; observers="J. Bulger", measurers="A. Name", telescope="1.8-m",
                                    net="Gaia DR3", ack_time=DateTime(2026, 10, 18, 12, 57, 58))

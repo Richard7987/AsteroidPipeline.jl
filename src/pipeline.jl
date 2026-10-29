@@ -50,9 +50,10 @@ from the median by more than `photometric_outlier_threshold` (20%) gets a
 warning, never an exclusion. It catches a uniform flux-scale change
 (transparency, focus); a thin passing cloud can leave it unchanged.
 
-If a frame's header has no WCS, [`load_wcs`](@ref) raises an error; with
-`plate_solve_api_key` (a nova.astrometry.net API key) the frame is solved
-by [`plate_solve`](@ref) instead, a network round trip.
+A frame whose header has no WCS is solved from its pointing
+([`solve_wcs`](@ref), against Gaia DR3 stars fetched once per field); if
+that fails, with `plate_solve_api_key` (a nova.astrometry.net API key) it is
+solved by [`plate_solve`](@ref) instead.
 
 These options, all off by default and all on the raw path only, are what
 IASC/Pan-STARRS1 sets need:
@@ -176,6 +177,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
     r_sources = reference === nothing ? nothing :
                 detect_sources(permutedims(reference.image); threshold=psf_threshold)
 
+    solve_cache = Ref{Any}(nothing)
     for path in fits_paths
         FITS(path, "r") do f
             hdu = f[1]
@@ -183,15 +185,17 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
             # FITSIO reads (x, y); detect_sources wants (y, x). The reference and
             # ZOGY code work in (x, y) and are permuted only for detection.
             raw = Float64.(read(hdu))
+            epoch = frame_epoch(read_header(hdu); timestamp_key, exptime_key)
             frame_wcs = try
-                load_wcs(read_header(hdu, String))
+                first(_header_or_solved_wcs(permutedims(raw), read_header(hdu, String), read_header(hdu),
+                                            epoch, solve_cache))
             catch e
                 plate_solve_api_key === nothing && rethrow(e)
                 plate_solve(path; api_key=plate_solve_api_key)
             end
             gain = haskey(read_header(hdu), "GAIN") ? read_key(hdu, "GAIN")[1] : 1.0
 
-            push!(timestamps, frame_epoch(read_header(hdu); timestamp_key, exptime_key))
+            push!(timestamps, epoch)
 
             if reference === nothing
                 image = permutedims(raw)
@@ -268,7 +272,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
         per_frame = [_merge_clusters(detect_sources(diff; threshold, box_size, aperture_radius, mask=m, min_sharpness),
                                      _CLUSTER_RADIUS, _MAX_TRAIL_EXTENT)
                      for (diff, m) in zip(differences, diff_masks)]
-        detector_artifact_radius > 0 && (per_frame = _drop_detector_fixed(per_frame, detector_artifact_radius))
+        detector_artifact_radius > 0 && (per_frame = _drop_detector_fixed(per_frame, detector_artifact_radius, timestamps))
         if isfinite(max_background_excess)
             per_frame = [_drop_on_bright_background(d, img, m, max_background_excess)
                          for (d, img, m) in zip(per_frame, stacked_images, stacked_masks)]
@@ -397,20 +401,25 @@ const _CLUSTER_RADIUS = 15.0
 const _MAX_TRAIL_EXTENT = 60.0
 
 """
-    _drop_detector_fixed(per_frame, radius) -> Vector
+    _drop_detector_fixed(per_frame, radius, timestamps) -> Vector
 
 Each frame's detections (own pixel grid) minus those with a detection at
 the same pixel, within `radius`, in two or more other frames. A moving
 object can't sit on one detector pixel for three exposures; a hot pixel or
 bad column does, and only seems to move on the sky because the telescope
 dithers between exposures — so the difference images don't cancel it.
+The frames it recurs in must also cover half the sequence's time span: in
+exposures seconds apart, a slow mover stays within `radius` of itself in
+the frames next to it.
 """
-function _drop_detector_fixed(per_frame, radius::Real)
+function _drop_detector_fixed(per_frame, radius::Real, timestamps)
     xy = [[_position(d) for d in dets] for dets in per_frame]
+    span = maximum(timestamps) - minimum(timestamps)
     return map(enumerate(per_frame)) do (k, dets)
         keep = map(xy[k]) do p
-            others = count(j -> j != k && any(q -> hypot(q[1] - p[1], q[2] - p[2]) <= radius, xy[j]), eachindex(xy))
-            others < 2
+            others = [j for j in eachindex(xy) if j != k && any(q -> hypot(q[1] - p[1], q[2] - p[2]) <= radius, xy[j])]
+            t = timestamps[[k; others]]
+            length(others) < 2 || maximum(t) - minimum(t) < span / 2
         end
         dets[keep]
     end
