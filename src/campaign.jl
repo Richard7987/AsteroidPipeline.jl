@@ -4,7 +4,7 @@ folder or a list of FITS files — to the MPC report that is submitted for it.
 =#
 
 """
-    pipeline_config(pixel_scale_arcsec) -> NamedTuple
+    pipeline_config(pixel_scale_arcsec; n_frames=4) -> NamedTuple
 
 [`run_pipeline`](@ref) keywords for a same-field sequence of frames at this
 pixel scale (arcsec/pixel): the configuration validated against every local
@@ -13,13 +13,15 @@ in arcseconds and converted to this scale's pixels — a 2" linking radius,
 speeds of 3"/h to ~210"/h. Detection on each frame minus the sequence's
 median at 6σ, fill-value gaps masked, single-pixel spikes, hot pixels and
 bright-star light dropped, each frame's WCS refit to Gaia DR3, tracklets held
-to straight-line, constant-brightness tests, and 3 frames enough for a
-tracklet.
+to straight-line, constant-brightness tests. A tracklet needs half of the
+sequence's `n_frames`, and at least 3 (3 for a 4-frame IASC set): in a long
+sequence a real object is in most frames, while a few frames' noise can
+line up by chance.
 """
-pipeline_config(pixel_scale_arcsec::Real) = (
+pipeline_config(pixel_scale_arcsec::Real; n_frames::Integer=4) = (
     threshold=6.0, match_radius=2.0 / pixel_scale_arcsec, max_speed=5050.0 / pixel_scale_arcsec,
     mask_fill_values=true, refine_astrometry=true, difference_stack=true, min_sharpness=0.3,
-    min_speed=3.0 * 24 / pixel_scale_arcsec, max_flux_ratio=2.5, max_residual=1.0, min_frames=3,
+    min_speed=3.0 * 24 / pixel_scale_arcsec, max_flux_ratio=2.5, max_residual=1.0, min_frames=max(3, cld(n_frames, 2)),
     max_background_excess=1.0, detector_artifact_radius=2.0)
 
 """
@@ -616,7 +618,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     known = Dict{Int,String}()
     if reliable
         progress(:search, 0.3)
-        cfg = something(config, pipeline_config(_pixel_scale_arcsec(wcs[used[1]], image_size)))
+        cfg = something(config, pipeline_config(_pixel_scale_arcsec(wcs[used[1]], image_size); n_frames=length(used)))
 found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
         if !isempty(found)
             mags = candidate_magnitudes(cleaned[used], found; reference_stars=stars)

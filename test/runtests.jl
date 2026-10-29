@@ -1453,6 +1453,7 @@ end
         cfg = IASC_PS1_CONFIG
         @test cfg.match_radius ≈ 2.0 / 0.2563
         @test pipeline_config(1.0).match_radius ≈ 2.0 && pipeline_config(1.0).min_speed ≈ 72.0
+        @test pipeline_config(1.0).min_frames == 3 && pipeline_config(1.0; n_frames=40).min_frames == 20
 
         header = mpc_report_header("F51"; observers="J. Bulger", measurers="A. Name", telescope="1.8-m",
                                    net="Gaia DR3", ack_time=DateTime(2026, 10, 18, 12, 57, 58))
