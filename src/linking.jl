@@ -29,7 +29,10 @@ refit is discarded and the tracklet keeps its original seed-built points
 rather than being dropped outright (the seed itself already passed the
 `max_speed` check). `min_frames` is applied once, after any refit.
 Distinct seed pairs whose refit converges to the same final point set
-(more than one can lock onto the same real object) are deduplicated.
+(more than one can lock onto the same real object) are deduplicated, and so
+is a tracklet sharing two or more detections with a longer one: two points
+fix the motion, so it is the same object, seen in fewer frames (in a long
+sequence, a seed pair far from the object's frames refits onto part of it).
 
 When `min_frames` allows missing frames, any pair of frames can seed, so
 an object missing from frame 1 or 2 (a detector gap, a star, the field
@@ -88,7 +91,11 @@ function link_candidates(detections_per_frame, timestamps;
         end
     end
 
-    return tracklets
+    kept = Int[]
+    for i in sortperm(length.(tracklets); rev=true)
+        all(k -> length(intersect(tracklets[i], tracklets[k])) < 2, kept) && push!(kept, i)
+    end
+    return tracklets[sort(kept)]
 end
 
 """
