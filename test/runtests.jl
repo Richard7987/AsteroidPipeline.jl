@@ -1452,6 +1452,23 @@ end
         p = recover_rotation_period(lc.epoch[seen], lc.mag[seen]; minimum_period=0.05, maximum_period=0.5)
         @test p.period ≈ period rtol = 0.05
         @test_throws ArgumentError moving_light_curve(paths, NamedTuple[])
+        @test all(isfinite, lc.zeropoint_err)
+        @test all(lc.mag_err[seen] .>= lc.zeropoint_err[seen])
+
+        # comparison stars: each with its own colour offset, frames with their own
+        # transparency, one star saturated (scattering) and one missing in a frame
+        Random.seed!(5)
+        transparency = [0.0, 0.05, -0.03, 0.12, 0.02]
+        colour = 0.3 .* randn(8)
+        v = [[25.0 + transparency[k] + colour[i] + 0.002randn() for i in 1:8] for k in 1:5]
+        for k in 1:5
+            v[k][7] += 0.2randn()
+        end
+        v[3][8] = NaN
+        zp, err = AsteroidPipeline._comparison_zeropoints(v)
+        @test zp .- zp[1] ≈ transparency .- transparency[1] atol = 0.003
+        @test all(e -> 0 < e < 0.003, err)
+        @test AsteroidPipeline._comparison_zeropoints([[25.0, NaN, 24.0, NaN] for _ in 1:3]) == (nothing, nothing)
     end
 
     @testset "reduced_magnitudes / object geometry" begin

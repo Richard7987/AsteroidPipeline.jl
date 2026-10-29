@@ -68,20 +68,29 @@ position at each frame's mid-exposure ([`frame_epoch`](@ref)); one position
 means a fixed target. Within a night this is better than an orbit, since it
 comes from the object itself; it doesn't follow curvature over days.
 
-Each frame's WCS is refined and its zero point fitted against Gaia DR3 stars
-(`reference_stars`, or fetched once for the first frame's field), as in
-[`candidate_magnitudes`](@ref). Where the aperture's signal-to-noise reaches
+Each frame's WCS is refined against Gaia DR3 stars (`reference_stars`, or
+fetched once for the first frame's field). The zero points come from the
+same comparison stars in every frame: catalogue stars inside all of them,
+measured with the object's aperture at signal-to-noise 30 or more, away
+from its track, and dropping any whose brightness varies far more than the
+others' (a saturated star). Each star's colour differs from the frames'
+band, unfiltered or not, by its own constant amount, which a fixed set of
+stars cancels from frame to frame; a set changing with each frame's
+detections would not. With fewer than 3 such stars, each frame's zero point
+is fitted on its own ([`photometric_zeropoint`](@ref)). Where the aperture's signal-to-noise reaches
 `recentre_snr`, it is moved to the object's flux-weighted centroid; elsewhere
 the flux is measured at the predicted position (forced photometry), which
 keeps faint frames in the curve without biasing them upward. The background
 is the median of `annulus`; `flux_err` combines its scatter, the error of
 that median and, with `gain` (e-/ADU, else the header's `GAIN` if it has
-one), the object's shot noise.
+one), the object's shot noise; `mag_err` adds the zero point's error,
+`zeropoint_err` (the comparison stars' spread about the frame's offset,
+over the square root of their number).
 
 Returns a table, one row per frame: `frame`, `epoch`, `ra`, `dec` (where it
 was measured), `x`, `y`, `recentred`, `star_nearby`, `flux`, `flux_err`, `mag`,
 `mag_err` (Gaia G-equivalent; `NaN` where the frame has no zero point or the
-flux isn't positive) and `zeropoint`. `star_nearby` marks a frame where a
+flux isn't positive), `zeropoint` and `zeropoint_err`. `star_nearby` marks a frame where a
 reference star bright enough to add a tenth of the object's flux (at most
 2.5 mag fainter) lies within two aperture radii of it: crossing a star
 makes it look brighter, so leave those frames out before passing
@@ -104,17 +113,18 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
         (e -> mod(a_ra + b_ra * e, 360), e -> a_dec + b_dec * e)
     end
 
-    rows = map(enumerate(fits_paths)) do (k, path)
+    stars = reference_stars
+    frames = map(enumerate(fits_paths)) do (k, path)
         image, header, hdr = FITS(path, "r") do f
             permutedims(Float64.(read(f[1]))), read_header(f[1], String), read_header(f[1])
         end
         epoch = frame_epoch(hdr; timestamp_key, exptime_key)
         mask = fill_value_mask(image)
         wcs = load_wcs(header)
-        reference_stars === nothing && (reference_stars = _field_reference_stars(image, wcs, epoch))
-        refined = refine_wcs(image, wcs, reference_stars; mask)
+        stars === nothing && (stars = _field_reference_stars(image, wcs, epoch))
+        refined = refine_wcs(image, wcs, stars; mask)
         refined.refined && (wcs = refined.wcs)
-        zp = photometric_zeropoint(image, wcs, reference_stars; mask, aperture_radius).zeropoint
+        own = photometric_zeropoint(image, wcs, stars; mask, aperture_radius)
         g = gain !== nothing ? gain : haskey(hdr, "GAIN") ? Float64(hdr["GAIN"]) : nothing
 
         x, y = world_to_pix(wcs, Float64[ra_at(epoch), dec_at(epoch)])
@@ -129,17 +139,69 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
             end
         end
         ra, dec = pix_to_world(wcs, Float64[x, y])
-        good = isfinite(zp) && m.flux > 0
-        mag = good ? zp - 2.5 * log10(m.flux) : NaN
-        near = 2 * aperture_radius * _pixel_scale_arcsec(wcs, size(image))
-        star_nearby = any(s -> !(s.gmag > mag + 2.5) && _angular_distance_arcsec(ra, dec, s.ra, s.dec) <= near,
-                          reference_stars)
-        (frame=k, epoch=epoch, ra=ra, dec=dec, x=x, y=y, recentred=recentred, star_nearby=star_nearby,
-         flux=m.flux, flux_err=m.flux_err,
-         mag=mag,
-         mag_err=good ? 2.5 / log(10) * m.flux_err / m.flux : NaN, zeropoint=zp)
+        # each star's G + 2.5 log10(flux): NaN off the frame, near the object or too faint
+        ny, nx = size(image)
+        edge = annulus[2] + 2
+        v = map(stars) do s
+            sx, sy = world_to_pix(wcs, Float64[s.ra, s.dec])
+            edge <= sx <= nx - edge && edge <= sy <= ny - edge || return NaN
+            hypot(sx - x, sy - y) > 3 * aperture_radius || return NaN
+            f = _moving_aperture(image, sx, sy, aperture_radius, annulus, mask, g)
+            f.flux > 0 && f.flux / f.flux_err >= _COMPARISON_MIN_SNR ? s.gmag + 2.5 * log10(f.flux) : NaN
+        end
+        (frame=k, epoch=epoch, ra=ra, dec=dec, x=x, y=y, recentred=recentred, flux=m.flux,
+         flux_err=m.flux_err, own=own, v=v, scale=_pixel_scale_arcsec(wcs, size(image)))
+    end
+
+    own = [f.own.zeropoint for f in frames]
+    zp, zp_err = _comparison_zeropoints([f.v for f in frames])
+    if zp === nothing
+        zp = own
+        zp_err = [f.own.n_stars >= 2 ? 1.2533 * f.own.scatter / sqrt(f.own.n_stars) : NaN for f in frames]
+    else
+        # the level from every frame's own fit, many stars' colours averaged;
+        # a few comparison stars' would differ from one set of frames to another
+        d = filter(isfinite, own .- zp)
+        isempty(d) || (zp = zp .+ median(d))
+    end
+    rows = map(enumerate(frames)) do (k, f)
+        good = isfinite(zp[k]) && f.flux > 0
+        mag = good ? zp[k] - 2.5 * log10(f.flux) : NaN
+        near = 2 * aperture_radius * f.scale
+        star_nearby = any(s -> !(s.gmag > mag + 2.5) && _angular_distance_arcsec(f.ra, f.dec, s.ra, s.dec) <= near,
+                          stars)
+        phot_err = 2.5 / log(10) * f.flux_err / f.flux
+        (frame=f.frame, epoch=f.epoch, ra=f.ra, dec=f.dec, x=f.x, y=f.y, recentred=f.recentred,
+         star_nearby=star_nearby, flux=f.flux, flux_err=f.flux_err, mag=mag,
+         mag_err=good ? hypot(phot_err, isfinite(zp_err[k]) ? zp_err[k] : 0.0) : NaN,
+         zeropoint=zp[k], zeropoint_err=zp_err[k])
     end
     return Table(rows)
+end
+
+const _COMPARISON_MIN_SNR = 30.0
+
+# Zero points from the stars measured in every frame (`v[k][i]` = G + 2.5 log10
+# flux): each frame's median offset from the stars' means, and its error. Stars
+# scattering more than 3 times the typical star are dropped first. `nothing`
+# with fewer than 3 stars.
+function _comparison_zeropoints(v)
+    n = length(first(v))
+    common = [i for i in 1:n if all(isfinite(vk[i]) for vk in v)]
+    length(common) >= 3 || return nothing, nothing
+    V = [vk[i] for vk in v, i in common]
+    offsets() = [median(V[k, :] .- vec(mean(V; dims=1))) for k in axes(V, 1)]
+    spread = vec(std(V .- offsets(); dims=1))
+    keep = spread .<= 3 * median(spread)
+    count(keep) >= 3 && (V = V[:, keep])
+    level = median(vec(mean(V; dims=1)))
+    off = offsets()
+    zp = level .+ off
+    zp_err = map(axes(V, 1)) do k
+        d = V[k, :] .- vec(mean(V; dims=1)) .- off[k]
+        1.2533 * 1.4826 * median(abs.(d)) / sqrt(size(V, 2))
+    end
+    return zp, zp_err
 end
 
 # Aperture flux at (x, y) with its error: the annulus's robust scatter over the
