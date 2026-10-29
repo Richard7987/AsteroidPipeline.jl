@@ -69,7 +69,9 @@ means a fixed target. Within a night this is better than an orbit, since it
 comes from the object itself; it doesn't follow curvature over days.
 
 Each frame's WCS is refined against Gaia DR3 stars (`reference_stars`, or
-fetched once for the first frame's field). The zero points come from the
+fetched once for the first frame's field); a frame without one, or whose
+header WCS can't be refined, is solved from its pointing
+([`solve_wcs`](@ref)). The zero points come from the
 same comparison stars in every frame: catalogue stars inside all of them,
 measured with the object's aperture at signal-to-noise 30 or more, away
 from its track, and dropping any whose brightness varies far more than the
@@ -114,15 +116,22 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
     end
 
     stars = reference_stars
+    solve_cache = Ref{Any}(nothing)
     frames = map(enumerate(fits_paths)) do (k, path)
         image, header, hdr = FITS(path, "r") do f
             permutedims(Float64.(read(f[1]))), read_header(f[1], String), read_header(f[1])
         end
         epoch = frame_epoch(hdr; timestamp_key, exptime_key)
         mask = fill_value_mask(image)
-        wcs = load_wcs(header)
+        wcs = first(_header_or_solved_wcs(image, header, hdr, epoch, solve_cache))
         stars === nothing && (stars = _field_reference_stars(image, wcs, epoch))
         refined = refine_wcs(image, wcs, stars; mask)
+        pointing = frame_pointing(hdr)
+        if !refined.refined && pointing !== nothing
+            # a header WCS can be wrong beyond refining: a mirrored axis
+            solved = solve_wcs(image, pointing..., stars; mask)
+            solved.wcs === nothing || (refined = solved)
+        end
         refined.refined && (wcs = refined.wcs)
         own = photometric_zeropoint(image, wcs, stars; mask, aperture_radius)
         g = gain !== nothing ? gain : haskey(hdr, "GAIN") ? Float64(hdr["GAIN"]) : nothing
