@@ -1351,12 +1351,18 @@ end
                             flux_err=fill(5.0, length(xs)), xcen=Float64.(xs), ycen=Float64.(ys), sharpness=fill(0.6, length(xs)))
         # a hot pixel at (40, 40) in every frame's own grid; a mover elsewhere
         frames = [det([40.0, 100.0 + 10k], [40.0, 60.0]) for k in 1:4]
-        kept = P._drop_detector_fixed(frames, 2.0)
+        times = [0.0, 0.01, 0.02, 0.03]
+        kept = P._drop_detector_fixed(frames, 2.0, times)
         @test all(f -> !any(d -> d.xcen == 40.0, f), kept)
         @test all(length.(kept) .== 1)
         # only twice: could be chance, kept
         twice = [det([40.0], [40.0]), det([40.0], [40.0]), det([70.0], [70.0]), det([90.0], [90.0])]
-        @test length.(P._drop_detector_fixed(twice, 2.0)) == [1, 1, 1, 1]
+        @test length.(P._drop_detector_fixed(twice, 2.0, times)) == [1, 1, 1, 1]
+        # 20 exposures 30 s apart: a mover 1.5 px per frame meets itself in the
+        # frames next to it, the hot pixel in all of them
+        dense = [det([40.0, 100.0 + 1.5k], [40.0, 60.0]) for k in 1:20]
+        kept = P._drop_detector_fixed(dense, 2.0, (1:20) .* (30 / 86400))
+        @test all(f -> length(f) == 1 && f[1].xcen != 40.0, kept)
 
         Random.seed!(16)
         img = 100.0 .+ 5.0 .* randn(120, 120)
