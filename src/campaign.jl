@@ -599,6 +599,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
         push!(header_wcs, w); push!(epochs, epoch)
     end
     progress(:refine, 0.25)
+    _warn_short_sequence!(warnings, images[1], masks[1], header_wcs[1], epochs)
     refined = refine_wcs_set(images, header_wcs, stars; masks)
     images = masks = nothing
     for (k, r) in enumerate(refined)
@@ -665,6 +666,23 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
             frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, known=known,
             unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, expected=expected, report=report, report_kind=report_kind,
             warnings=warnings)
+end
+
+# The difference images subtract the sequence's median: an object moving
+# less than about 4 times the seeing across all the frames is in that median
+# and subtracts itself away. Warned past 10"/h, which IASC sets (~50 min,
+# ~1" seeing: 4-5"/h) don't reach.
+function _warn_short_sequence!(warnings, image, mask, wcs, epochs)
+    fwhm = try
+        _measure_fwhm(image, mask) * _pixel_scale_arcsec(wcs, size(image))
+    catch
+        return
+    end
+    hours = (maximum(epochs) - minimum(epochs)) * 24
+    slowest = 4 * fwhm / hours
+    slowest > 10.0 || return
+    push!(warnings, "the frames span $(round(Int, 60hours)) min: objects slower than $(round(Int, slowest))\"/h " *
+                    "move less than 4 times the seeing ($(round(fwhm; digits=1))\") across them and are subtracted with the stars")
 end
 
 # MPCORB's orbits osculate at one epoch; propagated two-body further than
