@@ -306,50 +306,100 @@ _similarity_matrix(f) = [f.a -f.b; f.b f.a] * [(f.mirror ? -1.0 : 1.0) 0.0; 0.0 
 # the wider the field, the larger the sky to query and the brighter its limit.
 const _SOLVE_LADDER = ((0.2, 0.6, 19.0), (0.6, 1.8, 18.0), (1.8, 3.0, 16.5))
 
+# The fields solved so far: each one's pointing, Gaia stars, scale, and the
+# frames solved there (epoch, pointing, WCS). Safe to share between threads:
+# a WCS goes in and out as a copy (wcslib isn't safe on one shared between
+# threads), and `query` lets one thread at a time fetch a new field's stars.
+struct _SolveCache
+    fields::Vector{Any}
+    lock::ReentrantLock
+    query::ReentrantLock
+end
+_SolveCache() = _SolveCache(Any[], ReentrantLock(), ReentrantLock())
+
+_solved_field(ra, dec, stars, scale, epoch, wcs) =
+    (ra=ra, dec=dec, stars=stars, scale=scale, solved=Any[(epoch=epoch, ra=ra, dec=dec, wcs=deepcopy(wcs))])
+
 """
     _header_or_solved_wcs(image, header_string, header, epoch, cache) -> (wcs, solved)
 
 The frame's WCS from its header ([`load_wcs`](@ref)) or, when it has none,
 from [`solve_wcs`](@ref) at its pointing ([`frame_pointing`](@ref)). Gaia
-stars are fetched for the first frame and kept in `cache` (a `Ref`, initially
-`nothing`) with the scale found, so the other frames of the field are solved
-from them, or, where too few of their stars match, from the last solved
-frame's WCS refined ([`refine_wcs`](@ref)). `solved` says which.
+stars are fetched for the first frame of a field and kept in `cache` (a
+`_SolveCache`) with the scale found, so the other frames of the field are
+solved from them, or, where too few of their stars match, from the WCS of
+the frame solved there nearest in time, refined ([`refine_wcs`](@ref)). Every field is kept: a
+telescope whose header gives the pointing in two equinoxes, frame by frame,
+queries Gaia twice, not at every change; and a frame of a known field that
+none of this solves is not queried for again. With `reference_stars`, a
+new field is solved from them before Gaia is queried. `solved` says which.
 """
-function _header_or_solved_wcs(image, header_string, header, epoch, cache::Ref)
+function _header_or_solved_wcs(image, header_string, header, epoch, cache::_SolveCache; reference_stars=nothing)
     try
         return load_wcs(header_string), false
     catch e
         pointing = frame_pointing(header)
         pointing === nothing && rethrow(e)
         ra, dec = pointing
-        c = cache[]
-        if c !== nothing && _angular_distance_arcsec(ra, dec, c.ra, c.dec) < 600
-            r = solve_wcs(image, ra, dec, c.stars; scale_range=(0.95, 1.05) .* c.scale)
-            if r.wcs === nothing
-                # a sparse field can leave too few triangles; the last solved
-                # frame's WCS, moved by the change in pointing, refines instead
-                w = deepcopy(c.wcs)
-                w.crval = w.crval .+ [ra - c.last[1], dec - c.last[2]]
-                r = refine_wcs(image, w, c.stars)
-                r = r.refined ? r : (wcs=nothing,)
+        known = lock(() -> length(cache.fields), cache.lock)
+        w = _solve_from_cache(image, ra, dec, epoch, cache, 1:known)
+        w === nothing || return w, true
+        lock(cache.query)
+        try
+            # another thread may have fetched this field meanwhile
+            now = lock(() -> length(cache.fields), cache.lock)
+            w = _solve_from_cache(image, ra, dec, epoch, cache, known+1:now)
+            w === nothing || return w, true
+            if !any(c -> _angular_distance_arcsec(ra, dec, c.ra, c.dec) < 600, lock(() -> copy(cache.fields), cache.lock))
+                if reference_stars !== nothing
+                    r = solve_wcs(image, ra, dec, reference_stars)
+                    if r.wcs !== nothing
+                        field = _solved_field(ra, dec, reference_stars, r.scale, epoch, r.wcs)
+                        lock(() -> push!(cache.fields, field), cache.lock)
+                        return r.wcs, true
+                    end
+                end
+                ny, nx = size(image)
+                for (lo, hi, faintest) in _SOLVE_LADDER
+                    radius = (600 + hypot(nx, ny) / 2 * hi) / 3600
+                    stars = gaia_reference_stars(ra, dec, radius; epoch_jd=epoch, mag_range=(6.0, faintest))
+                    r = solve_wcs(image, ra, dec, stars; scale_range=(lo, hi))
+                    r.wcs === nothing && continue
+                    lock(() -> push!(cache.fields, _solved_field(ra, dec, stars, r.scale, epoch, r.wcs)), cache.lock)
+                    return r.wcs, true
+                end
             end
-            if r.wcs !== nothing
-                cache[] = merge(c, (wcs=r.wcs, last=(ra, dec)))
-                return r.wcs, true
-            end
-        end
-        ny, nx = size(image)
-        for (lo, hi, faintest) in _SOLVE_LADDER
-            radius = (600 + hypot(nx, ny) / 2 * hi) / 3600
-            stars = gaia_reference_stars(ra, dec, radius; epoch_jd=epoch, mag_range=(6.0, faintest))
-            r = solve_wcs(image, ra, dec, stars; scale_range=(lo, hi))
-            r.wcs === nothing && continue
-            cache[] = (ra=ra, dec=dec, stars=stars, scale=r.scale, wcs=r.wcs, last=(ra, dec))
-            return r.wcs, true
+        finally
+            unlock(cache.query)
         end
         error("no WCS in the header, and none found around its pointing ($ra, $dec)")
     end
+end
+
+# The frame solved from the cached fields `range` within 10′ of its pointing,
+# nearest first; `nothing` if none solves it.
+function _solve_from_cache(image, ra, dec, epoch, cache::_SolveCache, range)
+    distance(c) = _angular_distance_arcsec(ra, dec, c.ra, c.dec)
+    fields = lock(() -> cache.fields[range], cache.lock)
+    for c in sort(filter(c -> distance(c) < 600, fields); by=distance)
+        r = solve_wcs(image, ra, dec, c.stars; scale_range=(0.95, 1.05) .* c.scale)
+        if r.wcs === nothing
+            # a sparse field can leave too few triangles; the WCS of the frame
+            # nearest in time, moved by the change in pointing, refines instead
+            near = lock(cache.lock) do
+                p = argmin(q -> abs(q.epoch - epoch), c.solved)
+                (ra=p.ra, dec=p.dec, wcs=deepcopy(p.wcs))
+            end
+            w = near.wcs
+            w.crval = w.crval .+ [ra - near.ra, dec - near.dec]
+            r = refine_wcs(image, w, c.stars)
+            r = r.refined ? r : (wcs=nothing,)
+        end
+        r.wcs === nothing && continue
+        lock(() -> push!(c.solved, (epoch=epoch, ra=ra, dec=dec, wcs=deepcopy(r.wcs))), cache.lock)
+        return r.wcs
+    end
+    return nothing
 end
 
 # A copy of the frame in `dir` with the WCS as header keywords: the original

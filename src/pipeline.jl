@@ -177,7 +177,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
     r_sources = reference === nothing ? nothing :
                 detect_sources(permutedims(reference.image); threshold=psf_threshold)
 
-    solve_cache = Ref{Any}(nothing)
+    solve_cache = _SolveCache()
     for path in fits_paths
         FITS(path, "r") do f
             hdu = f[1]
@@ -188,7 +188,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
             epoch = frame_epoch(read_header(hdu); timestamp_key, exptime_key)
             frame_wcs = try
                 first(_header_or_solved_wcs(permutedims(raw), read_header(hdu, String), read_header(hdu),
-                                            epoch, solve_cache))
+                                            epoch, solve_cache; reference_stars))
             catch e
                 plate_solve_api_key === nothing && rethrow(e)
                 plate_solve(path; api_key=plate_solve_api_key)

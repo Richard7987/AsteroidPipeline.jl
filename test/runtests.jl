@@ -226,17 +226,36 @@ end
                       gmag=stars.gmag)
         @test solve_wcs(image, 150.0, 10.0, other).wcs === nothing
 
-        # the next frame through the cache, where the triangles fail (a scale outside
-        # the cached one's): the last solved WCS, moved by the pointing's change, is refined
-        pointing = (150.0 + 0.02, 10.0 - 0.01)
-        last = WCSTransform(2; crpix=truth.crpix, crval=truth.crval .- [0.02, -0.01], cdelt=[1.0, 1.0],
-                            pc=R, ctype=truth.ctype)
-        cache = Ref{Any}((ra=150.0, dec=10.0, stars=stars, scale=2scale, wcs=last, last=(150.0, 10.0)))
-        w, solved = AsteroidPipeline._header_or_solved_wcs(image, "", Dict("RA" => pointing[1], "DEC" => pointing[2]),
-                                                           0.0, cache)
-        @test solved && cache[].last == pointing
-        a, b = pix_to_world(w, [1.0, 1.0]), pix_to_world(truth, [1.0, 1.0])
-        @test hypot((a[1] - b[1]) * cosd(b[2]), a[2] - b[2]) * 3600 < 0.1
+# the next frame through the cache, where the triangles fail (a scale outside
+# the cached one's): the WCS of the frame solved nearest in time, moved by the
+# pointing's change, is refined -- not one solved later, 3′ off. Another field
+# solved before, 15′ away, is kept and left alone.
+pointing = (150.0 + 0.02, 10.0 - 0.01)
+near = WCSTransform(2; crpix=truth.crpix, crval=truth.crval .- [0.02, -0.01], cdelt=[1.0, 1.0],
+                    pc=R, ctype=truth.ctype)
+later = WCSTransform(2; crpix=truth.crpix, crval=near.crval .+ [0.05, 0.0], cdelt=[1.0, 1.0],
+                     pc=R, ctype=truth.ctype)
+elsewhere = AsteroidPipeline._solved_field(150.0, 10.25, other, scale, 0.0, truth)
+field = AsteroidPipeline._solved_field(150.0, 10.0, stars, 2scale, 0.0, near)
+push!(field.solved, (epoch=5.0, ra=150.0, dec=10.0, wcs=later))
+cache = AsteroidPipeline._SolveCache()
+push!(cache.fields, elsewhere, field)
+w, solved = AsteroidPipeline._header_or_solved_wcs(image, "", Dict("RA" => pointing[1], "DEC" => pointing[2]),
+                                                   0.1, cache)
+@test solved && length(cache.fields) == 2
+@test cache.fields[1] === elsewhere && length(field.solved) == 3 && field.solved[3].epoch == 0.1
+a, b = pix_to_world(w, [1.0, 1.0]), pix_to_world(truth, [1.0, 1.0])
+@test hypot((a[1] - b[1]) * cosd(b[2]), a[2] - b[2]) * 3600 < 0.1
+# a new field, with the caller's stars: solved from them, without Gaia
+fresh = AsteroidPipeline._SolveCache()
+w2, solved2 = AsteroidPipeline._header_or_solved_wcs(image, "", Dict("RA" => 150.0 + (2 / 60) / cosd(10.0),
+                                                                     "DEC" => 10.0), 0.0, fresh; reference_stars=stars)
+@test solved2 && only(fresh.fields).stars === stars
+# a known field's frame that nothing solves is not queried for again
+lost = AsteroidPipeline._SolveCache()
+push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0, truth))
+@test_throws r"none found" AsteroidPipeline._header_or_solved_wcs(image, "", Dict("RA" => 150.0, "DEC" => 10.0),
+                                                                  0.0, lost)
 
         @test all(frame_pointing(Dict("OBJCTRA" => "23:29:55.92", "OBJCTDEC" => "-6:40:22.93")) .≈
                   (15 * (23 + 29 / 60 + 55.92 / 3600), -(6 + 40 / 60 + 22.93 / 3600)))

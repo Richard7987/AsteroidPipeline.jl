@@ -117,7 +117,7 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
     end
 
     stars = reference_stars
-    solve_cache = Ref{Any}(nothing)
+    solve_cache = _SolveCache()
     frames = map(enumerate(fits_paths)) do (k, path)
         image, header, hdr = FITS(path, "r") do f
             permutedims(Float64.(read(f[1]))), read_header(f[1], String), read_header(f[1])
@@ -125,7 +125,7 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
         epoch = frame_epoch(hdr; timestamp_key, exptime_key)
         mask = fill_value_mask(image)
         wcs = try
-            first(_header_or_solved_wcs(image, header, hdr, epoch, solve_cache))
+            first(_header_or_solved_wcs(image, header, hdr, epoch, solve_cache; reference_stars))
         catch e
             e isa ErrorException || rethrow(e)
             @warn "frame left out of the light curve: $(sprint(showerror, e))" path
