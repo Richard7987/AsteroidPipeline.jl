@@ -1661,6 +1661,11 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         slow = 13.0 .+ 0.1 .* sinpi.(2 .* hours ./ 4.6) .+ 0.01 .* randn(300)
         @test_logs (:warn, r"of the time the light curve covers") fourier_period(hours, slow; minimum_period=1.0,
                                                                                   maximum_period=5.0)
+        # months of sparse points: an uncertainty far below the search's first step, still measured
+        days = sort(150 .* rand(85))
+        sparse = 0.25 .* cospi.(4 .* days ./ (P / 24)) .+ 0.05 .* cospi.(2 .* days ./ (P / 24)) .+ 0.02 .* randn(85)
+        s = fourier_period(days, sparse; minimum_period=1 / 24, maximum_period=5 / 24, order=2)
+        @test 0 < s.period_error < 1e-5 && abs(s.period - P / 24) < 4 * s.period_error
         @test_throws ArgumentError fourier_period(hours, mag; minimum_period=5.0, maximum_period=1.0)
         @test_throws ArgumentError fourier_period(hours[1:9], mag[1:9]; minimum_period=1.0, maximum_period=5.0)
     end

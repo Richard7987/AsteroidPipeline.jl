@@ -346,11 +346,19 @@ function fourier_period(times::AbstractVector{<:Real}, mag::AbstractVector{<:Rea
     freqs = collect(range(1 / maximum_period, 1 / minimum_period; length=n))
     chi = [first(fit(1 / f)) for f in freqs]
     i = argmin(chi)
-    fine = collect(range(freqs[max(i - 1, 1)], freqs[min(i + 1, end)]; length=201))
-    fine_chi = [first(fit(1 / f)) for f in fine]
-    j = argmin(fine_chi)
+    lo, hi = freqs[max(i - 1, 1)], freqs[min(i + 1, end)]
+    local fine, fine_chi, j, inside
+    # narrowed until the Δχ² = 1 interval spans several steps, so its width is measured
+    for _ in 1:6
+        fine = collect(range(lo, hi; length=201))
+        fine_chi = [first(fit(1 / f)) for f in fine]
+        j = argmin(fine_chi)
+        inside = fine_chi ./ fine_chi[j] .* dof .<= dof + 1
+        count(inside) >= 10 && break
+        lo, hi = fine[max(j - 2, 1)], fine[min(j + 2, end)]
+    end
     period = 1 / fine[j]
-    within = 1 ./ fine[fine_chi ./ fine_chi[j] .* dof .<= dof + 1]
+    within = 1 ./ fine[inside]
     period_error = (maximum(within) - minimum(within)) / 2
 
     # a period about as long as the series fits a drift as well as a rotation
