@@ -126,4 +126,4 @@ def setup(julia: str, on_line: Callable[[str], None] = lambda line: None) -> Non
 
 
 def server_command(julia: str) -> list[str]:
-    return [julia, f"--project={env_dir()}", "--startup-file=no", str(SERVER)]
+    return [julia, f"--project={env_dir()}", "--startup-file=no", "--threads=auto", str(SERVER)]

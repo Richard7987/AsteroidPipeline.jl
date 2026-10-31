@@ -76,7 +76,9 @@ in the other frames.
 
 An IASC set's four exposures in 45 minutes are too few for a period, which
 needs a series covering one or more full rotations: hours, or several
-nights.
+nights. Such a series is measured on every core when Julia is started with
+`julia -t auto`: a night of 400 frames took 74 s on 8 cores, 138 s on one,
+with the same result.
 
 ## Several nights
 

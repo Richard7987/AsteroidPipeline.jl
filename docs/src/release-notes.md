@@ -11,7 +11,9 @@ from the version picker at the top right.
   where it is in each frame (its motion fitted from a few positions), with
   frames where it crosses a star marked, and the zero points from the same
   comparison stars in every frame. A frame with no astrometric solution is
-  left out with a warning instead of stopping the curve.
+  left out with a warning instead of stopping the curve. Frames are measured
+  on every thread Julia has (`julia -t auto`); the terminal app starts its
+  engine on every core.
 - [`reduced_magnitudes`](@ref) and [`object_geometry`](@ref): magnitudes
   corrected for distance, phase angle and light time with the geometry
   from JPL Horizons, so several nights make one light curve.

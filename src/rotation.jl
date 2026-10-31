@@ -72,7 +72,9 @@ Each frame's WCS is refined against Gaia DR3 stars (`reference_stars`, or
 fetched once for the first frame's field); a frame without one, or whose
 header WCS can't be refined, is solved from its pointing
 ([`solve_wcs`](@ref)); one where none is found is kept, with a warning, as
-a row of `NaN`. The zero points come from the
+a row of `NaN`. Frames are measured in parallel on Julia's threads (start
+Julia with `-t auto` to use every core); the result doesn't depend on how
+many. The zero points come from the
 same comparison stars in every frame: catalogue stars inside all of them,
 measured with the object's aperture at signal-to-noise 30 or more, away
 from its track, and dropping any whose brightness varies far more than the
@@ -118,9 +120,12 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
 
     stars = reference_stars
     solve_cache = _SolveCache()
-    frames = map(enumerate(fits_paths)) do (k, path)
-        image, header, hdr = FITS(path, "r") do f
-            permutedims(Float64.(read(f[1]))), read_header(f[1], String), read_header(f[1])
+    fits_lock = ReentrantLock()
+    function measure(k, path)
+        image, header, hdr = lock(fits_lock) do
+            FITS(path, "r") do f
+                permutedims(Float64.(read(f[1]))), read_header(f[1], String), read_header(f[1])
+            end
         end
         epoch = frame_epoch(hdr; timestamp_key, exptime_key)
         mask = fill_value_mask(image)
@@ -169,6 +174,18 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
         (frame=k, epoch=epoch, ra=ra, dec=dec, x=x, y=y, recentred=recentred, flux=m.flux,
          flux_err=m.flux_err, own=own, v=v, scale=_pixel_scale_arcsec(wcs, size(image)))
     end
+    # in order until a frame is measured (the field's stars and Gaia queries
+    # fetched once), then the rest on every thread
+    measured = Vector{Any}(undef, length(fits_paths))
+    k = 0
+    while k < length(fits_paths) && (k == 0 || isempty(measured[k].v))
+        k += 1
+        measured[k] = measure(k, fits_paths[k])
+    end
+    Threads.@threads for j in k+1:length(fits_paths)
+        measured[j] = measure(j, fits_paths[j])
+    end
+    frames = [f for f in measured]
 
     own = [f.own.zeropoint for f in frames]
     zp, zp_err = _comparison_zeropoints([f.v for f in frames])
