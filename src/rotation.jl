@@ -291,6 +291,83 @@ function recover_rotation_period(times::AbstractVector{<:Real}, flux::AbstractVe
 end
 
 """
+    fourier_period(times, mag; minimum_period, maximum_period, order=4, trend=false,
+                   mag_err=nothing) -> (period, period_error, amplitude, rms, periods, chi2)
+
+An asteroid's rotation period from its light curve, the way asteroid
+photometry measures it: a Fourier series of the rotation phase to `order`
+harmonics, fitted to the magnitudes by least squares at each trial period
+between `minimum_period` and `maximum_period` (in the unit of `times`); the
+period is where the fit's χ² is least.
+
+An elongated asteroid brightens twice per rotation, and its two maxima
+and two minima differ. One sinusoid, as in [`recover_rotation_period`](@ref)'s
+periodogram, fits such a curve best at half the period; the second and
+higher harmonics tell the two halves apart. 4 is usual for a night or a
+few; a higher `order` fits more detail and needs more points. With
+`trend`, a straight line in time is fitted with the series, for a drift
+through the night that isn't the rotation (an unfiltered colour as the
+airmass changes). `mag_err` weights the points.
+
+`period_error` is where χ² grows by 1 from its least, the residuals scaled
+to unit variance; `amplitude` is the fitted curve's peak to peak, and `rms`
+the residuals'. `periods` and `chi2` (reduced) are the whole search, to see
+its other minima: half or twice the period, or aliases of the gaps between
+nights. When ``2P`` fits about as well as ``P``, compare the light curve
+folded on each. A period longer than about 0.8 of the time the light curve
+covers is warned of: a Fourier series that long fits any drift.
+"""
+function fourier_period(times::AbstractVector{<:Real}, mag::AbstractVector{<:Real};
+                        minimum_period::Real, maximum_period::Real, order::Integer=4,
+                        trend::Bool=false, mag_err::Union{Nothing,AbstractVector{<:Real}}=nothing)
+    0 < minimum_period < maximum_period ||
+        throw(ArgumentError("need 0 < minimum_period < maximum_period"))
+    order >= 1 || throw(ArgumentError("order must be at least 1"))
+    length(times) == length(mag) || throw(ArgumentError("times and mag must have the same length"))
+    t = Float64.(times) .- mean(times)
+    m = Float64.(mag)
+    w = mag_err === nothing ? ones(length(m)) : 1 ./ Float64.(mag_err)
+    nparam = 1 + trend + 2order
+    dof = length(m) - nparam
+    dof > 0 || throw(ArgumentError("$(length(m)) points can't fit $nparam parameters"))
+
+    design(P) = hcat(ones(length(t)), (trend ? (t,) : ())...,
+                     (f.(2π * k .* t ./ P) for k in 1:order for f in (sin, cos))...)
+    function fit(P)
+        X = design(P)
+        β = (w .* X) \ (w .* m)
+        return sum(abs2, w .* (m .- X * β)), β, X
+    end
+    # a frequency step that moves the highest harmonic by a tenth of a cycle
+    # over the span; then a step 100 times finer around the least
+    span = maximum(t) - minimum(t)
+    step = 1 / (10 * order * span)
+    n = max(2, ceil(Int, (1 / minimum_period - 1 / maximum_period) / step) + 1)
+    freqs = collect(range(1 / maximum_period, 1 / minimum_period; length=n))
+    chi = [first(fit(1 / f)) for f in freqs]
+    i = argmin(chi)
+    fine = collect(range(freqs[max(i - 1, 1)], freqs[min(i + 1, end)]; length=201))
+    fine_chi = [first(fit(1 / f)) for f in fine]
+    j = argmin(fine_chi)
+    period = 1 / fine[j]
+    within = 1 ./ fine[fine_chi ./ fine_chi[j] .* dof .<= dof + 1]
+    period_error = (maximum(within) - minimum(within)) / 2
+
+    # a period about as long as the series fits a drift as well as a rotation
+    period > 0.8 * span &&
+        @warn "the period found, $(round(period; sigdigits=4)), is $(round(Int, 100 * period / span))% of the " *
+              "time the light curve covers: a drift through it fits as well as a rotation; observe longer, " *
+              "fit `trend`, or lower `maximum_period`"
+    best, β, X = fit(period)
+    first_harmonic = 2 + trend
+    phase = range(0, 1; length=1001)
+    curve = [sum(β[first_harmonic+2(k-1)] * sinpi(2k * φ) + β[first_harmonic+2(k-1)+1] * cospi(2k * φ) for k in 1:order)
+             for φ in phase]
+    return (period=period, period_error=period_error, amplitude=maximum(curve) - minimum(curve),
+            rms=sqrt(sum(abs2, m .- X * β) / dof), periods=1 ./ freqs, chi2=chi ./ dof)
+end
+
+"""
     object_geometry(object, epochs; observatory=nothing) -> Table
 
 A solar-system object's geometry at each UTC Julian Date of `epochs`, from

@@ -55,8 +55,16 @@ r = analyze_set("set.zip"; workdir="work", observatory="F51")
 tracklet = [c for c in r.candidates if c.id == 1]
 lc = moving_light_curve(night_paths, tracklet)
 good = .!lc.star_nearby .& isfinite.(lc.mag)
-p = recover_rotation_period(lc.epoch[good], lc.mag[good]; minimum_period=0.05, maximum_period=1.0)
+p = fourier_period(lc.epoch[good], lc.mag[good]; minimum_period=0.05, maximum_period=0.2, trend=true)
 ```
+
+[`fourier_period`](@ref) fits a Fourier series of the rotation phase, the
+usual model for an asteroid: its two maxima per rotation differ, which
+the second and higher harmonics tell apart, where
+[`recover_rotation_period`](@ref)'s periodogram finds half the period. `trend`
+fits a drift through the night with it. A period about as long as the
+night is warned of, since a series that long fits any drift: the night
+has to cover the rotation, better twice.
 
 Its motion is fitted as a straight line in RA and Dec, which holds within a
 night, and the aperture follows it into every frame. Where the object is
@@ -92,7 +100,7 @@ with the geometry of each epoch from JPL Horizons
 epochs, mags = lc.epoch[good], lc.mag[good]      # every night's, together
 g = object_geometry(624, epochs; observatory="I41")
 red = reduced_magnitudes(epochs, mags, g)
-p = recover_rotation_period(red.epoch, red.mag; minimum_period=2/24, maximum_period=20/24)
+p = fourier_period(red.epoch, red.mag; minimum_period=2/24, maximum_period=20/24, order=2)
 ```
 
 The phase angle's effect follows the H-G model with `G=0.15` unless another
