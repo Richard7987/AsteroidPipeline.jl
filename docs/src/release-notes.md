@@ -49,6 +49,10 @@ from the version picker at the top right.
 
 **Fixed**
 
+- While a copy of Gaia was down, every query waited out its timeouts
+  before trying the next one: minutes for every frame of a sequence
+  observed over many fields. A service that failed is tried last for the
+  next 15 minutes.
 - The terminal app treated a damaged labels or designations file as empty,
   and overwrote it at the next save: every label, or the designations
   already reported, lost. It now says the file is damaged and saves

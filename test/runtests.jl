@@ -1290,6 +1290,7 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             return csv
         end
         try
+            empty!(AsteroidPipeline._GAIA_DOWN)
             dir = mktempdir()
             s1 = @test_logs (:warn, r"Gaia archive") (:warn, r"VizieR") gaia_reference_stars(
                 3.05, -10.74, 0.05; epoch_jd=2457389.0, cache=dir)
@@ -1297,9 +1298,14 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test s1.ra ≈ [3.05, 3.06, 3.07] && s1.gmag ≈ [15.5, 17.0, 18.0]
             s2 = gaia_reference_stars(3.05, -10.74, 0.05; epoch_jd=2457389.0 + 3652.5, cache=dir)
             @test length(answered) == 3
+            # another field: the services that just failed are tried last, so
+            # NOIRLab's copy is asked first and answers
+            gaia_reference_stars(3.5, -10.74, 0.05; epoch_jd=2457389.0, cache=dir)
+            @test length(answered) == 4 && occursin("noirlab", answered[4])
             @test s2.dec[1] ≈ -10.74 - 20.0 * 10 / 3.6e6 && s2.dec[2:3] == [-10.75, -10.76]   # proper motion, or none (empty or NaN)
         finally
             AsteroidPipeline._TAP_RESPONSES[] = recorded
+            empty!(AsteroidPipeline._GAIA_DOWN)
         end
 
         try
