@@ -49,6 +49,10 @@ from the version picker at the top right.
 
 **Fixed**
 
+- The terminal app gave two sets of the same name (two `set.zip`, in different
+  folders) one saved analysis, one set of labels and the same temporary
+  designations: one of them was listed, and could be shown the other's
+  candidates. Each now has its own.
 - Known objects from the MPC's orbit file were lost on a set of more than
   about 50 frames: the observatory's positions were asked of JPL Horizons
   in one request, which it refuses (HTTP 502) past that, and the failure
