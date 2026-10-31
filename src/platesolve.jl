@@ -313,7 +313,8 @@ The frame's WCS from its header ([`load_wcs`](@ref)) or, when it has none,
 from [`solve_wcs`](@ref) at its pointing ([`frame_pointing`](@ref)). Gaia
 stars are fetched for the first frame and kept in `cache` (a `Ref`, initially
 `nothing`) with the scale found, so the other frames of the field are solved
-from them. `solved` says which.
+from them, or, where too few of their stars match, from the last solved
+frame's WCS refined ([`refine_wcs`](@ref)). `solved` says which.
 """
 function _header_or_solved_wcs(image, header_string, header, epoch, cache::Ref)
     try
@@ -325,7 +326,18 @@ function _header_or_solved_wcs(image, header_string, header, epoch, cache::Ref)
         c = cache[]
         if c !== nothing && _angular_distance_arcsec(ra, dec, c.ra, c.dec) < 600
             r = solve_wcs(image, ra, dec, c.stars; scale_range=(0.95, 1.05) .* c.scale)
-            r.wcs === nothing || return r.wcs, true
+            if r.wcs === nothing
+                # a sparse field can leave too few triangles; the last solved
+                # frame's WCS, moved by the change in pointing, refines instead
+                w = deepcopy(c.wcs)
+                w.crval = w.crval .+ [ra - c.last[1], dec - c.last[2]]
+                r = refine_wcs(image, w, c.stars)
+                r = r.refined ? r : (wcs=nothing,)
+            end
+            if r.wcs !== nothing
+                cache[] = merge(c, (wcs=r.wcs, last=(ra, dec)))
+                return r.wcs, true
+            end
         end
         ny, nx = size(image)
         for (lo, hi, faintest) in _SOLVE_LADDER
@@ -333,7 +345,7 @@ function _header_or_solved_wcs(image, header_string, header, epoch, cache::Ref)
             stars = gaia_reference_stars(ra, dec, radius; epoch_jd=epoch, mag_range=(6.0, faintest))
             r = solve_wcs(image, ra, dec, stars; scale_range=(lo, hi))
             r.wcs === nothing && continue
-            cache[] = (ra=ra, dec=dec, stars=stars, scale=r.scale)
+            cache[] = (ra=ra, dec=dec, stars=stars, scale=r.scale, wcs=r.wcs, last=(ra, dec))
             return r.wcs, true
         end
         error("no WCS in the header, and none found around its pointing ($ra, $dec)")

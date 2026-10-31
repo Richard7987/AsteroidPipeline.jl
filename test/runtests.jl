@@ -226,6 +226,18 @@ end
                       gmag=stars.gmag)
         @test solve_wcs(image, 150.0, 10.0, other).wcs === nothing
 
+        # the next frame through the cache, where the triangles fail (a scale outside
+        # the cached one's): the last solved WCS, moved by the pointing's change, is refined
+        pointing = (150.0 + 0.02, 10.0 - 0.01)
+        last = WCSTransform(2; crpix=truth.crpix, crval=truth.crval .- [0.02, -0.01], cdelt=[1.0, 1.0],
+                            pc=R, ctype=truth.ctype)
+        cache = Ref{Any}((ra=150.0, dec=10.0, stars=stars, scale=2scale, wcs=last, last=(150.0, 10.0)))
+        w, solved = AsteroidPipeline._header_or_solved_wcs(image, "", Dict("RA" => pointing[1], "DEC" => pointing[2]),
+                                                           0.0, cache)
+        @test solved && cache[].last == pointing
+        a, b = pix_to_world(w, [1.0, 1.0]), pix_to_world(truth, [1.0, 1.0])
+        @test hypot((a[1] - b[1]) * cosd(b[2]), a[2] - b[2]) * 3600 < 0.1
+
         @test all(frame_pointing(Dict("OBJCTRA" => "23:29:55.92", "OBJCTDEC" => "-6:40:22.93")) .≈
                   (15 * (23 + 29 / 60 + 55.92 / 3600), -(6 + 40 / 60 + 22.93 / 3600)))
         @test frame_pointing(Dict("RA" => 352.48, "DEC" => -0.5)) == (352.48, -0.5)

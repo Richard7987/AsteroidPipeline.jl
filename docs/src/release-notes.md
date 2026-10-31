@@ -18,7 +18,9 @@ from the version picker at the top right.
   none, from the telescope's pointing alone ([`frame_pointing`](@ref)) —
   pixel scale, orientation and a mirrored axis found against Gaia DR3,
   without a web service. [`run_pipeline`](@ref) and [`analyze_set`](@ref)
-  use it for every frame without a WCS, before nova.astrometry.net.
+  use it for every frame without a WCS, before nova.astrometry.net; in a
+  sparse field, a frame it can't solve starts from the previous frame's
+  solution instead.
 - [`analyze_set`](@ref) warns when the frames span too little time for
   slow objects: below about 4 × seeing ÷ the span, an object is in the
   sequence's median and subtracts itself away.
