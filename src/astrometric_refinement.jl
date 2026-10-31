@@ -1,14 +1,19 @@
 """
-    gaia_reference_stars(ra, dec, radius_deg; epoch_jd::Real, mag_range=(12.0, 21.0)) -> Table
+    gaia_reference_stars(ra, dec, radius_deg; epoch_jd::Real, mag_range=(12.0, 21.0),
+                         cache=gaia_cache_dir()) -> Table
 
 Gaia DR3 stars within `radius_deg` of `(ra, dec)` (degrees), with G
-magnitude inside `mag_range` — a live network request, to the ESA Gaia
-archive's TAP service (`gaiadr3.gaia_source`), falling back to VizieR's
-copy (`I/355/gaiadr3`) if the archive fails with a network error, a
-timeout or a 5xx status. Two services because one did go down mid-run:
-VizieR's TAP answered 503 to every request for a sustained stretch while
-this was being validated, which would otherwise have stopped every
-`refine_astrometry` run cold.
+magnitude inside `mag_range`, from the first of three copies of the
+catalogue that answers: the ESA Gaia archive (`gaiadr3.gaia_source`),
+VizieR (`I/355/gaiadr3`, Strasbourg) and NOIRLab's Astro Data Lab
+(`gaia_dr3.gaia_source`, Tucson). One is tried after another on a network
+error, a timeout or a 5xx status: the first two, both in Europe, were down
+together for days in October 2026.
+
+Gaia DR3 doesn't change, so each answer is kept in `cache` (a directory;
+`nothing` to keep none) and the same query is answered from it after,
+without the network: a field analyzed again, or observed again, costs no
+query.
 
 Positions are propagated by proper motion from Gaia DR3's own epoch
 (J2016.0) to `epoch_jd` (a Julian Date, normally the frame's own); stars
@@ -20,11 +25,12 @@ Returns a table with columns `ra`, `dec` (degrees, at `epoch_jd`) and
 `gmag`, ready to pass to [`refine_wcs`](@ref).
 """
 function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
-                               epoch_jd::Real, mag_range=(12.0, 21.0))
+                               epoch_jd::Real, mag_range=(12.0, 21.0),
+                               cache::Union{Nothing,AbstractString}=gaia_cache_dir())
     0 < radius_deg <= 5 || throw(ArgumentError("radius_deg must be in (0, 5]"))
     lo, hi = mag_range
-    # Both queries alias their columns to the same names, so one parser
-    # serves either service.
+    # Every query aliases its columns to the same names, so one parser serves
+    # any service.
     cone(racol, deccol) = "CONTAINS(POINT('ICRS', $racol, $deccol), " *
                           "CIRCLE('ICRS', $ra, $dec, $radius_deg)) = 1"
     esa = "SELECT ra AS ra_deg, dec AS dec_deg, pmra AS pm_ra, pmdec AS pm_dec, " *
@@ -33,20 +39,43 @@ function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
     vizier = "SELECT RA_ICRS AS ra_deg, DE_ICRS AS dec_deg, pmRA AS pm_ra, pmDE AS pm_dec, " *
              "Gmag AS g FROM \"I/355/gaiadr3\" " *
              "WHERE $(cone("RA_ICRS", "DE_ICRS")) AND Gmag BETWEEN $lo AND $hi"
-    rows = try
-        _tap_query(_GAIA_ARCHIVE_TAP_URL, esa)
-    catch e
-        _is_service_failure(e) || rethrow()
-        @warn "Gaia archive unavailable; falling back to VizieR" exception=e
-        _tap_query(_VIZIER_TAP_URL, vizier)
+    # Data Lab's ADQL has no CONTAINS on this table; q3c is its own cone search
+    noirlab = "SELECT ra AS ra_deg, dec AS dec_deg, pmra AS pm_ra, pmdec AS pm_dec, " *
+              "phot_g_mean_mag AS g FROM gaia_dr3.gaia_source " *
+              "WHERE q3c_radial_query(ra, dec, $ra, $dec, $radius_deg) = 't' " *
+              "AND phot_g_mean_mag BETWEEN $lo AND $hi"
+    services = ((_GAIA_ARCHIVE_TAP_URL, esa, "the Gaia archive"), (_VIZIER_TAP_URL, vizier, "VizieR"),
+                (_NOIRLAB_TAP_URL, noirlab, "NOIRLab's Data Lab"))
+
+    cached = cache === nothing ? nothing : joinpath(cache, string(hash(esa); base=16) * ".csv")
+    text = cached !== nothing && isfile(cached) ? read(cached, String) : nothing
+    if text === nothing
+        for (k, (url, query, name)) in enumerate(services)
+            try
+                text = _tap_csv(url, query)
+                break
+            catch e
+                (_is_service_failure(e) && k < length(services)) || rethrow()
+                @warn "$name unavailable; trying $(services[k+1][3])" exception = e
+            end
+        end
+        if cached !== nothing
+            mkpath(cache)
+            tmp = tempname(cache)
+            write(tmp, text)
+            mv(tmp, cached; force=true)
+        end
     end
+    rows = CSV.File(IOBuffer(text))
 
     years = (epoch_jd - _GAIA_DR3_EPOCH_JD) / 365.25
     out_ra = Float64[]; out_dec = Float64[]; gmag = Float64[]
     for r in rows
         (ismissing(r.ra_deg) || ismissing(r.dec_deg)) && continue
-        pmra = ismissing(r.pm_ra) ? 0.0 : Float64(r.pm_ra)   # mas/yr, already * cos(dec)
-        pmde = ismissing(r.pm_dec) ? 0.0 : Float64(r.pm_dec)
+        # missing, or NaN as some services write it: no proper motion
+        pm(v) = ismissing(v) || !isfinite(v) ? 0.0 : Float64(v)
+        pmra = pm(r.pm_ra)   # mas/yr, already * cos(dec)
+        pmde = pm(r.pm_dec)
         d = Float64(r.dec_deg) + pmde * years / 3.6e6
         push!(out_ra, Float64(r.ra_deg) + pmra * years / 3.6e6 / cosd(d))
         push!(out_dec, d)
@@ -55,8 +84,18 @@ function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
     return Table(ra=out_ra, dec=out_dec, gmag=gmag)
 end
 
+"""
+    gaia_cache_dir() -> String
+
+Where [`gaia_reference_stars`](@ref) keeps the answers it got:
+`\$XDG_CACHE_HOME` (default `~/.cache`) `/AsteroidPipeline/gaia`. Deleting
+it only costs the queries again.
+"""
+gaia_cache_dir() = joinpath(get(ENV, "XDG_CACHE_HOME", joinpath(homedir(), ".cache")), "AsteroidPipeline", "gaia")
+
 const _GAIA_DR3_EPOCH_JD = 2457389.0   # J2016.0
 const _GAIA_ARCHIVE_TAP_URL = "https://gea.esac.esa.int/tap-server/tap/sync"
+const _NOIRLAB_TAP_URL = "https://datalab.noirlab.edu/tap/sync"
 
 """
     refine_wcs(image, wcs, stars; threshold=10.0, mask=nothing, max_offset=60.0,

@@ -7,6 +7,11 @@ from the version picker at the top right.
 
 **Added**
 
+- [`gaia_reference_stars`](@ref) keeps every answer on disk
+  ([`gaia_cache_dir`](@ref)), so a field analyzed or observed again needs
+  no query, and falls back to a third copy of Gaia DR3, NOIRLab's Astro Data
+  Lab in Tucson, when the ESA archive and VizieR (both in Europe) are down,
+  as they were together for days in October 2026.
 - [`moving_light_curve`](@ref): the light curve of a moving asteroid, measured
   where it is in each frame (its motion fitted from a few positions), with
   frames where it crosses a star marked, and the zero points from the same
@@ -33,12 +38,17 @@ from the version picker at the top right.
 
 **Changed**
 
+- Tests: Gaia, SIMBAD and VizieR answer from recorded answers
+  (`test/fixtures`), and the suite runs without waiting on them; the
+  newest Julia in CI still queries them live ([Development setup](development/setup.md)).
 - [`pipeline_config`](@ref) takes `n_frames`: a tracklet needs half of
   them, and at least 3. [`analyze_set`](@ref) passes the set's; a 4-frame
   set is unchanged.
 
 **Fixed**
 
+- [`gaia_reference_stars`](@ref) gave a `NaN` position to a star whose
+  proper motion a service writes as `NaN` instead of leaving it empty.
 - Long sequences at short cadence, checked on 40 frames of 4775 Hansen
   (0.84 m, San Pedro Mártir, 30 s apart), which gave the asteroid in
   overlapping tracklets of at most 26 of its 40 frames, and false ones of

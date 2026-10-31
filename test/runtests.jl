@@ -1278,15 +1278,39 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
 
     @testset "gaia_reference_stars" begin
         @test_throws ArgumentError gaia_reference_stars(3.05, -10.74, 10.0; epoch_jd=2460934.9)
+
+        # the archive and VizieR down: NOIRLab's copy answers, and its answer is
+        # kept, so the same query is answered again without the services
+        answered = String[]
+        csv = "ra_deg,dec_deg,pm_ra,pm_dec,g\n3.05,-10.74,10.0,-20.0,15.5\n3.06,-10.75,,,17.0\n3.07,-10.76,NaN,NaN,18.0\n"
+        recorded = AsteroidPipeline._TAP_RESPONSES[]
+        AsteroidPipeline._TAP_RESPONSES[] = function (url, query)
+            push!(answered, url)
+            occursin("noirlab", url) || throw(Base.IOError("down", 0))
+            return csv
+        end
+        try
+            dir = mktempdir()
+            s1 = @test_logs (:warn, r"Gaia archive") (:warn, r"VizieR") gaia_reference_stars(
+                3.05, -10.74, 0.05; epoch_jd=2457389.0, cache=dir)
+            @test length(answered) == 3 && occursin("noirlab", answered[3])
+            @test s1.ra ≈ [3.05, 3.06, 3.07] && s1.gmag ≈ [15.5, 17.0, 18.0]
+            s2 = gaia_reference_stars(3.05, -10.74, 0.05; epoch_jd=2457389.0 + 3652.5, cache=dir)
+            @test length(answered) == 3
+            @test s2.dec[1] ≈ -10.74 - 20.0 * 10 / 3.6e6 && s2.dec[2:3] == [-10.75, -10.76]   # proper motion, or none (empty or NaN)
+        finally
+            AsteroidPipeline._TAP_RESPONSES[] = recorded
+        end
+
         try
             # The real IASC practice field (XY54_p10) refine_wcs was
             # validated on: VizieR returned 144 Gaia DR3 stars in 0.13 deg.
-            stars = gaia_reference_stars(3.0492, -10.7441, 0.05; epoch_jd=2460934.9)
+            stars = gaia_reference_stars(3.0492, -10.7441, 0.05; epoch_jd=2460934.9, cache=nothing)
             @test length(stars) > 5
             @test all(s -> hypot((s.ra - 3.0492) * cosd(-10.7441), s.dec + 10.7441) < 0.051, stars)
             @test all(s -> 12.0 <= s.gmag <= 21.0, stars)
             # proper motion is applied: the same stars a decade earlier sit elsewhere
-            then = gaia_reference_stars(3.0492, -10.7441, 0.05; epoch_jd=2457389.0)
+            then = gaia_reference_stars(3.0492, -10.7441, 0.05; epoch_jd=2457389.0, cache=nothing)
             @test length(then) == length(stars)
             @test any(i -> stars.ra[i] != then.ra[i] || stars.dec[i] != then.dec[i], eachindex(stars))
         catch e
