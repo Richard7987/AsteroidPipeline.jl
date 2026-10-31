@@ -5,6 +5,10 @@ Manifest.toml
 *.jl.*.cov
 *.jl.mem
 .vscode/
+# Nix, for whoever uses it: kept out of the repository
+flake.nix
+flake.lock
+.envrc
 result
 result-*
 .direnv/

@@ -107,7 +107,6 @@ Start with [Getting started](https://richard7987.github.io/AsteroidPipeline.jl/s
 | `examples/` | scripts for real data, batches and completeness tests |
 | `ui/` | the terminal app (Python, [Textual](https://textual.textualize.io/)) |
 | `pyproject.toml`, `install.sh` | packaging of the app, with the library inside |
-| `flake.nix` | optional, for Nix users: a development shell and a package of the app |
 | `.github/workflows/` | tests, the documentation, and releases (PyPI, GitHub) |
 
 ## Development
@@ -132,10 +131,6 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e .
 asteroidpipeline
 ```
-
-With [Nix](https://nixos.org), `nix develop` gives a shell with Julia and
-Python instead, and `nix run .` runs the app — optional, the steps above
-need nothing of it.
 
 Releasing a version — the tag, PyPI, the documentation, Julia's registry —
 is described in [Releasing a version](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/releasing).

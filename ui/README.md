@@ -13,7 +13,7 @@ Everything here is interface. The analysis is the AsteroidPipeline.jl library
 ## Installing and running
 
 See the repository's README: `pipx install asteroidpipeline` (PyPI), or
-`install.sh`, on any Linux; `nix run` for Nix users. The package is built from `../pyproject.toml`; the wheel
+`install.sh`, on any Linux. The package is built from `../pyproject.toml`; the wheel
 carries the Julia library inside it (`asteroid_ui/julia/AsteroidPipeline`).
 
 On first run (or `asteroidpipeline --setup`) the engine is set up
@@ -30,9 +30,6 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e .            # from the repository root
 asteroidpipeline            # uses this checkout's Julia code, not a bundled copy
 ```
-
-With Nix, optionally: `nix develop`, then `python -m asteroid_ui` from the
-repository root.
 
 Images are shown at full resolution in terminals with a graphics protocol
 (Kitty, WezTerm, Ghostty, foot with Sixel…) and as coloured blocks elsewhere.

@@ -41,6 +41,8 @@ from the version picker at the top right.
 - Tests: Gaia, SIMBAD and VizieR answer from recorded answers
   (`test/fixtures`), and the suite runs without waiting on them; the
   newest Julia in CI still queries them live ([Development setup](development/setup.md)).
+- The Nix flake is no longer in the repository: the app and the library
+  install the same way on every system ([Installation](installation.md)).
 - [`pipeline_config`](@ref) takes `n_frames`: a tracklet needs half of
   them, and at least 3. [`analyze_set`](@ref) passes the set's; a 4-frame
   set is unchanged.
