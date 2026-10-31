@@ -1517,6 +1517,16 @@ end
         @test all(isfinite, lc.zeropoint_err)
         @test all(lc.mag_err[seen] .>= lc.zeropoint_err[seen])
 
+        # a frame with neither a WCS nor a pointing: a row of NaN, the others kept
+        bare = joinpath(dir, "bare.fits")
+        img5 = FITS(f -> read(f[1]), paths[5])
+        FITS(f -> write(f, img5; header=FITSHeader(["DATE-OBS"], Any["2020-03-01T05:00:00"], [""])), bare, "w")
+        lc2 = @test_logs (:warn, r"left out") match_mode = :any moving_light_curve(
+            [paths[1:4]; bare; paths[6:end]], tracklet; reference_stars=stars)
+        @test isnan(lc2.mag[5]) && lc2.epoch[5] ≈ lc.epoch[5]
+        kept = seen .& (1:24 .!= 5)
+        @test lc2.mag[kept] ≈ lc.mag[kept] atol = 0.01
+
         # comparison stars: each with its own colour offset, frames with their own
         # transparency, one star saturated (scattering) and one missing in a frame
         Random.seed!(5)
@@ -1530,6 +1540,9 @@ end
         zp, err = AsteroidPipeline._comparison_zeropoints(v)
         @test zp .- zp[1] ≈ transparency .- transparency[1] atol = 0.003
         @test all(e -> 0 < e < 0.003, err)
+        zp2, err2 = AsteroidPipeline._comparison_zeropoints([v[1:2]; [Float64[]]; v[4:5]])
+        @test isnan(zp2[3]) && isnan(err2[3])
+        @test zp2[[2, 4, 5]] .- zp2[1] ≈ transparency[[2, 4, 5]] .- transparency[1] atol = 0.003
         @test AsteroidPipeline._comparison_zeropoints([[25.0, NaN, 24.0, NaN] for _ in 1:3]) == (nothing, nothing)
     end
 

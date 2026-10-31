@@ -71,7 +71,8 @@ comes from the object itself; it doesn't follow curvature over days.
 Each frame's WCS is refined against Gaia DR3 stars (`reference_stars`, or
 fetched once for the first frame's field); a frame without one, or whose
 header WCS can't be refined, is solved from its pointing
-([`solve_wcs`](@ref)). The zero points come from the
+([`solve_wcs`](@ref)); one where none is found is kept, with a warning, as
+a row of `NaN`. The zero points come from the
 same comparison stars in every frame: catalogue stars inside all of them,
 measured with the object's aperture at signal-to-noise 30 or more, away
 from its track, and dropping any whose brightness varies far more than the
@@ -123,7 +124,14 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
         end
         epoch = frame_epoch(hdr; timestamp_key, exptime_key)
         mask = fill_value_mask(image)
-        wcs = first(_header_or_solved_wcs(image, header, hdr, epoch, solve_cache))
+        wcs = try
+            first(_header_or_solved_wcs(image, header, hdr, epoch, solve_cache))
+        catch e
+            e isa ErrorException || rethrow(e)
+            @warn "frame left out of the light curve: $(sprint(showerror, e))" path
+            return (frame=k, epoch=epoch, ra=NaN, dec=NaN, x=NaN, y=NaN, recentred=false, flux=NaN,
+                    flux_err=NaN, own=(zeropoint=NaN, n_stars=0, scatter=NaN), v=Float64[], scale=NaN)
+        end
         stars === nothing && (stars = _field_reference_stars(image, wcs, epoch))
         refined = refine_wcs(image, wcs, stars; mask)
         pointing = frame_pointing(hdr)
@@ -193,20 +201,24 @@ const _COMPARISON_MIN_SNR = 30.0
 # Zero points from the stars measured in every frame (`v[k][i]` = G + 2.5 log10
 # flux): each frame's median offset from the stars' means, and its error. Stars
 # scattering more than 3 times the typical star are dropped first. `nothing`
-# with fewer than 3 stars.
+# with fewer than 3 stars. A frame with no measurements (empty `v[k]`) gets NaN.
 function _comparison_zeropoints(v)
-    n = length(first(v))
-    common = [i for i in 1:n if all(isfinite(vk[i]) for vk in v)]
+    measured = findall(!isempty, v)
+    isempty(measured) && return nothing, nothing
+    n = length(v[first(measured)])
+    common = [i for i in 1:n if all(isfinite(v[k][i]) for k in measured)]
     length(common) >= 3 || return nothing, nothing
-    V = [vk[i] for vk in v, i in common]
+    V = [v[k][i] for k in measured, i in common]
     offsets() = [median(V[k, :] .- vec(mean(V; dims=1))) for k in axes(V, 1)]
     spread = vec(std(V .- offsets(); dims=1))
     keep = spread .<= 3 * median(spread)
     count(keep) >= 3 && (V = V[:, keep])
     level = median(vec(mean(V; dims=1)))
     off = offsets()
-    zp = level .+ off
-    zp_err = map(axes(V, 1)) do k
+    zp = fill(NaN, length(v))
+    zp[measured] = level .+ off
+    zp_err = fill(NaN, length(v))
+    zp_err[measured] = map(axes(V, 1)) do k
         d = V[k, :] .- vec(mean(V; dims=1)) .- off[k]
         1.2533 * 1.4826 * median(abs.(d)) / sqrt(size(V, 2))
     end
