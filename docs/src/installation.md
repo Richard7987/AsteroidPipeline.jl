@@ -81,8 +81,3 @@ The app doesn't need it: it downloads Julia itself if there is none.
 
 Both need an internet connection when they run: positions are calibrated
 against Gaia, and known asteroids come from the MPC and SkyBoT.
-
-!!! note "Nix"
-    With [Nix](https://nixos.org) the app is also
-    `nix run github:Richard7987/AsteroidPipeline.jl` — an option, not a
-    requirement: everything above works on any Linux.

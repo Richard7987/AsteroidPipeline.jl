@@ -38,8 +38,3 @@ julia --project=docs docs/make.jl
 The site lands in `docs/build/1`; `docs/build_all_versions.sh` builds every
 version, as it is published. Pages are in `docs/src`; figures are drawn by
 `docs/make_figures.jl` from the measured numbers, on every build.
-
-## With Nix (optional)
-
-The repository's `flake.nix` gives the same tools without installing them:
-`nix develop` opens a shell with Julia and Python. Nothing above needs it.
