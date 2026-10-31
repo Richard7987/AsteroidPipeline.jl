@@ -150,7 +150,7 @@ function analyze(id, msg)
                     mpcorb=mp, header=report_header(get(msg, "header", nothing)),
                     progress=(stage, fraction) -> emit(; id, event="progress", stage=string(stage), fraction))
     emit(; id, event="progress", stage="images", fraction=1.0)
-    cleaned = [AsteroidPipeline.clean_blank_pixels(p; outdir=joinpath(out, "work", "cleaned", r.name)) for p in r.paths]
+    cleaned = [AsteroidPipeline.clean_blank_pixels(p; outdir=AsteroidPipeline._cleaned_dir(joinpath(out, "work"), r.name, r.paths)) for p in r.paths]
     images = [FITS(f -> Float32.(read(f[1])), p, "r") for p in cleaned]   # (x, y)
     shifts = write_display_frames(images, r.wcs, out)
     w1 = r.wcs[1]

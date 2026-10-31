@@ -1753,6 +1753,19 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test set.name == "XY99_p00" && basename.(set.paths) == ["frame1.fits", "frame2.fits", "frame3.fits"]
             @test isempty(filter(n -> startswith(n, ".extract-"), readdir(joinpath(dir, "out"))))
             @test extract_set(zip, joinpath(dir, "out")).paths == set.paths       # reused, not re-extracted
+            # another archive with a folder of the same name, holding other frames:
+            # its own folder, by the archive's name, and the first set untouched
+            other_src = mkpath(joinpath(dir, "src2", "XY99_p00"))
+            for k in 1:4
+                FITS(f -> write(f, fill(Int16(200 + k), 20, 10)), joinpath(other_src, "frame$k.fits"), "w")
+            end
+            other_zip = joinpath(dir, "another.zip")
+            run(pipeline(`$(P.p7zip_jll.p7zip()) a -tzip $other_zip $other_src`; stdout=devnull))
+            other = extract_set(other_zip, joinpath(dir, "out"))
+            @test other.name == "another" && length(other.paths) == 4
+            @test extract_set(zip, joinpath(dir, "out")).paths == set.paths
+            @test AsteroidPipeline._cleaned_dir(dir, "XY99_p00", set.paths) !=
+                  AsteroidPipeline._cleaned_dir(dir, "XY99_p00", other.paths)
             cleaned = clean_blank_pixels(set.paths[1]; outdir=joinpath(dir, "clean"))
             @test cleaned != set.paths[1] && FITS(f -> read(f[1])[1, 1], cleaned) ≈ 101
 

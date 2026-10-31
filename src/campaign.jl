@@ -47,7 +47,10 @@ const _FITS_EXTENSIONS = (".fits", ".fit", ".fts")
 Unpack an image set (an IASC one: `ps1-20261005_9_XY45_p01.zip`) into
 `dest_dir/<set name>/` and return the set's name (the folder inside the
 archive, `XY45_p01`, or the archive's own name if it has none) and its FITS
-paths, sorted. An already-extracted set is reused, not overwritten.
+paths, sorted. An already-extracted set is reused, not overwritten; a
+folder of that name holding other files (another archive's, inside a
+folder of the same name) is left alone, and the set goes by the archive's
+name instead, with `-2`, `-3`… if that is taken too.
 
 The archive is unpacked into a scratch directory first, and only its
 regular FITS files are moved out, by base name — so a crafted entry name or
@@ -66,10 +69,16 @@ function extract_set(zip_path::AbstractString, dest_dir::AbstractString)
         end
         isempty(fits) && throw(ArgumentError("no FITS files in $zip_path"))
         parent = dirname(first(fits))
-        name = parent == scratch ? first(splitext(basename(zip_path))) : basename(parent)
+        archive = first(splitext(basename(zip_path)))
+        # the folder's files, or none, are this set's: the same names and sizes
+        holds_this(dir) = !isdir(dir) || isempty(_fits_in(dir)) ||
+                          sort(basename.(_fits_in(dir))) == sort(basename.(fits)) &&
+                          all(f -> filesize(joinpath(dir, basename(f))) == filesize(f), fits)
+        names = Iterators.flatten(((parent == scratch ? archive : basename(parent), archive),
+                                   ("$archive-$k" for k in Iterators.countfrom(2))))
+        name = first(n for n in names if holds_this(joinpath(dest_dir, n)))
         target = joinpath(dest_dir, name)
-        existing = isdir(target) ? _fits_in(target) : String[]
-        if isempty(existing)
+        if isempty(isdir(target) ? _fits_in(target) : String[])
             mkpath(target)
             for f in fits
                 mv(f, joinpath(target, basename(f)); force=true)
@@ -83,6 +92,11 @@ end
 
 _fits_in(dir) = sort([joinpath(dir, f) for f in readdir(dir)
                       if any(e -> endswith(lowercase(f), e), _FITS_EXTENSIONS) && isfile(joinpath(dir, f))])
+
+# Where analyze_set keeps a set's cleaned copies: by its name and its frames,
+# so another set of the same name, in the same workdir, never reuses them
+_cleaned_dir(workdir, name, paths) =
+    joinpath(workdir, "cleaned", name * "-" * string(hash(sort(abspath.(paths))); base=16))
 
 """
     clean_blank_pixels(path; outdir) -> String
@@ -578,7 +592,8 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     paths = paths[sortperm([FITS(p -> frame_epoch(read_header(p[1])), q, "r") for q in paths])]
 
     progress(:clean, 0.05)
-    cleaned = [clean_blank_pixels(p; outdir=joinpath(workdir, "cleaned", name)) for p in paths]
+    cleaned_dir = _cleaned_dir(workdir, name, paths)
+    cleaned = [clean_blank_pixels(p; outdir=cleaned_dir) for p in paths]
 
     header_wcs = WCSTransform[]; epochs = Float64[]; image_size = (0, 0)
     images = Matrix{Float64}[]; masks = BitMatrix[]
@@ -593,7 +608,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
         epoch = frame_epoch(hdr)
         w, solved = _header_or_solved_wcs(image, hstr, hdr, epoch, solve_cache; reference_stars)
         # run_pipeline reads the WCS from the frame's file
-        solved && (cleaned[k] = _copy_with_wcs(p, w, joinpath(workdir, "cleaned", name)))
+        solved && (cleaned[k] = _copy_with_wcs(p, w, cleaned_dir))
         stars === nothing && (stars = _field_reference_stars(image, w, epoch))
         push!(images, image); push!(masks, fill_value_mask(image))
         push!(header_wcs, w); push!(epochs, epoch)
