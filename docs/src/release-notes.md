@@ -49,6 +49,10 @@ from the version picker at the top right.
 
 **Fixed**
 
+- The terminal app treated a damaged labels or designations file as empty,
+  and overwrote it at the next save: every label, or the designations
+  already reported, lost. It now says the file is damaged and saves
+  nothing; the designations file is written whole or not at all.
 - The terminal app gave two sets of the same name (two `set.zip`, in different
   folders) one saved analysis, one set of labels and the same temporary
   designations: one of them was listed, and could be shown the other's

@@ -262,7 +262,11 @@ class ResultsScreen(Screen):
         return obj.data["id"]
 
     def _decide(self, tracklet_id: int, label: str | None, reason: str = "") -> None:
-        set_label(self.entry.name, self.result, self.entry.cache_dir, tracklet_id, label, reason)
+        try:
+            set_label(self.entry.name, self.result, self.entry.cache_dir, tracklet_id, label, reason)
+        except ValueError as e:
+            self.app.notify(f"Not saved: {e}", severity="error", timeout=12)
+            return
         if label is None:
             self.decisions.pop(tracklet_id, None)
             self.reasons.pop(tracklet_id, None)

@@ -24,15 +24,21 @@ MAX_LENGTH = 7
 
 
 def _load() -> dict[str, Any]:
+    # only a missing file is empty: an unreadable one would be overwritten at
+    # the next save, and reported candidates given new designations
     try:
         return json.loads(DESIGNATIONS_FILE.read_text())
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return {"assigned": {}}
+    except ValueError as e:
+        raise ValueError(f"{DESIGNATIONS_FILE} is damaged ({e}): repair it before reporting again") from e
 
 
 def _save(data: dict[str, Any]) -> None:
     DESIGNATIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    DESIGNATIONS_FILE.write_text(json.dumps(data, indent=1))
+    tmp = DESIGNATIONS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=1))
+    tmp.replace(DESIGNATIONS_FILE)
 
 
 def valid_prefix(prefix: str) -> bool:
