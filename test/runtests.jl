@@ -1441,6 +1441,10 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                 @test only(m).name == "2019 UA185" && only(m).id == 7
                 @test only(m).distance_arcsec < 10
                 @test 19 < only(m).mv < 23
+                # a long sequence's epochs, more than one request holds: every one answered
+                jds = 2461317.9 .+ (0:119) ./ 1440
+                obs = AsteroidPipeline._observer_heliocentric(jds, "F51")
+                @test length(obs) == 120 && all(o -> 0.98 < hypot(o...) < 1.02, obs)
             catch e
                 AsteroidPipeline._is_unavailable(e) || rethrow()
                 @test_skip "network unavailable"

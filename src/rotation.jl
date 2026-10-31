@@ -305,17 +305,11 @@ function object_geometry(object, epochs::AbstractVector{<:Real}; observatory=not
     center = observatory === nothing ? "500@399" : "$(observatory)@399"
     jds = sort(unique(Float64.(epochs)))
     at = Dict{Float64,NamedTuple{(:r, :delta, :phase),NTuple{3,Float64}}}()
-    # a few hundred epochs make a URL longer than Horizons accepts (HTTP 502)
-    for chunk in Iterators.partition(jds, 50)
-        tlist = join((@sprintf("%.8f", jd) for jd in chunk), " ")
-        query = Dict("format" => "json", "COMMAND" => "'$(object);'", "EPHEM_TYPE" => "OBSERVER",
-                     "CENTER" => "'$center'", "TLIST" => "'$tlist'", "TLIST_TYPE" => "JD", "TIME_TYPE" => "UT",
-                     "QUANTITIES" => "'19,20,24'", "CSV_FORMAT" => "YES", "OBJ_DATA" => "NO")
-        body = _with_retries(_TAP_ATTEMPTS) do
-            String(HTTP.get("https://ssd.jpl.nasa.gov/api/horizons.api"; query,
-                            read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
-        end
-        rows = _horizons_geometry(JSON.parse(body)["result"])
+    query = Dict("COMMAND" => "'$(object);'", "EPHEM_TYPE" => "OBSERVER", "CENTER" => "'$center'",
+                 "TIME_TYPE" => "UT", "QUANTITIES" => "'19,20,24'", "CSV_FORMAT" => "YES", "OBJ_DATA" => "NO")
+    results = _horizons(query, [@sprintf("%.8f", jd) for jd in jds])
+    for (chunk, result) in zip(Iterators.partition(jds, 50), results)
+        rows = _horizons_geometry(result)
         length(rows) == length(chunk) || error("Horizons returned $(length(rows)) rows for $(length(chunk)) epochs")
         # Horizons answers in time order
         merge!(at, Dict(zip(chunk, rows)))
