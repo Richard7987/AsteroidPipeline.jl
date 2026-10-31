@@ -2,6 +2,7 @@ using AsteroidPipeline
 using Aqua
 using TypedTables
 using HTTP
+using JSON
 using WCS
 using FITSIO
 using Random
@@ -23,6 +24,41 @@ let env_file = joinpath(pkgdir(AsteroidPipeline), ".env")
             v = strip(strip(v), ['"', '\''])
             haskey(ENV, k) || (ENV[k] = v)
         end
+    end
+end
+
+# Gaia, SIMBAD and VizieR answer from test/fixtures, so the tests don't wait on
+# the services. ASTEROIDPIPELINE_LIVE_TESTS=true queries them instead;
+# ASTEROIDPIPELINE_RECORD=true queries them and saves their answers.
+const TAP_FIXTURES = joinpath(@__DIR__, "fixtures", "tap_responses.json")
+const RECORD = get(ENV, "ASTEROIDPIPELINE_RECORD", "false") == "true"
+const LIVE = RECORD || get(ENV, "ASTEROIDPIPELINE_LIVE_TESTS", "false") == "true"
+const TAP_RECORDED = Dict{Tuple{String,String},Union{Nothing,String}}()
+if RECORD
+    # saved even when a test fails
+    atexit() do
+        mkpath(dirname(TAP_FIXTURES))
+        write(TAP_FIXTURES, JSON.json([Dict("url" => u, "query" => q, "csv" => a)
+                                       for ((u, q), a) in sort(collect(TAP_RECORDED); by=first)]; pretty=true))
+    end
+    AsteroidPipeline._TAP_RESPONSES[] = function (url, query)
+        try
+            return TAP_RECORDED[(url, query)] = AsteroidPipeline._tap_text(url, query)
+        catch e
+            AsteroidPipeline._is_service_failure(e) && (TAP_RECORDED[(url, query)] = nothing)
+            rethrow()
+        end
+    end
+elseif !LIVE
+    for r in JSON.parsefile(TAP_FIXTURES)
+        TAP_RECORDED[(r["url"], r["query"])] = r["csv"]
+    end
+    AsteroidPipeline._TAP_RESPONSES[] = function (url, query)
+        haskey(TAP_RECORDED, (url, query)) ||
+            error("no recorded answer to a TAP query; record them with ASTEROIDPIPELINE_RECORD=true")
+        answer = TAP_RECORDED[(url, query)]
+        answer === nothing && throw(Base.IOError("recorded as unavailable", 0))
+        return answer
     end
 end
 

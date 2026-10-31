@@ -78,13 +78,25 @@ is abandoned (`HTTP.TimeoutError`) instead of waiting forever. Retried
 `_TAP_ATTEMPTS` tries in all on a failure of the service itself (see
 [`_is_service_failure`](@ref)), never on a 4xx answer.
 """
-function _tap_query(url::AbstractString, query::AbstractString)
+_tap_query(url::AbstractString, query::AbstractString) = CSV.File(IOBuffer(_tap_csv(url, query)))
+
+# The query's answer as CSV text
+function _tap_csv(url::AbstractString, query::AbstractString)
+    respond = _TAP_RESPONSES[]
+    return respond === nothing ? _tap_text(url, query) : respond(url, query)
+end
+
+function _tap_text(url::AbstractString, query::AbstractString)
     make_body() = HTTP.Form(Dict(
         "REQUEST" => "doQuery", "LANG" => "ADQL", "FORMAT" => "csv", "QUERY" => query))
     return _with_retries(_TAP_ATTEMPTS) do
-        CSV.File(HTTP.post(url, [], make_body(); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+        String(HTTP.post(url, [], make_body(); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
     end
 end
+
+# `(url, query) -> CSV text` answering every TAP query in place of the
+# services, when set: the tests' recorded answers
+const _TAP_RESPONSES = Ref{Any}(nothing)
 
 # `f()`, tried up to `attempts` times while `retryable(e)`, waiting `backoff`
 # seconds and doubling it each time; the last failure propagates.

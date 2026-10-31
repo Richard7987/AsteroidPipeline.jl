@@ -24,9 +24,18 @@ Then, in the repository:
 | run the tests | `julia --project=. -e 'using Pkg; Pkg.test()'` |
 | try it on real data | the scripts in `examples/` (`examples/fetch_data.sh` downloads public ZTF images) |
 
-Some tests use the network (Gaia, SkyBoT, JPL Horizons, the MPC); without
-it they are skipped, not failed. The tests run on GitHub on Julia 1.11 and
-on the newest release — keep the code working on both.
+Some tests use the network (SkyBoT, JPL Horizons, the MPC); without it they
+are skipped, not failed. Gaia, SIMBAD and VizieR, the slowest services,
+answer from recorded answers in `test/fixtures`:
+
+| To | Set |
+|:--|:--|
+| query them instead | `ASTEROIDPIPELINE_LIVE_TESTS=true` |
+| record their answers again (after changing a query) | `ASTEROIDPIPELINE_RECORD=true` |
+
+A query with no recorded answer fails with a message saying so. The tests
+run on GitHub on Julia 1.11, with the recorded answers, and on the newest
+release, live — keep the code working on both.
 
 ## The documentation
 

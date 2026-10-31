@@ -39,7 +39,11 @@ jobs:
           git -C "$RUNNER_TEMP/digest2" checkout -q d324a4816fc49e9c7624335a6aa5499d7fdf3b9a
           make -s -C "$RUNNER_TEMP/digest2/digest2"
           echo "DIGEST2_PATH=$RUNNER_TEMP/digest2/digest2/digest2" >> "$GITHUB_ENV"
+      # the catalogue services queried live once, on the newest release, so a
+      # change in their answers is seen; recorded answers on the other
       - uses: julia-actions/julia-runtest@v1
+        env:
+          ASTEROIDPIPELINE_LIVE_TESTS: ${{ matrix.version == '1' && 'true' || 'false' }}
       # coverage measured once, on the newest release
       - uses: julia-actions/julia-processcoverage@v1
         if: matrix.version == '1'
