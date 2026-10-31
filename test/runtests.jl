@@ -242,6 +242,18 @@ end
                   (15 * (23 + 29 / 60 + 55.92 / 3600), -(6 + 40 / 60 + 22.93 / 3600)))
         @test frame_pointing(Dict("RA" => 352.48, "DEC" => -0.5)) == (352.48, -0.5)
         @test frame_pointing(Dict("OBJCTRA" => "x", "DEC" => 1.0)) === nothing
+
+        # the solution goes into a copy, never into the original, even through a link
+        mktempdir() do dir
+            original = joinpath(dir, "frame.fits")
+            FITS(f -> write(f, zeros(Float32, 20, 20)), original, "w")
+            mkpath(joinpath(dir, "set")); symlink(original, joinpath(dir, "set", "frame.fits"))
+            copy = AsteroidPipeline._copy_with_wcs(joinpath(dir, "set", "frame.fits"), truth, joinpath(dir, "cleaned"))
+            @test !haskey(FITS(f -> read_header(f[1]), original), "CTYPE1")
+            @test pix_to_world(load_wcs(FITS(f -> read_header(f[1], String), copy)), [5.0, 5.0]) ≈
+                  pix_to_world(truth, [5.0, 5.0])
+            @test AsteroidPipeline._copy_with_wcs(copy, truth, joinpath(dir, "cleaned")) == copy
+        end
     end
 
     @testset "refine_wcs_set" begin

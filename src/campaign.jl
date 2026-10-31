@@ -592,8 +592,8 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
         image_size = size(image)
         epoch = frame_epoch(hdr)
         w, solved = _header_or_solved_wcs(image, hstr, hdr, epoch, solve_cache)
-        # run_pipeline reads the WCS from the cleaned copy
-        solved && _write_wcs!(p, w)
+        # run_pipeline reads the WCS from the frame's file
+        solved && (cleaned[k] = _copy_with_wcs(p, w, joinpath(workdir, "cleaned", name)))
         stars === nothing && (stars = _field_reference_stars(image, w, epoch))
         push!(images, image); push!(masks, fill_value_mask(image))
         push!(header_wcs, w); push!(epochs, epoch)
