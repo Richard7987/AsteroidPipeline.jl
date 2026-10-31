@@ -1639,6 +1639,12 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test isnan(zp2[3]) && isnan(err2[3])
         @test zp2[[2, 4, 5]] .- zp2[1] ≈ transparency[[2, 4, 5]] .- transparency[1] atol = 0.003
         @test AsteroidPipeline._comparison_zeropoints([[25.0, NaN, 24.0, NaN] for _ in 1:3]) == (nothing, nothing)
+        # one frame under cloud, no star bright enough in it: the others keep
+        # their comparison stars, and it gets none
+        clouded = [v[1:2]; [fill(NaN, 8)]; v[4:5]]
+        zp3, err3 = AsteroidPipeline._comparison_zeropoints(clouded)
+        @test isnan(zp3[3]) && isnan(err3[3])
+        @test zp3[[2, 4, 5]] .- zp3[1] ≈ transparency[[2, 4, 5]] .- transparency[1] atol = 0.003
     end
 
     @testset "reduced_magnitudes / object geometry" begin

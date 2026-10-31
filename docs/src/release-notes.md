@@ -49,6 +49,19 @@ from the version picker at the top right.
 
 **Fixed**
 
+- Known objects from the MPC's orbit file were lost on a set of more than
+  about 50 frames: the observatory's positions were asked of JPL Horizons
+  in one request, which it refuses (HTTP 502) past that, and the failure
+  became a warning. They are asked 50 at a time.
+- Two archives holding a folder of the same name (`images/`), unpacked in
+  the same place, gave the second set the first one's frames:
+  [`extract_set`](@ref) reused the folder. A folder holding other frames is
+  left alone, and the set goes by the archive's name. Cleaned copies are
+  kept by the set's frames as well as its name.
+- One frame under cloud, in which no comparison star reached
+  signal-to-noise 30, made [`moving_light_curve`](@ref) give up the
+  comparison stars for the whole night, doubling its scatter; that frame
+  alone now gets its own zero point.
 - [`gaia_reference_stars`](@ref) gave a `NaN` position to a star whose
   proper motion a service writes as `NaN` instead of leaving it empty.
 - Long sequences at short cadence, checked on 40 frames of 4775 Hansen

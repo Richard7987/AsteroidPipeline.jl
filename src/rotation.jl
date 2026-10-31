@@ -82,7 +82,9 @@ others' (a saturated star). Each star's colour differs from the frames'
 band, unfiltered or not, by its own constant amount, which a fixed set of
 stars cancels from frame to frame; a set changing with each frame's
 detections would not. With fewer than 3 such stars, each frame's zero point
-is fitted on its own ([`photometric_zeropoint`](@ref)). Where the aperture's signal-to-noise reaches
+is fitted on its own ([`photometric_zeropoint`](@ref)), as is a frame in which
+fewer than 3 were measured (under cloud), the others keeping theirs. Where
+the aperture's signal-to-noise reaches
 `recentre_snr`, it is moved to the object's flux-weighted centroid; elsewhere
 the flux is measured at the predicted position (forced photometry), which
 keeps faint frames in the curve without biasing them upward. The background
@@ -188,15 +190,19 @@ function moving_light_curve(fits_paths::AbstractVector{<:AbstractString}, positi
     frames = [f for f in measured]
 
     own = [f.own.zeropoint for f in frames]
+    own_err = [f.own.n_stars >= 2 ? 1.2533 * f.own.scatter / sqrt(f.own.n_stars) : NaN for f in frames]
     zp, zp_err = _comparison_zeropoints([f.v for f in frames])
     if zp === nothing
-        zp = own
-        zp_err = [f.own.n_stars >= 2 ? 1.2533 * f.own.scatter / sqrt(f.own.n_stars) : NaN for f in frames]
+        zp, zp_err = own, own_err
     else
         # the level from every frame's own fit, many stars' colours averaged;
         # a few comparison stars' would differ from one set of frames to another
         d = filter(isfinite, own .- zp)
         isempty(d) || (zp = zp .+ median(d))
+        # a frame too few comparison stars were measured in (cloud) keeps its own
+        lost = .!isfinite.(zp)
+        zp[lost] = own[lost]
+        zp_err[lost] = own_err[lost]
     end
     rows = map(enumerate(frames)) do (k, f)
         good = isfinite(zp[k]) && f.flux > 0
@@ -218,9 +224,10 @@ const _COMPARISON_MIN_SNR = 30.0
 # Zero points from the stars measured in every frame (`v[k][i]` = G + 2.5 log10
 # flux): each frame's median offset from the stars' means, and its error. Stars
 # scattering more than 3 times the typical star are dropped first. `nothing`
-# with fewer than 3 stars. A frame with no measurements (empty `v[k]`) gets NaN.
+# with fewer than 3 stars. A frame with fewer than 3 stars measured (none at
+# all, or under cloud) is left out of the choice of stars, and gets NaN.
 function _comparison_zeropoints(v)
-    measured = findall(!isempty, v)
+    measured = findall(vk -> count(isfinite, vk) >= 3, v)
     isempty(measured) && return nothing, nothing
     n = length(v[first(measured)])
     common = [i for i in 1:n if all(isfinite(v[k][i]) for k in measured)]
