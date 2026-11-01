@@ -7,7 +7,7 @@ image set.
 
 Commands (every one carries an `id`, echoed in its events):
 
-    {"cmd": "inspect", "id": 0, "source": "/path/set.zip"}
+    {"cmd": "inspect", "id": 0, "source": "/path/set.zip", "out": "/cache/set"}
         -> {"event": "inspection", "telescope": "PS1", "instrument": "gpc1", "lon": -156.26, ...,
             "candidates": [{"code": "F51", "name": "Pan-STARRS 1, Haleakala", ...}, ...]}
     {"cmd": "analyze", "id": 1, "source": "/path/set.zip", "out": "/cache/set",
@@ -22,8 +22,9 @@ Commands (every one carries an `id`, echoed in its events):
         -> {"event": "report_check", "ok": false, "issues": [...], "cleaned": "COD F51..."}
 
 "source" is a .zip, a folder of FITS frames or a list of FITS paths; "name",
-"header" (observers, measurers, telescope, contact — the report's header) and
-"result" are optional.
+"header" (observers, measurers, telescope, contact — the report's header),
+"result" and inspect's "out" are optional. What can't be measured (an orbit
+without H has no magnitude) is null in every answer: JSON has no NaN.
 
 Any command can end in {"event": "error", "message": "..."}. Unprompted:
 {"event": "ready"} once loaded, and {"event": "status", "message": "..."}.
@@ -42,8 +43,13 @@ using TypedTables: Table
 # classifier later: odd, so the object sits on the centre pixel.
 const STAMP_SIZE = 63
 
+json_safe(x::AbstractFloat) = isfinite(x) ? x : nothing
+json_safe(x::AbstractDict) = Dict(string(k) => json_safe(v) for (k, v) in x)
+json_safe(x::Union{AbstractVector,Tuple}) = [json_safe(v) for v in x]
+json_safe(x) = x
+
 function emit(; kw...)
-    println(PROTOCOL, JSON.json(Dict(string(k) => v for (k, v) in kw)))
+    println(PROTOCOL, JSON.json(json_safe(Dict(string(k) => v for (k, v) in kw))))
     flush(PROTOCOL)
 end
 
@@ -90,10 +96,13 @@ function write_display_frames(images, wcs, out)
         dx, dy = round(Int, q[1] - c[1]), round(Int, q[2] - c[2])
         push!(shifts, (dx, dy))
         sample = filter(isfinite, vec(img)[1:7:end])
-        med = median(sample)
-        σ = 1.4826 * median(abs.(sample .- med))
+        med = isempty(sample) ? 0.0 : median(sample)
+        σ = isempty(sample) ? 0.0 : 1.4826 * median(abs.(sample .- med))
+        # most pixels alike (a damaged or padded frame): the rest set the scale
+        σ > 0 || (σ = isempty(sample) ? 0.0 : std(sample; mean=med))
         lo, hi = med - 1.5σ, med + 25σ
-        stretch(v) = isfinite(v) ? round(UInt8, 255 * clamp(asinh(10 * (v - lo) / (hi - lo)) / asinh(10), 0, 1)) : 0x00
+        range = hi > lo ? hi - lo : 1.0
+        stretch(v) = isfinite(v) ? round(UInt8, 255 * clamp(asinh(10 * (v - lo) / range) / asinh(10), 0, 1)) : 0x00
         buf = zeros(UInt8, nx, ny)
         for y in 1:ny, x in 1:nx
             xs, ys = x - dx, y - dy                               # display pixel -> this frame's pixel
@@ -123,7 +132,8 @@ function write_stamps(images, wcs, epochs, tracklet_points, path)
         j = clamp(searchsortedfirst(ts, epochs[k]), 2, max(2, length(ts)))
         a, b = tracklet_points[max(1, j - 1)], tracklet_points[min(j, end)]
         f = b.epoch == a.epoch ? 0.0 : (epochs[k] - a.epoch) / (b.epoch - a.epoch)
-        ra, dec = a.ra + f * (b.ra - a.ra), a.dec + f * (b.dec - a.dec)
+        dra = mod(b.ra - a.ra + 180, 360) - 180                  # across RA = 0
+        ra, dec = mod(a.ra + f * dra, 360), a.dec + f * (b.dec - a.dec)
         x, y = round.(Int, world_to_pix(w, Float64[ra, dec]))
         nx, ny = size(img)
         for dy in -h:h, dx in -h:h
@@ -146,7 +156,8 @@ function analyze(id, msg)
     observatory = msg["observatory"]
     mkpath(out)
     mp = orbits(id)
-    r = analyze_set(source; workdir=joinpath(out, "work"), observatory, name=get(msg, "name", nothing),
+    r = analyze_set(source; workdir=joinpath(out, "work"), extract_to=joinpath(out, "work"), observatory,
+                    name=get(msg, "name", nothing),
                     mpcorb=mp, header=report_header(get(msg, "header", nothing)),
                     progress=(stage, fraction) -> emit(; id, event="progress", stage=string(stage), fraction))
     emit(; id, event="progress", stage="images", fraction=1.0)
@@ -195,7 +206,7 @@ function analyze(id, msg)
 
     ny, nx = r.image_size
     result = Dict{String,Any}(
-        "name" => r.name, "observatory" => observatory, "set_dir" => dirname(r.paths[1]),
+        "name" => r.name, "observatory" => observatory,
         "source" => source isa AbstractVector ? abspath.(source) : abspath(source),
         "analyzed_at" => string(now()), "image_size" => [nx, ny], "reliable" => r.reliable,
         "report_kind" => string(r.report_kind), "report" => r.report, "warnings" => r.warnings,
@@ -206,8 +217,11 @@ function analyze(id, msg)
         "tracklets" => tracklets, "known" => known,
         "wcs_headers" => [WCS.to_header(w) for w in r.wcs])
     path = joinpath(out, "result.json")
-    write(path * ".part", JSON.json(result))
+    write(path * ".part", JSON.json(json_safe(result)))
     mv(path * ".part", path; force=true)
+    # the set's copies of the frames: nothing reads them from here on, and
+    # the set's images are analyzed again from the source
+    rm(joinpath(out, "work"); recursive=true, force=true)
     emit(; id, event="result", path)
 end
 
@@ -246,15 +260,18 @@ end
 
 # What the frames say about where they were taken, and the MPC codes that
 # fits — before analyzing, so the interface can pick the telescope's profile
-# (or ask, the first time). A .zip is unpacked here, as analyze would.
+# (or ask, the first time). A .zip is unpacked where analyze will, never beside
+# the .zip: that folder may be read-only, and it's the person's.
 function inspect(id, msg)
     source = msg["source"]
+    out = get(msg, "out", nothing)
+    workdir = out === nothing ? mktempdir() : joinpath(out, "work")
     paths = if source isa AbstractVector
         collect(String, source)
     elseif isdir(source)
         AsteroidPipeline._fits_in(source)
     else
-        extract_set(source, dirname(abspath(source))).paths
+        extract_set(source, workdir).paths
     end
     isempty(paths) && error("no FITS frames in $source")
     site = FITS(f -> frame_site(read_header(f[1])), first(paths), "r")
