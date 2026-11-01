@@ -1683,7 +1683,7 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test fourier_period(hours, mag; minimum_period=1.0, maximum_period=5.0).rms > 1.5 * r.rms
         # a period about as long as the night: warned of
         slow = 13.0 .+ 0.1 .* sinpi.(2 .* hours ./ 4.6) .+ 0.01 .* randn(300)
-        @test_logs (:warn, r"of the time the light curve covers") fourier_period(hours, slow; minimum_period=1.0,
+        @test_logs (:warn, r"of the light curve's span") fourier_period(hours, slow; minimum_period=1.0,
                                                                                   maximum_period=5.0)
         # months of sparse points: an uncertainty far below the search's first step, still measured
         days = sort(150 .* rand(85))

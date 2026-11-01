@@ -393,9 +393,8 @@ function fourier_period(times::AbstractVector{<:Real}, mag::AbstractVector{<:Rea
 
     # a period about as long as the series fits a drift as well as a rotation
     period > 0.8 * span &&
-        @warn "the period found, $(round(period; sigdigits=4)), is $(round(Int, 100 * period / span))% of the " *
-              "time the light curve covers: a drift through it fits as well as a rotation; observe longer, " *
-              "fit `trend`, or lower `maximum_period`"
+        @warn "period $(round(period; sigdigits=4)) is $(round(Int, 100 * period / span))% of the light curve's span, " *
+              "where a drift fits as well: observe longer, fit `trend` or lower `maximum_period`"
     best, β, X = fit(period)
     first_harmonic = 2 + trend
     phase = range(0, 1; length=1001)

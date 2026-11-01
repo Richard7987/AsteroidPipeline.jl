@@ -83,7 +83,7 @@ function zogy_subtract(n_image::AbstractMatrix{<:Real}, r_image::AbstractMatrix{
     var_S = _convolve_variance(V_n, k_n) .+ _convolve_variance(V_r, k_r)
 
     if n_sources === nothing && r_sources === nothing
-        @warn "n_sources/r_sources not given; V_ast (astrometric registration noise) omitted from S_corr — significance may be overstated near bright stars with real sub-pixel misregistration" maxlog=1
+        @warn "V_ast omitted (no n_sources/r_sources): S_corr may overstate significance near bright stars" maxlog=1
     end
     if n_sources !== nothing && r_sources !== nothing
         sigma_x, sigma_y = _astrometric_scatter(n_sources, r_sources)
