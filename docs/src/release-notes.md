@@ -3,6 +3,12 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Added**
+
+- A DOI, through Zenodo: [How to cite](citing.md) has it, and each release gets its own.
+
 ## 1.3.1 — 2026-11-01
 
 **Added**

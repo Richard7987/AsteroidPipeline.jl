@@ -11,9 +11,13 @@ or BibTeX:
   title   = {{AsteroidPipeline.jl}},
   version = {1.3.1},
   year    = {2026},
+  doi     = {10.5281/zenodo.23871668},
   url     = {https://github.com/Richard7987/AsteroidPipeline.jl},
 }
 ```
+
+That DOI always leads to the latest version; each version has its own, listed on
+[Zenodo](https://doi.org/10.5281/zenodo.23871668), for citing the exact one you used.
 
 ## What it builds on
 
