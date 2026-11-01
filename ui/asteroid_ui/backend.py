@@ -1,4 +1,4 @@
-"""Client for the analysis engine (ui/backend/server.jl).
+"""Client for the analysis engine (engine/server.jl).
 
 The engine is a Julia process kept open for the whole session: loading and
 compiling AsteroidPipeline takes ~20 s, so it is paid once. It speaks JSON,
@@ -32,6 +32,7 @@ class Backend:
         self.ready = asyncio.Event()
         self.failed: str | None = None
         self.on_status: Callable[[str], None] = lambda message: None
+        self._reader: asyncio.Task | None = None
 
     @property
     def busy(self) -> bool:
@@ -55,13 +56,18 @@ class Backend:
             self.ready.set()
             return
         BACKEND_LOG.parent.mkdir(parents=True, exist_ok=True)
-        with open(BACKEND_LOG, "a", buffering=1) as log:  # the child keeps its own copy
-            self._proc = await asyncio.create_subprocess_exec(
-                *engine.server_command(julia),
-                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=log,
-                limit=64 * 1024 * 1024,
-            )
-        asyncio.create_task(self._read_loop())
+        try:
+            with open(BACKEND_LOG, "a", buffering=1) as log:  # the child keeps its own copy
+                self._proc = await asyncio.create_subprocess_exec(
+                    *engine.server_command(julia),
+                    stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=log,
+                    limit=64 * 1024 * 1024,
+                )
+        except OSError as e:
+            self.failed = f"Could not start Julia ({julia}): {e}"
+            self.ready.set()
+            return
+        self._reader = asyncio.create_task(self._read_loop())
 
     async def _read_loop(self) -> None:
         assert self._proc and self._proc.stdout

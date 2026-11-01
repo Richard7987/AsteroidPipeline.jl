@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from textual.app import App
+from textual.notifications import SeverityLevel
 from textual.reactive import reactive
 
 # textual-image finds out which graphics the terminal supports (Kitty, Sixel...)
@@ -42,6 +43,11 @@ class AsteroidApp(App):
         await self.backend.start()
         await self.backend.ready.wait()
         self.engine_status = f"✗ {self.backend.failed}" if self.backend.failed else "Analysis engine ready."
+
+    def notify(self, message: str, *, title: str = "", severity: SeverityLevel = "information",
+               timeout: float | None = None, markup: bool = False) -> None:
+        """As App.notify, but no markup by default: messages carry paths and error texts."""
+        super().notify(message, title=title, severity=severity, timeout=timeout, markup=markup)
 
     async def on_unmount(self) -> None:
         await self.backend.stop()

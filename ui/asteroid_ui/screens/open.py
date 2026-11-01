@@ -110,7 +110,7 @@ class OpenScreen(ModalScreen[Path | list[Path] | None]):
         marked = self.query_one(SetTree).marked
         text = (f"{len(marked)} file(s) marked: " + ", ".join(p.name for p in marked[:4])
                 + (" …" if len(marked) > 4 else "")) if marked else "No files marked."
-        self.query_one("#open-marked", Static).update(text)
+        self.query_one("#open-marked", Static).update(Text(text))
 
     def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
         if event.path.suffix.lower() == ".zip":

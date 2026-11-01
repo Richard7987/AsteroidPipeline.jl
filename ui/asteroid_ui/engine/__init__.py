@@ -17,6 +17,7 @@ After that, server.jl starts in seconds.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -62,16 +63,26 @@ def julia_executable() -> str:
     except ImportError:
         raise EngineError("Julia isn't installed. Install it from https://julialang.org/install "
                           "(or `pip install juliapkg` to have it downloaded) and start the app again.") from None
-    return juliapkg.executable()
+    try:
+        return juliapkg.executable()
+    except Exception as e:
+        raise EngineError(f"Could not download Julia ({e}). Install it from https://julialang.org/install "
+                          "and start the app again.") from e
 
 
 def julia_version(julia: str) -> tuple[int, ...]:
-    out = subprocess.run([julia, "--startup-file=no", "-e", "print(VERSION.major, ' ', VERSION.minor)"],
-                         capture_output=True, text=True, timeout=120)
     try:
-        return tuple(int(x) for x in out.stdout.split())
+        out = subprocess.run([julia, "--startup-file=no", "-e", "print(VERSION.major, ' ', VERSION.minor)"],
+                             capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise EngineError(f"Could not run Julia ({julia}): {e}") from e
+    try:
+        version = tuple(int(x) for x in out.stdout.split())
     except ValueError:
-        raise EngineError(f"Could not run Julia ({julia}): {out.stderr.strip()[:300]}") from None
+        version = ()
+    if not version:
+        raise EngineError(f"Could not run Julia ({julia}): {out.stderr.strip()[:300]}")
+    return version
 
 
 def _fingerprint(package: Path) -> str:
@@ -83,6 +94,10 @@ def _fingerprint(package: Path) -> str:
         h.update(f.name.encode())
         h.update(str(f.stat().st_size).encode())
     return h.hexdigest()
+
+
+def _julia_string(text: str) -> str:
+    return json.dumps(text).replace("$", "\\$")
 
 
 def needs_setup() -> bool:
@@ -106,10 +121,10 @@ def setup(julia: str, on_line: Callable[[str], None] = lambda line: None) -> Non
     env.mkdir(parents=True)
     script = (
         "using Pkg; "
-        f"Pkg.develop(path={str(package)!r}); "
-        f"Pkg.add({_SERVER_PACKAGES!r}); "
+        f"Pkg.develop(path={_julia_string(str(package))}); "
+        f"Pkg.add({json.dumps(_SERVER_PACKAGES)}); "
         "Pkg.instantiate(); Pkg.precompile()"
-    ).replace("'", '"')
+    )
     BACKEND_LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(BACKEND_LOG, "a", buffering=1) as log:
         log.write(f"--- setting up the engine in {env} with {julia}\n")
