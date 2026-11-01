@@ -64,6 +64,8 @@ from the version picker at the top right.
 
 **Fixed**
 
+- [`analyze_set`](@ref) warns when frames are left out as bad, and of the many
+  false candidates to expect when only 3 remain.
 - The terminal app, after a full review:
   - A candidate kept a designation by its tracklet's number, which another
     analysis of the set can change: two objects could share a designation.
