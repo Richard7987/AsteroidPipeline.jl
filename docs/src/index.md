@@ -60,4 +60,5 @@ measurements, and synthetic asteroids injected into real images. See the
 [validation summary](validation/summary.md). Limits are listed in
 [Limitations](concepts/limitations.md).
 
-AsteroidPipeline.jl is free software under the MIT license.
+AsteroidPipeline.jl is free software under the MIT license. If you use it in
+scientific work, please [cite it](citing.md).

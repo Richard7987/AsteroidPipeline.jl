@@ -1,0 +1,201 @@
+cff-version: 1.2.0
+message: "If you use this software in scientific work, please cite it using these metadata."
+type: software
+title: "AsteroidPipeline.jl"
+abstract: >-
+  An open-source Julia pipeline for asteroid search campaigns. It calibrates
+  astrometry against Gaia DR3, detects moving objects, compares them with known
+  asteroids and writes the report for the Minor Planet Center. It includes a
+  terminal application in Python.
+authors:
+  - family-names: "Bernal Estrada"
+    given-names: "Alejandro"
+    orcid: "https://orcid.org/0009-0008-8959-5114"
+    affiliation: "Universidad Autónoma del Estado de Hidalgo"
+version: "1.3.0"
+date-released: "2026-11-01"
+license: MIT
+repository-code: "https://github.com/Richard7987/AsteroidPipeline.jl"
+url: "https://richard7987.github.io/AsteroidPipeline.jl/stable/"
+keywords:
+  - asteroids
+  - astrophysics
+  - astrometry
+  - photometry
+  - Julia
+  - Minor Planet Center
+  - IASC
+references:
+  - type: article
+    title: "Gaia Data Release 3: Summary of the content and survey properties"
+    authors:
+      - name: "Gaia Collaboration"
+    journal: "Astronomy & Astrophysics"
+    volume: 674
+    start: "A1"
+    year: 2023
+    doi: "10.1051/0004-6361/202243940"
+  - type: article
+    title: "The Gaia mission"
+    authors:
+      - name: "Gaia Collaboration"
+    journal: "Astronomy & Astrophysics"
+    volume: 595
+    start: "A1"
+    year: 2016
+    doi: "10.1051/0004-6361/201629272"
+  - type: article
+    title: "Proper image subtraction: optimal transient detection, photometry, and hypothesis testing"
+    authors:
+      - family-names: "Zackay"
+      - family-names: "Ofek"
+      - family-names: "Gal-Yam"
+    journal: "The Astrophysical Journal"
+    volume: 830
+    start: "27"
+    year: 2016
+    doi: "10.3847/0004-637X/830/1/27"
+  - type: article
+    title: "Least-squares frequency analysis of unequally spaced data"
+    authors:
+      - family-names: "Lomb"
+    journal: "Astrophysics and Space Science"
+    volume: 39
+    start: "447"
+    end: "462"
+    year: 1976
+    doi: "10.1007/BF00648343"
+  - type: article
+    title: "Studies in astronomical time series analysis. II. Statistical aspects of spectral analysis of unevenly spaced data"
+    authors:
+      - family-names: "Scargle"
+    journal: "The Astrophysical Journal"
+    volume: 263
+    start: "835"
+    year: 1982
+    doi: "10.1086/160554"
+  - type: article
+    title: "Astrometry.net: blind astrometric calibration of arbitrary astronomical images"
+    authors:
+      - family-names: "Lang"
+      - name: "et al."
+    journal: "The Astronomical Journal"
+    volume: 139
+    start: "1782"
+    end: "1800"
+    year: 2010
+    doi: "10.1088/0004-6256/139/5/1782"
+  - type: article
+    title: "Prediction of transits of Solar system objects in Kepler/K2 images: an extension of the Virtual Observatory service SkyBoT"
+    authors:
+      - family-names: "Berthier"
+      - name: "et al."
+    journal: "Monthly Notices of the Royal Astronomical Society"
+    volume: 458
+    start: "3394"
+    end: "3398"
+    year: 2016
+    doi: "10.1093/mnras/stw492"
+  - type: article
+    title: "The SIMBAD astronomical database"
+    authors:
+      - family-names: "Wenger"
+      - name: "et al."
+    journal: "Astronomy and Astrophysics Supplement Series"
+    volume: 143
+    start: "9"
+    end: "22"
+    year: 2000
+    doi: "10.1051/aas:2000332"
+  - type: article
+    title: "The VizieR database of astronomical catalogues"
+    authors:
+      - family-names: "Ochsenbein"
+      - name: "et al."
+    journal: "Astronomy and Astrophysics Supplement Series"
+    volume: 143
+    start: "23"
+    end: "32"
+    year: 2000
+    doi: "10.1051/aas:2000169"
+  - type: article
+    title: "Data Lab: a community science platform"
+    authors:
+      - family-names: "Nikutta"
+      - name: "et al."
+    journal: "Astronomy and Computing"
+    volume: 33
+    start: "100411"
+    year: 2020
+    doi: "10.1016/j.ascom.2020.100411"
+  - type: article
+    title: "The digest2 NEO classification code"
+    authors:
+      - family-names: "Keys"
+      - name: "et al."
+    journal: "Publications of the Astronomical Society of the Pacific"
+    volume: 131
+    start: "064501"
+    year: 2019
+    doi: "10.1088/1538-3873/ab1157"
+  - type: article
+    title: "The Zwicky Transient Facility: system overview, performance, and first results"
+    authors:
+      - family-names: "Bellm"
+      - name: "et al."
+    journal: "Publications of the Astronomical Society of the Pacific"
+    volume: 131
+    start: "018002"
+    year: 2019
+    doi: "10.1088/1538-3873/aaecbe"
+  - type: article
+    title: "The Zwicky Transient Facility: data processing, products, and archive"
+    authors:
+      - family-names: "Masci"
+      - name: "et al."
+    journal: "Publications of the Astronomical Society of the Pacific"
+    volume: 131
+    start: "018003"
+    year: 2019
+    doi: "10.1088/1538-3873/aae8ac"
+  - type: article
+    title: "The Pan-STARRS1 Surveys"
+    authors:
+      - family-names: "Chambers"
+      - name: "et al."
+    journal: "arXiv"
+    year: 2016
+    url: "https://arxiv.org/abs/1612.05560"
+  - type: article
+    title: "Julia: a fresh approach to numerical computing"
+    authors:
+      - family-names: "Bezanson"
+      - name: "et al."
+    journal: "SIAM Review"
+    volume: 59
+    start: "65"
+    end: "98"
+    year: 2017
+    doi: "10.1137/141000671"
+  - type: article
+    title: "Representations of world coordinates in FITS"
+    authors:
+      - family-names: "Greisen"
+      - family-names: "Calabretta"
+    journal: "Astronomy & Astrophysics"
+    volume: 395
+    start: "1061"
+    end: "1075"
+    year: 2002
+    doi: "10.1051/0004-6361:20021326"
+  - type: article
+    title: "Photoelectric observations of asteroids 3, 24, 60, 261, and 863"
+    authors:
+      - family-names: "Harris"
+      - name: "et al."
+    journal: "Icarus"
+    volume: 77
+    start: "171"
+    end: "186"
+    year: 1989
+    doi: "10.1016/0019-1035(89)90015-8"

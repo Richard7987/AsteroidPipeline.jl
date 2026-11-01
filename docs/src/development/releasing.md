@@ -15,9 +15,9 @@ and why JuliaRegistries' TagBot is not used.
 ## Steps
 
 1. **Version numbers.** The same version in `Project.toml` (`version`),
-   `ui/asteroid_ui/__init__.py` (`__version__`), `install.sh` (`VERSION`)
-   and the Status line of `docs/src/index.md`; an entry in
-   `docs/src/release-notes.md`.
+   `ui/asteroid_ui/__init__.py` (`__version__`), `install.sh` (`VERSION`),
+   `CITATION.cff` (`version`, with `date-released`) and the Status line of
+   `docs/src/index.md`; an entry in `docs/src/release-notes.md`.
 2. **Tests.** `julia --project=. -e 'using Pkg; Pkg.test()'`; the docs build
    (`julia --project=docs docs/make.jl`).
 3. **Push the commit**, untagged, to Forgejo: `git push origin main`.

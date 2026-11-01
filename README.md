@@ -140,6 +140,13 @@ pytest ui/tests                                    # its tests: no terminal or J
 Releasing a version — the tag, PyPI, the documentation, Julia's registry —
 is described in [Releasing a version](https://richard7987.github.io/AsteroidPipeline.jl/stable/development/releasing).
 
+## Citing
+
+If you use it in scientific work, please cite it: GitHub's "Cite this
+repository" button gives the reference, from [`CITATION.cff`](CITATION.cff).
+[How to cite](https://richard7987.github.io/AsteroidPipeline.jl/stable/citing)
+lists what it builds on, to cite too.
+
 ## License
 
 MIT. See `LICENSE`.
