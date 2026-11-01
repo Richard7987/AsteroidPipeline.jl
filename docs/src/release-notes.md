@@ -42,6 +42,9 @@ from the version picker at the top right.
 
 **Changed**
 
+- [`crossmatch_catalog`](@ref): while the CDS is down, `:simbad` asks
+  SIMBAD's copy at Harvard and `:vsx` AAVSO's own VSX, with a warning.
+  A service that failed is tried last for the next 15 minutes, as for Gaia.
 - [`recover_rotation_period`](@ref): `period` is twice the periodogram's
   peak (now `peak_period`) where alternate cycles of the light curve
   differ, as an elongated asteroid's two maxima per rotation do: the peak
@@ -61,6 +64,9 @@ from the version picker at the top right.
 
 **Fixed**
 
+- [`neocp_check`](@ref) skipped objects whose temporary designation has
+  fewer than 7 characters, which the NEO Confirmation Page lists too: a
+  candidate matching one was not recognised.
 - While a copy of Gaia was down, every query waited out its timeouts
   before trying the next one: minutes for every frame of a sequence
   observed over many fields. A service that failed is tried last for the

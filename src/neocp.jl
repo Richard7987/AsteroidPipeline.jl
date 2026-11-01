@@ -53,7 +53,7 @@ function _parse_neocp_ephemerides(html::AbstractString, designations)
     current = nothing
     for raw in split(replace(html, r"<[^>]*>" => ""), '\n')
         line = rstrip(raw)
-        if (m = match(r"^\s*([A-Za-z0-9]{7})\s*$", line)) !== nothing && m[1] in designations
+        if (m = match(r"^\s*([A-Za-z0-9]{1,7})\s*$", line)) !== nothing && m[1] in designations
             current = String(m[1])
             out[current] = NamedTuple[]
             continue

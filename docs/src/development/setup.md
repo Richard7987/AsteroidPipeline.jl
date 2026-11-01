@@ -25,7 +25,7 @@ Then, in the repository:
 | try it on real data | the scripts in `examples/` (`examples/fetch_data.sh` downloads public ZTF images) |
 
 Some tests use the network (SkyBoT, JPL Horizons, the MPC); without it they
-are skipped, not failed. Gaia, SIMBAD, VizieR, astrometry.net and the NEO
+are skipped, not failed. Gaia, SIMBAD, VSX, astrometry.net and the NEO
 Confirmation Page answer from recorded answers in `test/fixtures`:
 
 | To | Set |

@@ -62,10 +62,11 @@ elseif !LIVE
     end
 end
 
-# astrometry.net's and the NEOCP's answers likewise, recorded at WEB_NOW; a
-# recording keeps those the run didn't make (astrometry.net's needs an API key)
+# astrometry.net's, the NEOCP's and AAVSO's answers likewise, recorded at WEB_NOW; a
+# recording keeps those of services the run didn't reach (astrometry.net needs an API key)
 const WEB_FIXTURES = joinpath(@__DIR__, "fixtures", "web_responses.json")
 const WEB_RECORDED = Dict{String,String}()
+const WEB_ASKED = Set{String}()
 const WEB_NOW = Ref(datetime2julian(Dates.now(Dates.UTC)))
 if !LIVE || RECORD
     let saved = JSON.parsefile(WEB_FIXTURES)
@@ -75,16 +76,20 @@ if !LIVE || RECORD
 end
 if RECORD
     atexit() do
+        reached = Set(HTTP.URI(k).host for k in WEB_ASKED)
+        filter!(((k, _),) -> k in WEB_ASKED || !(HTTP.URI(k).host in reached), WEB_RECORDED)
         write(WEB_FIXTURES, JSON.json(Dict("now_jd" => WEB_NOW[],
                                            "responses" => [Dict("key" => k, "body" => b) for (k, b) in sort(collect(WEB_RECORDED))]);
                                       pretty=true))
     end
     AsteroidPipeline._WEB_RESPONSES[] = function (key, request)
         body = request()
+        push!(WEB_ASKED, key)
         text = String(copy(body))
-        # astrometry.net's login names the account and its session: not kept
+        # astrometry.net's answers name the account, its id and its session: not kept
         WEB_RECORDED[key] = replace(text, r"\"message\": ?\"authenticated user: [^\"]*\", ?" => "",
-                                    r"\"session\": ?\"[^\"]*\"" => "\"session\": \"recorded\"")
+                                    r"\"session\": ?\"[^\"]*\"" => "\"session\": \"recorded\"",
+                                    r"\"user\": ?\d+" => "\"user\": 0")
         return body
     end
 elseif !LIVE
@@ -1322,7 +1327,7 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             return csv
         end
         try
-            empty!(AsteroidPipeline._GAIA_DOWN)
+            empty!(AsteroidPipeline._SERVICE_DOWN)
             dir = mktempdir()
             s1 = @test_logs (:warn, r"Gaia archive") (:warn, r"VizieR") gaia_reference_stars(
                 3.05, -10.74, 0.05; epoch_jd=2457389.0, cache=dir)
@@ -1337,7 +1342,7 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test s2.dec[1] ≈ -10.74 - 20.0 * 10 / 3.6e6 && s2.dec[2:3] == [-10.75, -10.76]   # proper motion, or none (empty or NaN)
         finally
             AsteroidPipeline._TAP_RESPONSES[] = recorded
-            empty!(AsteroidPipeline._GAIA_DOWN)
+            empty!(AsteroidPipeline._SERVICE_DOWN)
         end
 
         try
@@ -1974,9 +1979,11 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         2026 10 18 2230   01 43 29.8 -08 41 54 161.4  17.9   43.82  078.5  193  -78   +59    0.53  082  -10   Map/Offsets   !
          ABC0069
         2026 10 18 2200   05 22 59.7 +37 32 48 119.7  19.0   54.86  094.7  135  -08   +60    0.34  165  +03   Map/Offsets
+         <p><b>X91537 </b>
+        2026 10 18 2200   05 22 59.7 +37 32 48 119.7  19.0   54.86  094.7  135  -08   +60    0.34  165  +03   Map/Offsets
         </pre>"""
-        eph = P._parse_neocp_ephemerides(html, ["ZTF10Go", "ABC0069"])
-        @test length(eph["ZTF10Go"]) == 2 && length(eph["ABC0069"]) == 1
+        eph = P._parse_neocp_ephemerides(html, ["ZTF10Go", "ABC0069", "X91537"])
+        @test length(eph["ZTF10Go"]) == 2 && length(eph["ABC0069"]) == 1 && length(eph["X91537"]) == 1
         r = eph["ZTF10Go"][1]
         @test r.jd ≈ datetime2julian(DateTime(2026, 10, 18, 22, 0))
         @test r.ra ≈ 15 * (1 + 42 / 60 + 1.5 / 3600) && r.dec ≈ -(8 + 46 / 60 + 22 / 3600)
@@ -2011,6 +2018,39 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
 
     @testset "crossmatch_catalog" begin
         @test_throws ArgumentError crossmatch_catalog([], :unknown_catalog; radius=5.0)
+
+        # the CDS down: SIMBAD's copy at Harvard and AAVSO's VSX answer, and it isn't asked again
+        tap, web = AsteroidPipeline._TAP_RESPONSES[], AsteroidPipeline._WEB_RESPONSES[]
+        asked = String[]
+        AsteroidPipeline._TAP_RESPONSES[] = function (url, query)
+            push!(asked, url)
+            occursin("cfa.harvard", url) || throw(Base.IOError("down", 0))
+            return "main_id,ra,dec\n\"* alf Lyr\",279.2347,38.7837\n"
+        end
+        AsteroidPipeline._WEB_RESPONSES[] = function (key, request)
+            occursin("ra=279.2347", key) || return Vector{UInt8}("""{"VSXObjects":[]}""")
+            return Vector{UInt8}("""{"VSXObjects":{"VSXObject":[
+                {"Name":"V1 Lyr","RA2000":"279.23470","Declination2000":"38.78370","VariabilityType":"EW",
+                 "Period":"0.5","MaxMag":"16.98 G","MinMag":"(0.30) G"},
+                {"Name":"V2 Lyr","RA2000":"279.23480","Declination2000":"38.78370","MaxMag":"<18.5 V"}]}}""")
+        end
+        try
+            empty!(AsteroidPipeline._SERVICE_DOWN)
+            here = [(id=1, ra=279.2347, dec=38.7837), (id=2, ra=10.0, dec=0.0)]
+            s = @test_logs (:warn, r"Harvard") crossmatch_catalog(here, :simbad; radius=5.0)
+            @test s.id == [1] && s.name == ["* alf Lyr"]
+            crossmatch_catalog(here, :simbad; radius=5.0)
+            @test count(u -> occursin("simbad.cds", u), asked) == 1
+            v = @test_logs (:warn, r"AAVSO") crossmatch_catalog(here, :vsx; radius=5.0)
+            k = sortperm(v.name)
+            @test v.name[k] == ["V1 Lyr", "V2 Lyr"] && all(==(1), v.id)
+            @test v.class[k[1]] == "EW" && v.period[k[1]] == 0.5
+            @test v.mag_max[k] == [16.98, 18.5] && v.mag_min[k[1]] == 0.3
+            @test isnan(v.mag_min[k[2]]) && isnan(v.period[k[2]]) && v.class[k[2]] == ""
+        finally
+            AsteroidPipeline._TAP_RESPONSES[], AsteroidPipeline._WEB_RESPONSES[] = tap, web
+            empty!(AsteroidPipeline._SERVICE_DOWN)
+        end
 
         try
             vega = [(id=1, ra=279.23473479, dec=38.78368896)]
