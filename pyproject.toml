@@ -31,7 +31,7 @@ classifiers = [
 ]
 dependencies = [
     "textual>=8.0",
-    "textual-image>=0.13",
+    "textual-image>=0.12",
     "pillow>=10.1",
     "pyfiglet>=1.0",
     # Downloads Julia only when none is installed; see the engine module.
