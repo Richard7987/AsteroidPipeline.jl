@@ -1585,6 +1585,16 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         end
         @test count(l -> length(l) == 80 && endswith(l, "F51"), split(r.report, "\n")) == length(r.candidates)   # one 80-column line each
         @test isempty(r.dropped)
+
+        # a frame all of one value, as a failed readout writes it: left out, not fatal
+        header = FITSHeader(["CTYPE1", "CTYPE2", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2",
+                             "DATE-OBS", "EXPTIME"],
+                            Any["RA---TAN", "DEC--TAN", 262.0, 242.0, 210.0, 45.0, -scale / 3600, scale / 3600,
+                                "2020-03-01T09:00:00", 45.0], fill("", 10))
+        FITS(f -> write(f, fill(100.0, nx, ny); header), joinpath(dir, "frame5.fits"), "w")
+        flat = analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars)
+        @test flat.reliable && flat.frames_used == 1:4 && flat.dropped == [5]
+        @test length(unique(flat.candidates.id)) == 1
     end
 
     @testset "moving_light_curve" begin
@@ -1783,6 +1793,12 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test header == ["COD F51", "OBS J. Bulger", "MEA A. Name", "TEL 1.8-m",
                          "ACK MPCReport file updated 2026.10.18 12:57:58", "NET Gaia DR3"]
         @test_throws ArgumentError mpc_report_header("F5")
+        # accents in TeX notation, as the MPC asks of names
+        @test mpc_report_header("F51"; observers="L. Olguín, A. Núñez, F. Çelik, Ø. Åberg")[2] ==
+              "OBS L. Olgu\\'{i}n, A. N\\'{u}\\~{n}ez, F. \\c{C}elik, {\\O}. {\\AA}berg"
+        accented = check_mpc_report("COD F51\nOBS L. Olguín\n----- end -----\n"; observatory="F51")
+        @test accented.ok && [i.code for i in accented.issues] == [:not_ascii]
+        @test occursin("OBS L. Olgu\\'{i}n\n", accented.cleaned)
         blank = blank_mpc_report("F51")
         @test startswith(blank, "COD F51\nACK ") && endswith(blank, "----- end -----\n")
         rows = [(id=2, frame=k, ra=183.0 + k / 1000, dec=-10.7, epoch=2460934.9 + k / 100, mag=21.4) for k in 1:3]
@@ -1837,6 +1853,7 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                 end
             end
             write(joinpath(src, "notes.txt"), "not a frame")
+            write(joinpath(src, "._frame1.fits"), UInt8[0, 5, 22, 7])            # as macOS zips them
             zip = joinpath(dir, "ps1-20990101_9_XY99_p00.zip")
             run(pipeline(`$(P.p7zip_jll.p7zip()) a -tzip $zip $src`; stdout=devnull))
             set = extract_set(zip, joinpath(dir, "out"))

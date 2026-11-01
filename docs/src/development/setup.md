@@ -42,6 +42,16 @@ A query with no recorded answer fails with a message saying so. The tests
 run on GitHub on Julia 1.11, with the recorded answers, and on the newest
 release, live — keep the code working on both.
 
+## The terminal app
+
+```sh
+pip install -e .[test]
+pytest ui/tests
+```
+
+They run the app without a terminal or Julia, against a stand-in for its
+engine.
+
 ## The documentation
 
 ```sh

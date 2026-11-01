@@ -23,6 +23,9 @@ _MAX_CANVAS = (1800, 1300)
 class StatusBar(Static):
     """One line at the bottom with the analysis engine's state."""
 
+    def __init__(self, **kwargs) -> None:
+        super().__init__("", markup=False, **kwargs)
+
     def on_mount(self) -> None:
         self.watch(self.app, "engine_status", self._update)
 

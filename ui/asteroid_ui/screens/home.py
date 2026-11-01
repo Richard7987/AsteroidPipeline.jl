@@ -13,7 +13,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
-from asteroid_ui.labels import labels_for
+from asteroid_ui.labels import human_decisions, labels_for
 from asteroid_ui.sets import SetEntry, discover, entry_for, summary
 from asteroid_ui.texts import HELP_HOME
 from asteroid_ui.widgets import StatusBar
@@ -64,7 +64,7 @@ class HomeScreen(Screen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="home"):
-            yield Static(banner(self.app.config.title), id="banner")
+            yield Static(banner(self.app.config.title), id="banner", markup=False)
             yield Static("find moving objects in your images · write the MPC report", id="subtitle")
             with Horizontal(id="home-body"):
                 with Vertical(id="sets-pane"):
@@ -84,7 +84,7 @@ class HomeScreen(Screen):
     def refresh_sets(self) -> None:
         folder = self.app.config.downloads
         self.entries = discover(folder)
-        self.query_one("#sets-title", Label).update(f"Image sets — .zip files in {folder}, and earlier analyses")
+        self.query_one("#sets-title", Label).update(Text(f"Image sets — .zip files in {folder}, and earlier analyses"))
         options = self.query_one("#sets", OptionList)
         highlighted = options.highlighted
         options.clear_options()
@@ -117,9 +117,11 @@ class HomeScreen(Screen):
             return
         entry = self.entries[int(event.option.id)]
         if entry.analyzed:
-            from asteroid_ui.screens.results import ResultsScreen
+            from asteroid_ui.screens.results import open_results
 
-            self.app.push_screen(ResultsScreen(entry))
+            screen = open_results(self.app, entry)
+            if screen is not None:
+                self.app.push_screen(screen)
         else:
             start_analysis(self, [entry])
 
@@ -130,7 +132,19 @@ class HomeScreen(Screen):
         if entry.source is None:
             self.app.notify("The images of this set are no longer where they were.", severity="error")
             return
-        start_analysis(self, [entry])
+        decisions = human_decisions(entry.name)
+        if not decisions:
+            start_analysis(self, [entry])
+            return
+        from asteroid_ui.screens.confirm import ConfirmScreen
+
+        def answered(yes: bool | None) -> None:
+            if yes:
+                start_analysis(self, [entry])
+
+        self.app.push_screen(ConfirmScreen(f"Analyze {entry.name} again?",
+                                           f"You have decided on {decisions} candidate(s) of this set. Decisions on "
+                                           "candidates found again are kept; the others are lost."), answered)
 
     def action_analyze_all(self) -> None:
         start_analysis(self, [e for e in self.entries if not e.analyzed and e.source is not None])

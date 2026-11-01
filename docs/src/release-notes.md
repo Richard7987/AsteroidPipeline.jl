@@ -64,6 +64,33 @@ from the version picker at the top right.
 
 **Fixed**
 
+- The terminal app, after a full review:
+  - A candidate kept a designation by its tracklet's number, which another
+    analysis of the set can change: two objects could share a designation.
+    Designations and a person's decisions now follow the object's positions,
+    numbers are never reused, and analyzing a set again asks first.
+  - Images that don't name their telescope shared one profile, so another
+    observatory's were reported under its code. They now ask every time.
+  - A profile edited after the analysis reaches the report.
+  - An analysis that failed on a set analyzed before showed the old results
+    without a word.
+  - A frame all of one value stopped [`analyze_set`](@ref): it is now left
+    out as a bad frame. A set with a frame mostly of one value, or with an orbit without H in
+    its field, failed at the very end of its analysis.
+  - A .zip is no longer unpacked beside itself, which also failed in a
+    read-only folder, and a set's copies of its frames are removed once analyzed.
+  - The report check read UTF-8 as Latin-1, damaging accents in its corrected report.
+  - Saving a report no longer replaces a different one beside it.
+  - A damaged labels file, missing saved images, a wrong Julia path, an
+    apostrophe in the install's path and brackets in a path no longer close
+    the app or stop its set-up; `wl-copy` failing falls back on the next
+    clipboard tool; `.ZIP` in capitals is found.
+- MPC reports: accented letters in the header are written in TeX notation
+  (`Olgu\\'{i}n`), as the MPC asks of names, and
+  [`check_mpc_report`](@ref) warns of them and corrects them.
+- [`extract_set`](@ref) and [`analyze_set`](@ref) took the hidden files macOS
+  writes beside each file it zips (`._frame.fits`) for frames, and a set
+  zipped on a Mac couldn't be analyzed.
 - [`neocp_check`](@ref) skipped objects whose temporary designation has
   fewer than 7 characters, which the NEO Confirmation Page lists too: a
   candidate matching one was not recognised.

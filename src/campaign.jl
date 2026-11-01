@@ -65,7 +65,7 @@ function extract_set(zip_path::AbstractString, dest_dir::AbstractString)
         fits = String[]
         for (root, _, files) in walkdir(scratch), f in files
             p = joinpath(root, f)
-            (!islink(p) && isfile(p) && any(e -> endswith(lowercase(f), e), _FITS_EXTENSIONS)) && push!(fits, p)
+            (!islink(p) && isfile(p) && _is_frame_name(f)) && push!(fits, p)
         end
         isempty(fits) && throw(ArgumentError("no FITS files in $zip_path"))
         parent = dirname(first(fits))
@@ -90,8 +90,11 @@ function extract_set(zip_path::AbstractString, dest_dir::AbstractString)
     end
 end
 
-_fits_in(dir) = sort([joinpath(dir, f) for f in readdir(dir)
-                      if any(e -> endswith(lowercase(f), e), _FITS_EXTENSIONS) && isfile(joinpath(dir, f))])
+_fits_in(dir) = sort([joinpath(dir, f) for f in readdir(dir) if _is_frame_name(f) && isfile(joinpath(dir, f))])
+
+# Hidden files aren't frames: macOS writes "._frame.fits" beside each file it
+# zips or copies to a foreign disk, metadata with a FITS name.
+_is_frame_name(f) = !startswith(f, ".") && any(e -> endswith(lowercase(f), e), _FITS_EXTENSIONS)
 
 # Where analyze_set keeps a set's cleaned copies: by its name and its frames,
 # so another set of the same name, in the same workdir, never reuses them
@@ -214,6 +217,8 @@ end
 The header lines of an MPC 80-column report, in the order Astrometrica writes
 them: `COD` first (IASC's portal rejects a report that doesn't start with
 it), then `CON`, `OBS`, `MEA`, `TEL`, `ACK`, `NET` — each only if given.
+Accented letters are written in TeX notation, as the MPC asks of names
+(`Olguín` becomes `Olgu\\'{i}n`).
 """
 function mpc_report_header(code::AbstractString; observers::AbstractString="", measurers::AbstractString="",
                            telescope::AbstractString="", net::AbstractString="", contact::AbstractString="",
@@ -221,11 +226,36 @@ function mpc_report_header(code::AbstractString; observers::AbstractString="", m
     length(code) == 3 || throw(ArgumentError("code must be a 3-character MPC observatory code"))
     lines = ["COD $code"]
     for (key, value) in (("CON", contact), ("OBS", observers), ("MEA", measurers), ("TEL", telescope))
-        isempty(value) || push!(lines, "$key $value")
+        isempty(value) || push!(lines, "$key $(_tex_ascii(value))")
     end
     push!(lines, "ACK MPCReport file updated " * Dates.format(ack_time, "yyyy.mm.dd HH:MM:SS"))
     isempty(net) || push!(lines, "NET $net")
     return lines
+end
+
+const _TEX_ACCENTS = Dict('\u0301' => "'", '\u0300' => "`", '\u0308' => "\"", '\u0302' => "^", '\u0303' => "~",
+                          '\u0304' => "=", '\u0327' => "c", '\u030C' => "v", '\u030A' => "r", '\u0306' => "u",
+                          '\u030B' => "H", '\u0328' => "k")
+const _TEX_LETTERS = Dict('ø' => "{\\o}", 'Ø' => "{\\O}", 'æ' => "{\\ae}", 'Æ' => "{\\AE}", 'œ' => "{\\oe}",
+                          'Œ' => "{\\OE}", 'ß' => "{\\ss}", 'ł' => "{\\l}", 'Ł' => "{\\L}", 'å' => "{\\aa}", 'Å' => "{\\AA}")
+
+# `s` in TeX notation, letter by letter; what has no such notation stays as it is
+function _tex_ascii(s::AbstractString)
+    isascii(s) && return String(s)
+    chars = collect(Unicode.normalize(replace(s, pairs(_TEX_LETTERS)...); decompose=true))
+    out = IOBuffer()
+    k = 1
+    while k <= length(chars)
+        accent = k < length(chars) ? get(_TEX_ACCENTS, chars[k+1], nothing) : nothing
+        if accent === nothing
+            write(out, chars[k])
+            k += 1
+        else
+            write(out, "\\", accent, "{", chars[k], "}")
+            k += 2
+        end
+    end
+    return String(take!(out))
 end
 
 const _MPC_REPORT_END = "----- end -----"
@@ -347,6 +377,9 @@ any of them is an error. Codes:
 - `:single_observation` — an object with one observation only; the MPC
   needs at least two. *Warning.*
 - `:missing_end` — no `----- end -----` line. *Warning.*
+- `:not_ascii` — a header line with accented letters (`detail`: the line),
+  which the MPC asks for in TeX notation, as the cleaned report has them.
+  *Warning.*
 
 `known` is a vector of named tuples with `name` and optionally `packed`, and
 `epochs`/`ra`/`dec` vectors (as [`known_objects_in_field`](@ref) returns).
@@ -393,7 +426,8 @@ function check_mpc_report(text::AbstractString; observatory::AbstractString, epo
                 code == observatory || flag(:wrong_code, i, code)
                 i == first_content || flag(:cod_not_first, i)
             else
-                push!(header, l)
+                isascii(l) || flag(:not_ascii, i, l)
+                push!(header, _tex_ascii(l))
             end
             continue
         end
@@ -534,9 +568,9 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
 3. refine every frame's WCS against Gaia DR3, the frames together
    ([`refine_wcs_set`](@ref)), and
    measure its quality — sources at 10σ per reference star, as
-   [`set_quality`](@ref) does. A frame above the limit (30) is left out if at
-   least 3 others remain; with fewer than 3 good frames the set is
-   `reliable = false` and not searched;
+   [`set_quality`](@ref) does. A frame above the limit (30), or with next to no
+   valid pixels (all of one value), is left out if at least 3 others remain;
+   with fewer than 3 good frames the set is `reliable = false` and not searched;
 4. search the remaining frames with `config` — by default
 [`pipeline_config`](@ref) at the frames' own pixel scale;
 5. identify tracklets with SkyBoT (5") and, given `mpcorb`, the MPC's orbits
@@ -615,6 +649,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     end
     progress(:refine, 0.25)
     _warn_short_sequence!(warnings, images[1], masks[1], header_wcs[1], epochs)
+    has_pixels = [count(.!m) >= 0.01 * length(m) for m in masks]
     refined = refine_wcs_set(images, header_wcs, stars; masks)
     images = masks = nothing
     for (k, r) in enumerate(refined)
@@ -624,7 +659,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     wcs = [r.wcs for r in refined]
     ratios = [r.n_detections / max(length(stars), 1) for r in refined]
     mpcorb = _mpcorb_for(mpcorb, epochs, warnings)
-    good = findall(<=(_MAX_DETECTIONS_PER_REFERENCE_STAR), ratios)
+    good = findall(k -> ratios[k] <= _MAX_DETECTIONS_PER_REFERENCE_STAR && has_pixels[k], eachindex(ratios))
     reliable = length(good) >= 3
     used = reliable ? good : collect(eachindex(paths))
     dropped = setdiff(eachindex(paths), used)

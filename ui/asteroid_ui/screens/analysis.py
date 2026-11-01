@@ -83,14 +83,14 @@ class AnalysisScreen(Screen):
         for i, entry in enumerate(self.entries, 1):
             counter = f" — set {i} of {len(self.entries)}" if len(self.entries) > 1 else ""
             self.query_one("#analysis-title", Static).update(f"Analyzing {entry.name}{counter}")
-            self.query_one("#analysis-source", Static).update(f"From: {entry.source_label}")
+            self.query_one("#analysis-source", Static).update(Text(f"From: {entry.source_label}"))
             self.stage = "extract"
             self._show_steps()
             self.query_one("#progress", ProgressBar).update(progress=0)
             app.engine_status = f"Analyzing {entry.name}…"
             source = ([str(p) for p in entry.source] if isinstance(entry.source, list) else str(entry.source))
             try:
-                profile = await self._profile_for(source)
+                profile = await self._profile_for(source, str(entry.cache_dir))
                 if profile is None:
                     raise BackendError("no observatory was chosen for these images")
                 await app.backend.request(
@@ -99,17 +99,19 @@ class AnalysisScreen(Screen):
                 entry.result = load_result(entry.name)
                 if entry.result is not None:
                     save_profile_used(entry, profile)
-                    add_catalog_labels(entry.name, entry.result, entry.cache_dir)
+                    self._keep_labels(entry)
             except BackendError as e:
                 self.errors[entry.name] = str(e)
                 self._show_steps(failed=True)
         self.finished = True
-        app.engine_status = "Analysis engine ready."
-        done = [e for e in self.entries if e.result is not None]
+        app.engine_status = f"✗ {app.backend.failed}" if app.backend.failed else "Analysis engine ready."
+        done = [e for e in self.entries if e.name not in self.errors and e.result is not None]
         if len(self.entries) == 1 and done:
-            from asteroid_ui.screens.results import ResultsScreen
+            from asteroid_ui.screens.results import open_results
 
-            app.switch_screen(ResultsScreen(done[0]))
+            screen = open_results(app, done[0])
+            if screen is not None:
+                app.switch_screen(screen)
         elif len(self.entries) > 1:
             from asteroid_ui.screens.summary import SummaryScreen
 
@@ -120,10 +122,20 @@ class AnalysisScreen(Screen):
                 Text.assemble((f"{ICON_ERROR} The analysis failed: ", "bold red"), message,
                               "\n\nPress Esc to go back. The engine's log has the details."))
 
-    async def _profile_for(self, source: str | list[str]) -> Profile | None:
+    def _keep_labels(self, entry: SetEntry) -> None:
+        try:
+            lost = add_catalog_labels(entry.name, entry.result, entry.cache_dir)
+        except ValueError as e:
+            self.app.notify(f"Labels not saved: {e}", severity="error", timeout=12)
+            return
+        if lost:
+            self.app.notify(f"{entry.name}: {lost} earlier decision(s) lost, their candidates weren't found again.",
+                            severity="warning", timeout=10)
+
+    async def _profile_for(self, source: str | list[str], out: str) -> Profile | None:
         """The telescope's profile, from the images' headers — asking the first time."""
         self.app.engine_status = "Reading the images' headers…"
-        site = await self.app.backend.request("inspect", source=source)
+        site = await self.app.backend.request("inspect", source=source, out=out)
         profile = find_profile(site)
         if profile is None:
             profile = await self.app.push_screen_wait(ProfileScreen(site))

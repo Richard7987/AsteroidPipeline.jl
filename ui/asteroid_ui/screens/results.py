@@ -26,18 +26,41 @@ LEGEND = Text.assemble(("□ new candidate", "bold yellow"), "    ", ("○ known
                        ("◌ known, not detected", "cyan"))
 
 
+def _sexagesimal(value: float, digits: int) -> tuple[int, int, float]:
+    # rounded first, or 59.9999 would be written as 60.000 seconds
+    seconds = round(value * 3600, digits)
+    whole, rest = divmod(seconds, 3600)
+    minutes, seconds = divmod(rest, 60)
+    return int(whole), int(minutes), seconds
+
+
 def _hms(ra: float) -> str:
-    h = ra / 15
-    return f"{int(h):02d} {int(h * 60 % 60):02d} {h * 3600 % 60:06.3f}"
+    h, m, s = _sexagesimal((ra / 15) % 24, 3)
+    return f"{h % 24:02d} {m:02d} {s:06.3f}"
 
 
 def _dms(dec: float) -> str:
-    d = abs(dec)
-    return f"{'-' if dec < 0 else '+'}{int(d):02d} {int(d * 60 % 60):02d} {d * 3600 % 60:05.2f}"
+    d, m, s = _sexagesimal(abs(dec), 2)
+    return f"{'-' if dec < 0 else '+'}{d:02d} {m:02d} {s:05.2f}"
+
+
+def _num(value: float | None, spec: str = ".1f") -> str:
+    """A number of the engine's, which leaves out what it couldn't measure (an orbit without H has no magnitude)."""
+    return "?" if value is None else format(value, spec)
 
 
 def _distance(arcsec: float) -> str:
     return f"{arcsec:.0f}\"" if arcsec < 120 else f"{arcsec / 60:.1f}′"
+
+
+def open_results(app, entry: SetEntry) -> ResultsScreen | None:
+    """The set's results screen; `None`, having said so, if its saved images are gone."""
+    try:
+        return ResultsScreen(entry)
+    except OSError as e:
+        app.notify(f"The saved images of {entry.name} can't be read ({e}). Analyze the set again.",
+                   severity="error", timeout=10)
+        return None
 
 
 def verdict_kind(result: dict, decisions: dict[int, str]) -> str:
@@ -211,8 +234,8 @@ class ResultsScreen(Screen):
         if obj.kind == CANDIDATE:
             t = obj.data
             text.append(f"{t['label']}", style="bold")
-            text.append(f"  {t['speed_arcsec_h']:.1f}\"/h toward {t.get('pa_deg', 0):.0f}° (PA)"
-                        f"  · straight line ±{t.get('rms_arcsec', 0):.2f}\"\n")
+            text.append(f"  {_num(t.get('speed_arcsec_h'))}\"/h toward {_num(t.get('pa_deg'), '.0f')}° (PA)"
+                        f"  · straight line ±{_num(t.get('rms_arcsec'), '.2f')}\"\n")
             frames = {f["index"]: f for f in self.result.get("frames", [])}
             for p in t["points"]:
                 mag = f"{p['mag']:.1f}" if p.get("mag") is not None else " ? "
@@ -226,8 +249,8 @@ class ResultsScreen(Screen):
                 near = [o for o in check["objects"] if o["agreement"] != "none"] or check["objects"][:2]
                 for o in near[:3]:
                     how = {"position": "right there", "motion": "same motion"}.get(o["agreement"], "different motion")
-                    text.append(f"  {o['name']}  {_distance(o['separation_arcsec'])} away, V {o['mag']:.1f}, "
-                                f"{o['rate_arcsec_h']:.1f}\"/h to {o['pa_deg']:.0f}° — {how}\n",
+                    text.append(f"  {o['name']}  {_distance(o['separation_arcsec'])} away, V {_num(o.get('mag'))}, "
+                                f"{_num(o.get('rate_arcsec_h'))}\"/h to {_num(o.get('pa_deg'), '.0f')}° — {how}\n",
                                 style="" if o["agreement"] != "none" else "dim")
             neocp = t.get("neocp")
             if neocp and neocp.get("objects"):
@@ -239,12 +262,12 @@ class ResultsScreen(Screen):
                     how = "same motion" if o["agreement"] == "motion" else "different motion"
                     flag = " (uncertain ephemeris)" if o["uncertain"] else ""
                     text.append(f"  NEOCP {o['designation']}  {_distance(o['separation_arcsec'])} away, "
-                                f"{o['rate_arcsec_h']:.0f}\"/h to {o['pa_deg']:.0f}° — {how}{flag}\n",
+                                f"{_num(o.get('rate_arcsec_h'), '.0f')}\"/h to {_num(o.get('pa_deg'), '.0f')}° — {how}{flag}\n",
                                 style="" if o["agreement"] == "motion" else "dim")
         else:
             k = obj.data
             text.append(f"{k['name']}", style="bold")
-            text.append(f"  V {k['mag']:.1f} predicted · {'detected' if k['detected'] else 'not detected'}"
+            text.append(f"  V {_num(k.get('mag'))} predicted · {'detected' if k['detected'] else 'not detected'}"
                         f" · position from the {k.get('source', 'catalog')}\n")
         details.update(text)
 

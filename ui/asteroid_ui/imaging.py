@@ -61,18 +61,20 @@ def objects_from_result(result: dict[str, Any], decisions: dict[int, str] | None
     for t in result["tracklets"]:
         if t.get("known"):
             continue
-        mag = f"V {t['mag']:.1f}" if t.get("mag") else "V ?"
+        mag = f"V {t['mag']:.1f}" if t.get("mag") is not None else "V ?"
         objects.append(SkyObject(
             f"t:{t['id']}", CANDIDATE, t["label"] + DECISION_MARK.get(decisions.get(t["id"], ""), ""),
-            f"{mag} · {t['speed_arcsec_h']:.0f}\"/h", {p["frame"]: (p["x"], p["y"]) for p in t["points"]}, t))
-    known = sorted(result["known"], key=lambda k: (not k["detected"], k["mag"]))
+            f"{mag} · {t.get('speed_arcsec_h') or 0:.0f}\"/h", {p["frame"]: (p["x"], p["y"]) for p in t["points"]}, t))
+    known = sorted(result["known"], key=lambda k: (not k["detected"], k["mag"] is None, k["mag"] or 0))
     for k in known:
         kind = KNOWN if k["detected"] else MISSED
-        points = {p["frame"]: (p["x"], p["y"]) for p in k["points"]}
+        points = {p["frame"]: (p["x"], p["y"]) for p in k["points"] if p["x"] is not None and p["y"] is not None}
         measured = tracklets.get(k.get("tracklet"))
         if measured is not None:
             points.update({p["frame"]: (p["x"], p["y"]) for p in measured["points"]})
-        objects.append(SkyObject(f"k:{k['name']}", kind, k["name"], f"V {k['mag']:.1f}", points, k))
+        if points:
+            mag = f"V {k['mag']:.1f}" if k["mag"] is not None else "V ?"
+            objects.append(SkyObject(f"k:{k['name']}", kind, k["name"], mag, points, k))
     return objects
 
 

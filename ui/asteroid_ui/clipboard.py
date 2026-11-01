@@ -20,8 +20,9 @@ def copy_text(app: App, text: str) -> None:
     for cmd in _TOOLS:
         if shutil.which(cmd[0]):
             try:
-                subprocess.run(cmd, input=text.encode(), timeout=3, check=False,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                done = subprocess.run(cmd, input=text.encode(), timeout=3, check=False,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except (OSError, subprocess.TimeoutExpired):
                 continue
-            break
+            if done.returncode == 0:  # wl-copy is there on X11 too, and fails
+                break

@@ -14,7 +14,7 @@ from textual.widgets import Button, Footer, Static, TextArea
 from asteroid_ui.backend import BackendError
 from asteroid_ui.clipboard import copy_text
 from asteroid_ui.labels import REAL
-from asteroid_ui.profiles import Profile, profile_of, report_header
+from asteroid_ui.profiles import report_header, report_profile
 from asteroid_ui.sets import SetEntry
 from asteroid_ui.texts import ICON_ERROR, ICON_OK, ICON_WARNING, REPORT_HELP, REPORT_TITLES
 
@@ -27,8 +27,17 @@ def report_path(entry: SetEntry) -> Path:
     elif source is not None:
         folder = source.parent if source.is_file() else source
     else:
-        folder = Path((entry.result or {}).get("set_dir", Path.home()))
+        folder = Path.home()
     return folder / f"{entry.name}_MPCReport.txt"
+
+
+def free_path(path: Path, text: str) -> Path:
+    """`path`, or a numbered one beside it if a different report is already there."""
+    candidate, k = path, 1
+    while candidate.exists() and candidate.read_text(encoding="utf-8", errors="replace") != text:
+        k += 1
+        candidate = path.with_name(f"{path.stem}-{k}{path.suffix}")
+    return candidate
 
 
 class ReportScreen(ModalScreen[None]):
@@ -53,7 +62,7 @@ class ReportScreen(ModalScreen[None]):
         else:
             self.kind = "unreliable" if self.result.get("report_kind") == "unreliable" else "blank"
         self.report = ""
-        self.profile = profile_of(self.result) or Profile("", self.result.get("observatory", ""))
+        self.profile = report_profile(self.result)
 
     def compose(self) -> ComposeResult:
         icon = ICON_ERROR if self.kind == "unreliable" else ICON_OK
@@ -103,9 +112,9 @@ class ReportScreen(ModalScreen[None]):
     def action_save(self) -> None:
         if not self.report:
             return
-        path = report_path(self.entry)
         try:
-            path.write_text(self.report)
+            path = free_path(report_path(self.entry), self.report)
+            path.write_text(self.report, encoding="utf-8")
         except OSError as e:
             self.app.notify(f"Could not save it: {e}", severity="error")
             return

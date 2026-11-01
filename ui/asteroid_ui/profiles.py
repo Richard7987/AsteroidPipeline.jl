@@ -16,7 +16,7 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from asteroid_ui.config import CONFIG_FILE
+from asteroid_ui.config import CONFIG_FILE, write_atomic
 
 PROFILES_FILE = CONFIG_FILE.parent / "profiles.json"
 
@@ -41,11 +41,16 @@ _BUILTIN = {
 }
 
 
+# Images that don't name their telescope can't be told apart: asked every
+# time, or a set from another observatory would be reported under this code.
+UNNAMED = "(no telescope name in the images)"
+
+
 def profile_key(site: dict[str, Any]) -> str:
     """The telescope's name as the images give it: telescope · instrument, else origin or observatory."""
     names = [site.get("telescope") or "", site.get("instrument") or ""]
     key = " · ".join(n for n in names if n)
-    return key or site.get("origin") or site.get("observatory") or "(no telescope name in the images)"
+    return key or site.get("origin") or site.get("observatory") or UNNAMED
 
 
 def _load() -> dict[str, Profile]:
@@ -59,26 +64,27 @@ def _load() -> dict[str, Profile]:
 def all_profiles() -> list[Profile]:
     """Saved profiles, then built-in ones not overridden."""
     saved = _load()
-    return list(saved.values()) + [p for k, p in _BUILTIN.items() if k not in saved]
+    return [p for k, p in saved.items() if k != UNNAMED] + [p for k, p in _BUILTIN.items() if k not in saved]
 
 
 def find_profile(site: dict[str, Any]) -> Profile | None:
     key = profile_key(site)
-    return _load().get(key) or _BUILTIN.get(key)
+    return None if key == UNNAMED else _load().get(key) or _BUILTIN.get(key)
 
 
 def save_profile(profile: Profile) -> None:
-    profiles = _load()
     profile.builtin = False
+    if profile.key == UNNAMED:
+        return
+    profiles = _load()
     profiles[profile.key] = profile
-    PROFILES_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PROFILES_FILE.write_text(json.dumps({k: asdict(p) for k, p in profiles.items()}, indent=2, ensure_ascii=False))
+    write_atomic(PROFILES_FILE, json.dumps({k: asdict(p) for k, p in profiles.items()}, indent=2, ensure_ascii=False))
 
 
 def delete_profile(key: str) -> None:
     profiles = _load()
     if profiles.pop(key, None) is not None:
-        PROFILES_FILE.write_text(json.dumps({k: asdict(p) for k, p in profiles.items()}, indent=2, ensure_ascii=False))
+        write_atomic(PROFILES_FILE, json.dumps({k: asdict(p) for k, p in profiles.items()}, indent=2, ensure_ascii=False))
 
 
 def report_header(config, profile: Profile) -> dict[str, str]:
@@ -89,11 +95,16 @@ def report_header(config, profile: Profile) -> dict[str, str]:
 
 def save_profile_used(entry, profile: Profile) -> None:
     """Record in the set's saved result which profile it was analyzed with (the report needs it later)."""
-    path = entry.cache_dir / "result.json"
     entry.result["profile"] = asdict(profile)
-    path.write_text(json.dumps(entry.result))
+    write_atomic(entry.cache_dir / "result.json", json.dumps(entry.result))
 
 
 def profile_of(result: dict[str, Any]) -> Profile | None:
     data = result.get("profile")
     return Profile(**{f: v for f, v in data.items() if f in Profile.__dataclass_fields__}) if data else None
+
+
+def report_profile(result: dict[str, Any]) -> Profile:
+    """The profile for a set's report: the telescope's as it is now, edited since the analysis or not."""
+    used = profile_of(result) or Profile("", result.get("observatory", ""))
+    return _load().get(used.key) or _BUILTIN.get(used.key) or used

@@ -34,7 +34,7 @@ class SummaryScreen(Screen):
         table = self.query_one(DataTable)
         table.add_columns("Set", "Date", "Result", "New", "Known", "Images used")
         for e in self.entries:
-            if e.result is None:
+            if e.result is None or e.name in self.errors:
                 table.add_row(e.name, e.date, Text(f"{ICON_ERROR} failed: {self.errors.get(e.name, '')[:60]}",
                                                    style="red"), "", "", "", key=e.name)
                 continue
@@ -51,9 +51,11 @@ class SummaryScreen(Screen):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         entry = next(e for e in self.entries if e.name == event.row_key.value)
         if entry.result is not None:
-            from asteroid_ui.screens.results import ResultsScreen
+            from asteroid_ui.screens.results import open_results
 
-            self.app.push_screen(ResultsScreen(entry))
+            screen = open_results(self.app, entry)
+            if screen is not None:
+                self.app.push_screen(screen)
 
     def action_back(self) -> None:
         self.app.pop_screen()

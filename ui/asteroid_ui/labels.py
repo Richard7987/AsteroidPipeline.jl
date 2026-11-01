@@ -30,7 +30,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from asteroid_ui.config import DATASET_DIR
+from asteroid_ui.config import DATASET_DIR, write_atomic
+from asteroid_ui.sets import same_track, track_of
 
 REAL, BOGUS = "real", "bogus"
 REASONS = {
@@ -56,10 +57,7 @@ def _load_index() -> dict[str, dict[str, Any]]:
 
 
 def _save_index(index: dict[str, dict[str, Any]]) -> None:
-    DATASET_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = _INDEX.with_suffix(".tmp")
-    tmp.write_text(json.dumps(index, indent=1))
-    tmp.replace(_INDEX)
+    write_atomic(_INDEX, json.dumps(index, indent=1))
     with open(DATASET_DIR / "labels.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=_COLUMNS)
         writer.writeheader()
@@ -89,11 +87,11 @@ def _row(set_name: str, result: dict[str, Any], tracklet: dict[str, Any], cache_
     return {
         "key": f"{set_name}/{tracklet['id']}", "set": set_name, "tracklet": tracklet["id"], "label": label,
         "reason": reason, "source": source,
-        "speed_arcsec_h": round(tracklet["speed_arcsec_h"], 2),
+        "speed_arcsec_h": round(tracklet["speed_arcsec_h"], 2) if tracklet.get("speed_arcsec_h") is not None else "",
         "mag": round(tracklet["mag"], 2) if tracklet.get("mag") is not None else "",
         "n_points": len(points), "observatory": result.get("observatory", ""),
         "epoch_first": points[0]["epoch"] if points else "", "stamp": stamp_rel,
-        "labelled_at": datetime.now().isoformat(timespec="seconds"),
+        "labelled_at": datetime.now().isoformat(timespec="seconds"), "track": track_of(tracklet),
     }
 
 
@@ -110,18 +108,36 @@ def set_label(set_name: str, result: dict[str, Any], cache_dir: Path, tracklet_i
     _save_index(index)
 
 
-def add_catalog_labels(set_name: str, result: dict[str, Any], cache_dir: Path) -> None:
-    """After an analysis: drop the set's old labels (its tracklet ids changed) and
-    add its known asteroids as real, confirmed by the catalogs."""
-    index = {k: v for k, v in _load_index().items() if v["set"] != set_name}
+def add_catalog_labels(set_name: str, result: dict[str, Any], cache_dir: Path) -> int:
+    """After an analysis: add the set's known asteroids as real, confirmed by the
+    catalogs, and keep a person's decisions on the candidates found again (their
+    ids may have changed). Returns how many decisions lost their candidate."""
+    old = _load_index()
+    decisions = [v for v in old.values() if v["set"] == set_name and v["source"] == "human"]
+    index = {k: v for k, v in old.items() if v["set"] != set_name}
     for t in result["tracklets"]:
+        track = track_of(t)
+        decided = next((d for d in decisions if same_track(d.get("track", []), track)), None)
         if t.get("known"):
             row = _row(set_name, result, t, cache_dir, REAL, "", "catalog")
-            index[row["key"]] = row
+        elif decided is not None:
+            row = _row(set_name, result, t, cache_dir, decided["label"], decided.get("reason", ""), "human")
+            row["labelled_at"] = decided.get("labelled_at", row["labelled_at"])
+        else:
+            continue
+        if decided is not None:
+            decisions.remove(decided)
+        index[row["key"]] = row
     _save_index(index)
+    return len(decisions)
+
+
+def human_decisions(set_name: str) -> int:
+    return sum(1 for r in labels_for(set_name).values() if r["source"] == "human")
 
 
 def dataset_counts() -> dict[str, int]:
+    """Raises ValueError while the index is damaged."""
     rows = _load_index().values()
     return {
         "real_human": sum(1 for r in rows if r["label"] == REAL and r["source"] == "human"),

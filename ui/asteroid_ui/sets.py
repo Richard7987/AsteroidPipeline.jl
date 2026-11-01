@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import zipfile
@@ -42,8 +43,24 @@ class SetEntry:
         return str(self.source) if self.source else "(source no longer available)"
 
 
+def track_of(tracklet: dict[str, Any]) -> list[dict[str, float]]:
+    """A tracklet's positions, what tells it from others: its id changes when a set is analyzed again."""
+    return [{"epoch": p["epoch"], "ra": p["ra"], "dec": p["dec"]} for p in tracklet["points"]]
+
+
+def same_track(a: list[dict[str, float]], b: list[dict[str, float]], arcsec: float = 5.0) -> bool:
+    """Whether two tracks are the same object: at the same position at some shared epoch."""
+    for p in a:
+        for q in b:
+            if abs(p["epoch"] - q["epoch"]) * 86400 < 1:
+                dra = (p["ra"] - q["ra"] + 180) % 360 - 180
+                if math.hypot(dra * math.cos(math.radians(p["dec"])), p["dec"] - q["dec"]) * 3600 <= arcsec:
+                    return True
+    return False
+
+
 def is_fits(path: Path) -> bool:
-    return path.suffix.lower() in FITS_SUFFIXES
+    return path.suffix.lower() in FITS_SUFFIXES and not path.name.startswith(".")
 
 
 def slug(text: str) -> str:
@@ -111,12 +128,17 @@ def discover(folder: str, max_depth: int = 3) -> list[SetEntry]:
     found: dict[str, SetEntry] = {}
     zips: list[Path] = []
     if root.is_dir():
-        for path in root.rglob("*.zip"):
-            try:
-                if len(path.relative_to(root).parts) <= max_depth and zip_has_fits(path):
-                    zips.append(path)
-            except OSError:
-                continue
+        for folder_name, subfolders, files in os.walk(root):
+            depth = len(Path(folder_name).relative_to(root).parts)
+            if depth + 1 >= max_depth:
+                subfolders.clear()
+            for file in files:
+                path = Path(folder_name) / file
+                try:
+                    if path.suffix.lower() == ".zip" and zip_has_fits(path):
+                        zips.append(path)
+                except OSError:
+                    continue
     for path in sorted(zips, key=lambda p: p.stat().st_mtime, reverse=True):
         entry = entry_for(path, taken=found.keys())
         found[entry.name] = entry
