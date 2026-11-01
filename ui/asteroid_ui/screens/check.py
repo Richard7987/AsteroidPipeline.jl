@@ -84,8 +84,16 @@ class CheckScreen(Screen):
             return
         self.app.config.report_to_check = str(path)
         self.app.config.save()
-        changed = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-        text = path.read_text(encoding="latin-1")
+        try:
+            changed = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            raw_bytes = path.read_bytes()
+        except OSError as e:
+            issues.update(Text(f"{ICON_ERROR} Could not read it: {e}", style="bold red"))
+            return
+        try:
+            text = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:  # Astrometrica's, on Windows
+            text = raw_bytes.decode("latin-1")
         self.query_one("#original", TextArea).text = text
 
         value = self.query_one("#check-set", Select).value

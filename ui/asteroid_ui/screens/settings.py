@@ -29,6 +29,15 @@ FIELDS = [
 ]
 
 
+def _training_data_note() -> str:
+    try:
+        counts = dataset_counts()
+    except ValueError as e:
+        return f"Training data: {e}"
+    return (f"Training data so far ({DATASET_DIR}): {counts['real_human']} confirmed real, "
+            f"{counts['real_catalog']} known asteroids, {counts['bogus']} not real.")
+
+
 class SettingsScreen(Screen):
     BINDINGS = [Binding("ctrl+s", "save", "Save"), Binding("delete", "delete_profile", "Delete profile"),
                 Binding("escape", "back", "Back")]
@@ -44,10 +53,7 @@ class SettingsScreen(Screen):
             yield Label("Telescope profiles — the observatory code and the OBS and TEL lines of every telescope "
                         "whose images you have opened. Enter edits one, Delete removes it.", classes="form-label")
             yield OptionList(id="profiles-list")
-            counts = dataset_counts()
-            yield Static(f"Training data so far ({DATASET_DIR}): {counts['real_human']} confirmed real, "
-                         f"{counts['real_catalog']} known asteroids, {counts['bogus']} not real.",
-                         id="settings-note")
+            yield Static(_training_data_note(), id="settings-note", markup=False)
             with Horizontal(classes="buttons"):
                 yield Button("Save (Ctrl+S)", id="save", variant="primary")
                 yield Button("Back (Esc)", id="back")
@@ -108,7 +114,7 @@ class SettingsScreen(Screen):
         if not valid_prefix(values["designation_prefix"]):
             self.app.notify("The prefix: up to 5 letters or digits, nothing else.", severity="error")
             return
-        if not values["next_designation"].isdigit() or int(values["next_designation"]) < 1:
+        if not values["next_designation"].isdecimal() or int(values["next_designation"]) < 1:
             self.app.notify("The next number must be a whole number, 1 or more.", severity="error")
             return
         if not values["measurers"]:
