@@ -9,8 +9,9 @@ time.
 - **Julia 1.11 or newer** — [julialang.org/install](https://julialang.org/install).
 - **An image set**: three or more FITS images of the same field, taken over
   tens of minutes to a few hours, each with a WCS (astrometric solution) in
-  its header. A `.zip` of them, or a folder, both work. Pan-STARRS1, ZTF,
-  and most survey and amateur pipelines provide this.
+  its header, or at least the telescope's pointing, from which one is solved.
+  A `.zip` of them, or a folder, both work. Pan-STARRS1, ZTF, and most survey
+  and amateur pipelines provide this.
 - **The MPC code of the observatory** that took them — `F51` for
   Pan-STARRS1, `I41` for ZTF; the [MPC's list](https://minorplanetcenter.net/iau/lists/ObsCodes.html)
   has them all. If you don't know it, [Use a different telescope](guides/telescopes.md)

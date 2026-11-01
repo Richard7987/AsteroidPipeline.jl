@@ -20,9 +20,9 @@ takes `main`'s later changes by merging it (a pushed branch is never
 rewritten), and its release notes go under "Unreleased". CI runs on every
 pushed branch; a branch is merged once it passes.
 
-## In progress: light curves of moving objects
+## Light curves of moving objects
 
-Branch `feature/moving-light-curve`.
+In 1.3.0; what remains is below.
 
 **Done**
 
@@ -59,10 +59,6 @@ Branch `feature/moving-light-curve`.
 
 ## Pending on `main`
 
-- [ ] Shorter warning texts in [`analyze_set`](@ref) when SkyBoT or other
-      services fail.
-- [ ] Tests for `neocp.jl` and plate solving using recorded responses, so
-      Codecov measures them without depending on the services.
 - [ ] Observer positions computed locally with SPICE (SPICE.jl +
       SPICEKernels.jl), as suggested on Julia's Discourse, instead of a
       request to Horizons.

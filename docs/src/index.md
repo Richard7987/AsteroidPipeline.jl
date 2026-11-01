@@ -18,9 +18,10 @@ format the Minor Planet Center (MPC) accepts.
 
 ![The pipeline's stages, from an image set to an MPC report](assets/pipeline-overview.png)
 
-It works with the FITS images of any telescope that come with an astrometric
-solution (a WCS) in their headers, or can be given one. It has been tested on
-real data from Pan-STARRS1 and the Zwicky Transient Facility.
+It works with the FITS images of any telescope: with an astrometric solution
+(a WCS) in their headers, or solved from the telescope's pointing. It has been
+tested on real data from Pan-STARRS1 and the Zwicky Transient Facility. It also
+measures the light curve of a moving asteroid and its rotation period.
 
 ## In a few lines
 
@@ -46,13 +47,14 @@ print(result.report)      # the MPC report (blank if nothing new was found)
 | install it — the app with Python, or the library with Julia | [Installation](installation.md) |
 | try it on your own images | [Getting started](getting-started.md) |
 | do a specific task (reports, known objects, another telescope…) | the [Guides](guides/image-sets.md) |
+| measure an asteroid's light curve and rotation period | [Light curves](guides/variable-stars.md) |
 | understand how it decides what is real | [How it works](concepts/pipeline.md) |
 | know how well it works, and where it doesn't | [Validation](validation/summary.md) |
 | look up a function | the [Reference](reference/sets.md) |
 
 ## Status
 
-Version 1.2.0. Every stage has been run on real telescope data and checked
+Version 1.3.0. Every stage has been run on real telescope data and checked
 against independent results — catalogued asteroids, another program's
 measurements, and synthetic asteroids injected into real images. See the
 [validation summary](validation/summary.md). Limits are listed in
