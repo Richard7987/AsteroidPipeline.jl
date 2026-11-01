@@ -64,6 +64,9 @@ from the version picker at the top right.
 
 **Fixed**
 
+- MPC reports: accented letters in the header are written in TeX notation
+  (`Olgu\\'{i}n`), as the MPC asks of names, and
+  [`check_mpc_report`](@ref) warns of them and corrects them.
 - [`extract_set`](@ref) and [`analyze_set`](@ref) took the hidden files macOS
   writes beside each file it zips (`._frame.fits`) for frames, and a set
   zipped on a Mac couldn't be analyzed.

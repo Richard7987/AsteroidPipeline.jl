@@ -83,6 +83,8 @@ ISSUES = {
                             "Remove it unless known objects are meant to be reported."),
     "single_observation": (False, "«{detail}» has a single observation; the MPC needs at least two."),
     "missing_end": (False, "The final «----- end -----» line is missing."),
+    "not_ascii": (False, "The MPC asks for accented letters in TeX notation: the corrected report has them so. "
+                         "«{detail}»"),
 }
 
 HELP_HOME = """\
