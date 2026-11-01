@@ -1663,7 +1663,15 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         mag = 13.0 .+ shape.(hours) .+ 0.02 .* hours .+ 0.01 .* randn(300)
 
         ls = recover_rotation_period(hours, mag; minimum_period=1.0, maximum_period=5.0)
-        @test ls.period ≈ P / 2 rtol = 0.05                     # a sinusoid fits half of it
+        @test ls.peak_period ≈ P / 2 rtol = 0.05                # a sinusoid fits half of it
+        @test ls.period ≈ P rtol = 0.02                         # the two halves differ: doubled
+        # equal halves: nothing tells the period from half of it
+        equal = 13.0 .+ 0.12 .* cospi.(4 .* hours ./ P) .+ 0.01 .* randn(300)
+        eq = recover_rotation_period(hours, equal; minimum_period=1.0, maximum_period=5.0)
+        @test eq.period == eq.peak_period
+        @test eq.period ≈ P / 2 rtol = 0.05
+        # the double period beyond maximum_period: not tried
+        @test recover_rotation_period(hours, mag; minimum_period=1.0, maximum_period=2.5).period < 2
         r = fourier_period(hours, mag; minimum_period=1.0, maximum_period=5.0, trend=true)
         @test abs(r.period - P) < 3 * r.period_error && r.period_error < 0.02
         truth = [shape(x) for x in range(0, P; length=1001)]

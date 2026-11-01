@@ -61,7 +61,8 @@ p = fourier_period(lc.epoch[good], lc.mag[good]; minimum_period=0.05, maximum_pe
 [`fourier_period`](@ref) fits a Fourier series of the rotation phase, the
 usual model for an asteroid: its two maxima per rotation differ, which
 the second and higher harmonics tell apart, where
-[`recover_rotation_period`](@ref)'s periodogram finds half the period. `trend`
+[`recover_rotation_period`](@ref)'s periodogram peaks at half the period
+(it doubles it only where the two halves clearly differ). `trend`
 fits a drift through the night with it. A period about as long as the
 night is warned of, since a series that long fits any drift: the night
 has to cover the rotation, better twice.
