@@ -1783,6 +1783,12 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test header == ["COD F51", "OBS J. Bulger", "MEA A. Name", "TEL 1.8-m",
                          "ACK MPCReport file updated 2026.10.18 12:57:58", "NET Gaia DR3"]
         @test_throws ArgumentError mpc_report_header("F5")
+        # accents in TeX notation, as the MPC asks of names
+        @test mpc_report_header("F51"; observers="L. Olguín, A. Núñez, F. Çelik, Ø. Åberg")[2] ==
+              "OBS L. Olgu\\'{i}n, A. N\\'{u}\\~{n}ez, F. \\c{C}elik, {\\O}. {\\AA}berg"
+        accented = check_mpc_report("COD F51\nOBS L. Olguín\n----- end -----\n"; observatory="F51")
+        @test accented.ok && [i.code for i in accented.issues] == [:not_ascii]
+        @test occursin("OBS L. Olgu\\'{i}n\n", accented.cleaned)
         blank = blank_mpc_report("F51")
         @test startswith(blank, "COD F51\nACK ") && endswith(blank, "----- end -----\n")
         rows = [(id=2, frame=k, ra=183.0 + k / 1000, dec=-10.7, epoch=2460934.9 + k / 100, mag=21.4) for k in 1:3]

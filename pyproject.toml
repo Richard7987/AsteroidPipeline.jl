@@ -38,6 +38,9 @@ dependencies = [
     "juliapkg>=0.1.13",
 ]
 
+[project.optional-dependencies]
+test = ["pytest"]
+
 [project.urls]
 Documentation = "https://richard7987.github.io/AsteroidPipeline.jl/stable/"
 Source = "https://github.com/Richard7987/AsteroidPipeline.jl"
