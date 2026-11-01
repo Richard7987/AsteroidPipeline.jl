@@ -84,6 +84,7 @@ makedocs(;
             "Report formats and digest2" => "reference/export.md",
             "Linking across nights" => "reference/multinight.md",
         ],
+        "How to cite" => "citing.md",
         "Release notes" => "release-notes.md",
         "Development notes" => [
             "Overview" => "development/index.md",

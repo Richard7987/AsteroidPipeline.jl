@@ -3,6 +3,13 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## 1.3.1 — 2026-11-01
+
+**Added**
+
+- `CITATION.cff` and [How to cite](citing.md): the reference for the software
+  and for what it builds on.
+
 ## 1.3.0 — 2026-11-01
 
 **Added**

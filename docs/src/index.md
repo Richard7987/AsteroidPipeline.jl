@@ -54,10 +54,11 @@ print(result.report)      # the MPC report (blank if nothing new was found)
 
 ## Status
 
-Version 1.3.0. Every stage has been run on real telescope data and checked
+Version 1.3.1. Every stage has been run on real telescope data and checked
 against independent results — catalogued asteroids, another program's
 measurements, and synthetic asteroids injected into real images. See the
 [validation summary](validation/summary.md). Limits are listed in
 [Limitations](concepts/limitations.md).
 
-AsteroidPipeline.jl is free software under the MIT license.
+AsteroidPipeline.jl is free software under the MIT license. If you use it in
+scientific work, please [cite it](citing.md).
