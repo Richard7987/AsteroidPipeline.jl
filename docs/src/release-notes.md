@@ -61,6 +61,9 @@ from the version picker at the top right.
 
 **Fixed**
 
+- [`neocp_check`](@ref) skipped objects whose temporary designation has
+  fewer than 7 characters, which the NEO Confirmation Page lists too: a
+  candidate matching one was not recognised.
 - While a copy of Gaia was down, every query waited out its timeouts
   before trying the next one: minutes for every frame of a sequence
   observed over many fields. A service that failed is tried last for the

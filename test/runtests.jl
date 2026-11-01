@@ -1974,9 +1974,11 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         2026 10 18 2230   01 43 29.8 -08 41 54 161.4  17.9   43.82  078.5  193  -78   +59    0.53  082  -10   Map/Offsets   !
          ABC0069
         2026 10 18 2200   05 22 59.7 +37 32 48 119.7  19.0   54.86  094.7  135  -08   +60    0.34  165  +03   Map/Offsets
+         <p><b>X91537 </b>
+        2026 10 18 2200   05 22 59.7 +37 32 48 119.7  19.0   54.86  094.7  135  -08   +60    0.34  165  +03   Map/Offsets
         </pre>"""
-        eph = P._parse_neocp_ephemerides(html, ["ZTF10Go", "ABC0069"])
-        @test length(eph["ZTF10Go"]) == 2 && length(eph["ABC0069"]) == 1
+        eph = P._parse_neocp_ephemerides(html, ["ZTF10Go", "ABC0069", "X91537"])
+        @test length(eph["ZTF10Go"]) == 2 && length(eph["ABC0069"]) == 1 && length(eph["X91537"]) == 1
         r = eph["ZTF10Go"][1]
         @test r.jd ≈ datetime2julian(DateTime(2026, 10, 18, 22, 0))
         @test r.ra ≈ 15 * (1 + 42 / 60 + 1.5 / 3600) && r.dec ≈ -(8 + 46 / 60 + 22 / 3600)
