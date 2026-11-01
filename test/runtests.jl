@@ -1585,6 +1585,16 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         end
         @test count(l -> length(l) == 80 && endswith(l, "F51"), split(r.report, "\n")) == length(r.candidates)   # one 80-column line each
         @test isempty(r.dropped)
+
+        # a frame all of one value, as a failed readout writes it: left out, not fatal
+        header = FITSHeader(["CTYPE1", "CTYPE2", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2",
+                             "DATE-OBS", "EXPTIME"],
+                            Any["RA---TAN", "DEC--TAN", 262.0, 242.0, 210.0, 45.0, -scale / 3600, scale / 3600,
+                                "2020-03-01T09:00:00", 45.0], fill("", 10))
+        FITS(f -> write(f, fill(100.0, nx, ny); header), joinpath(dir, "frame5.fits"), "w")
+        flat = analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars)
+        @test flat.reliable && flat.frames_used == 1:4 && flat.dropped == [5]
+        @test length(unique(flat.candidates.id)) == 1
     end
 
     @testset "moving_light_curve" begin

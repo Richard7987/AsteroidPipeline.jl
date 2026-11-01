@@ -568,9 +568,9 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
 3. refine every frame's WCS against Gaia DR3, the frames together
    ([`refine_wcs_set`](@ref)), and
    measure its quality — sources at 10σ per reference star, as
-   [`set_quality`](@ref) does. A frame above the limit (30) is left out if at
-   least 3 others remain; with fewer than 3 good frames the set is
-   `reliable = false` and not searched;
+   [`set_quality`](@ref) does. A frame above the limit (30), or with next to no
+   valid pixels (all of one value), is left out if at least 3 others remain;
+   with fewer than 3 good frames the set is `reliable = false` and not searched;
 4. search the remaining frames with `config` — by default
 [`pipeline_config`](@ref) at the frames' own pixel scale;
 5. identify tracklets with SkyBoT (5") and, given `mpcorb`, the MPC's orbits
@@ -649,6 +649,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     end
     progress(:refine, 0.25)
     _warn_short_sequence!(warnings, images[1], masks[1], header_wcs[1], epochs)
+    has_pixels = [count(.!m) >= 0.01 * length(m) for m in masks]
     refined = refine_wcs_set(images, header_wcs, stars; masks)
     images = masks = nothing
     for (k, r) in enumerate(refined)
@@ -658,7 +659,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     wcs = [r.wcs for r in refined]
     ratios = [r.n_detections / max(length(stars), 1) for r in refined]
     mpcorb = _mpcorb_for(mpcorb, epochs, warnings)
-    good = findall(<=(_MAX_DETECTIONS_PER_REFERENCE_STAR), ratios)
+    good = findall(k -> ratios[k] <= _MAX_DETECTIONS_PER_REFERENCE_STAR && has_pixels[k], eachindex(ratios))
     reliable = length(good) >= 3
     used = reliable ? good : collect(eachindex(paths))
     dropped = setdiff(eachindex(paths), used)

@@ -74,7 +74,8 @@ from the version picker at the top right.
   - A profile edited after the analysis reaches the report.
   - An analysis that failed on a set analyzed before showed the old results
     without a word.
-  - A set with a frame mostly of one value, or with an orbit without H in
+  - A frame all of one value stopped [`analyze_set`](@ref): it is now left
+    out as a bad frame. A set with a frame mostly of one value, or with an orbit without H in
     its field, failed at the very end of its analysis.
   - A .zip is no longer unpacked beside itself, which also failed in a
     read-only folder, and a set's copies of its frames are removed once analyzed.
