@@ -47,9 +47,12 @@ from the version picker at the top right.
   differ, as an elongated asteroid's two maxima per rotation do: the peak
   is at half the period. Where the halves can't be told apart it is the
   peak, as before.
-- Tests: Gaia, SIMBAD and VizieR answer from recorded answers
-  (`test/fixtures`), and the suite runs without waiting on them; the
-  newest Julia in CI still queries them live ([Development setup](development/setup.md)).
+- Tests: Gaia, SIMBAD, VizieR, astrometry.net and the NEO Confirmation
+  Page answer from recorded answers (`test/fixtures`), and the suite runs
+  without waiting on them; [`plate_solve`](@ref) and [`neocp_check`](@ref)
+  are tested end to end without an API key. The newest Julia in CI still
+  queries them live ([Development setup](development/setup.md)).
+- Shorter warnings.
 - The Nix flake is no longer in the repository: the app and the library
   install the same way on every system ([Installation](installation.md)).
 - [`pipeline_config`](@ref) takes `n_frames`: a tracklet needs half of

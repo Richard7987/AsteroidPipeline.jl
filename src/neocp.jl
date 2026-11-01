@@ -19,7 +19,8 @@ likelihood of being a NEO), `ra`, `dec` (degrees, at the last observation),
 `mag` (V), `n_obs`, `arc_days` and `not_seen_days`.
 """
 function neocp_objects()
-    body = String(HTTP.get(NEOCP_LIST_URL; read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+    body = String(_web_body(() -> HTTP.get(NEOCP_LIST_URL; read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body,
+                            NEOCP_LIST_URL))
     return [(designation=String(o["Temp_Desig"]), score=Float64(o["Score"]), ra=15 * Float64(o["R.A."]),
              dec=Float64(o["Decl."]), mag=Float64(something(o["V"], NaN)), n_obs=Int(o["NObs"]),
              arc_days=Float64(o["Arc"]), not_seen_days=Float64(o["Not_Seen_dys"]))
@@ -38,8 +39,11 @@ function _neocp_ephemerides(designations, observatory::AbstractString, first_jd:
             ("obj=" * HTTP.escapeuri(d) for d in designations)...,
             "Parallax=1", "obscode=$observatory", "long=", "lat=", "alt=", "int=1", "start=$start",
             "raty=a", "mot=m", "dmot=p", "out=f", "sun=x", "oalt=-90"]
-    html = String(HTTP.post(NEOCP_EPHEMERIS_URL, ["Content-Type" => "application/x-www-form-urlencoded"],
-                            join(form, "&"); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+    query = join(form, "&")
+    html = String(_web_body("$NEOCP_EPHEMERIS_URL?$query") do
+        HTTP.post(NEOCP_EPHEMERIS_URL, ["Content-Type" => "application/x-www-form-urlencoded"], query;
+                  read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body
+    end)
     return _parse_neocp_ephemerides(html, designations)
 end
 
