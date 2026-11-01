@@ -121,3 +121,7 @@ end
 p = recover_rotation_period(reduced.epoch, reduced.mag; minimum_period=2 / 24, maximum_period=20 / 24)
 @printf("periodogram's highest peak: %.3f h (half the period: %.3f h; its daily alias: %.3f h)\n",
         24p.period, 12PERIOD, 24 / (2 / PERIOD - 1))
+f = fourier_period(reduced.epoch, reduced.mag; minimum_period=2 / 24, maximum_period=20 / 24, order=2)
+# sparse points can't tell a double-peaked curve from one at half its period: doubled, as for asteroids
+@printf("Fourier series, 2 harmonics: %.4f ± %.4f h, doubled %.4f h, amplitude %.2f mag (published %.4f h)\n",
+        24f.period, 24f.period_error, 48f.period, f.amplitude, 24PERIOD)

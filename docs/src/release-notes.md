@@ -7,6 +7,11 @@ from the version picker at the top right.
 
 **Added**
 
+- [`fourier_period`](@ref): an asteroid's rotation period from a Fourier
+  series of its rotation phase, the way asteroid photometry measures it,
+  with its error and amplitude; [`recover_rotation_period`](@ref)'s
+  periodogram finds half the period of a light curve with two maxima per
+  rotation. A period about as long as the light curve is warned of.
 - [`gaia_reference_stars`](@ref) keeps every answer on disk
   ([`gaia_cache_dir`](@ref)), so a field analyzed or observed again needs
   no query, and falls back to a third copy of Gaia DR3, NOIRLab's Astro Data

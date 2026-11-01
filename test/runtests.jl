@@ -1637,6 +1637,39 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test AsteroidPipeline._comparison_zeropoints([[25.0, NaN, 24.0, NaN] for _ in 1:3]) == (nothing, nothing)
     end
 
+    @testset "fourier_period" begin
+        # an elongated asteroid over one 5 h night: two maxima per 3.0 h rotation,
+        # unequal, 0.01 mag of noise, and a drift of 0.02 mag/h through the night
+        Random.seed!(11)
+        P = 3.0
+        hours = sort(5 .* rand(300))
+        shape(h) = 0.12 * cospi(4h / P) + 0.04 * cospi(2h / P + 0.3) + 0.02 * cospi(6h / P)
+        mag = 13.0 .+ shape.(hours) .+ 0.02 .* hours .+ 0.01 .* randn(300)
+
+        ls = recover_rotation_period(hours, mag; minimum_period=1.0, maximum_period=5.0)
+        @test ls.period ≈ P / 2 rtol = 0.05                     # a sinusoid fits half of it
+        r = fourier_period(hours, mag; minimum_period=1.0, maximum_period=5.0, trend=true)
+        @test abs(r.period - P) < 3 * r.period_error && r.period_error < 0.02
+        truth = [shape(x) for x in range(0, P; length=1001)]
+        @test r.amplitude ≈ maximum(truth) - minimum(truth) atol = 0.01
+        @test r.rms ≈ 0.01 atol = 0.002
+        @test length(r.periods) == length(r.chi2)
+        @test minimum(r.chi2) ≈ r.rms^2 rtol = 0.05
+        # the drift unmodelled: a worse fit
+        @test fourier_period(hours, mag; minimum_period=1.0, maximum_period=5.0).rms > 1.5 * r.rms
+        # a period about as long as the night: warned of
+        slow = 13.0 .+ 0.1 .* sinpi.(2 .* hours ./ 4.6) .+ 0.01 .* randn(300)
+        @test_logs (:warn, r"of the time the light curve covers") fourier_period(hours, slow; minimum_period=1.0,
+                                                                                  maximum_period=5.0)
+        # months of sparse points: an uncertainty far below the search's first step, still measured
+        days = sort(150 .* rand(85))
+        sparse = 0.25 .* cospi.(4 .* days ./ (P / 24)) .+ 0.05 .* cospi.(2 .* days ./ (P / 24)) .+ 0.02 .* randn(85)
+        s = fourier_period(days, sparse; minimum_period=1 / 24, maximum_period=5 / 24, order=2)
+        @test 0 < s.period_error < 1e-5 && abs(s.period - P / 24) < 4 * s.period_error
+        @test_throws ArgumentError fourier_period(hours, mag; minimum_period=5.0, maximum_period=1.0)
+        @test_throws ArgumentError fourier_period(hours[1:9], mag[1:9]; minimum_period=1.0, maximum_period=5.0)
+    end
+
     @testset "reduced_magnitudes / object geometry" begin
         # H = 10 seen at three geometries, through the H-G model the MPC uses
         H, G = 10.0, 0.15
