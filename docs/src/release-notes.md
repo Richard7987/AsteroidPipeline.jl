@@ -64,6 +64,9 @@ from the version picker at the top right.
 
 **Fixed**
 
+- [`extract_set`](@ref) and [`analyze_set`](@ref) took the hidden files macOS
+  writes beside each file it zips (`._frame.fits`) for frames, and a set
+  zipped on a Mac couldn't be analyzed.
 - [`neocp_check`](@ref) skipped objects whose temporary designation has
   fewer than 7 characters, which the NEO Confirmation Page lists too: a
   candidate matching one was not recognised.

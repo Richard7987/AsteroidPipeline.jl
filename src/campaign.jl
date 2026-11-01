@@ -65,7 +65,7 @@ function extract_set(zip_path::AbstractString, dest_dir::AbstractString)
         fits = String[]
         for (root, _, files) in walkdir(scratch), f in files
             p = joinpath(root, f)
-            (!islink(p) && isfile(p) && any(e -> endswith(lowercase(f), e), _FITS_EXTENSIONS)) && push!(fits, p)
+            (!islink(p) && isfile(p) && _is_frame_name(f)) && push!(fits, p)
         end
         isempty(fits) && throw(ArgumentError("no FITS files in $zip_path"))
         parent = dirname(first(fits))
@@ -90,8 +90,11 @@ function extract_set(zip_path::AbstractString, dest_dir::AbstractString)
     end
 end
 
-_fits_in(dir) = sort([joinpath(dir, f) for f in readdir(dir)
-                      if any(e -> endswith(lowercase(f), e), _FITS_EXTENSIONS) && isfile(joinpath(dir, f))])
+_fits_in(dir) = sort([joinpath(dir, f) for f in readdir(dir) if _is_frame_name(f) && isfile(joinpath(dir, f))])
+
+# Hidden files aren't frames: macOS writes "._frame.fits" beside each file it
+# zips or copies to a foreign disk, metadata with a FITS name.
+_is_frame_name(f) = !startswith(f, ".") && any(e -> endswith(lowercase(f), e), _FITS_EXTENSIONS)
 
 # Where analyze_set keeps a set's cleaned copies: by its name and its frames,
 # so another set of the same name, in the same workdir, never reuses them

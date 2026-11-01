@@ -1837,6 +1837,7 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                 end
             end
             write(joinpath(src, "notes.txt"), "not a frame")
+            write(joinpath(src, "._frame1.fits"), UInt8[0, 5, 22, 7])            # as macOS zips them
             zip = joinpath(dir, "ps1-20990101_9_XY99_p00.zip")
             run(pipeline(`$(P.p7zip_jll.p7zip()) a -tzip $zip $src`; stdout=devnull))
             set = extract_set(zip, joinpath(dir, "out"))

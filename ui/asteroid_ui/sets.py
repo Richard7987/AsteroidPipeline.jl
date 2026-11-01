@@ -43,7 +43,7 @@ class SetEntry:
 
 
 def is_fits(path: Path) -> bool:
-    return path.suffix.lower() in FITS_SUFFIXES
+    return path.suffix.lower() in FITS_SUFFIXES and not path.name.startswith(".")
 
 
 def slug(text: str) -> str:
