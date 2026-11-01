@@ -1,5 +1,7 @@
 const _SIMBAD_TAP_URL = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
 const _VIZIER_TAP_URL = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync"
+const _SIMBAD_CFA_TAP_URL = "https://simbad.cfa.harvard.edu/simbad/sim-tap/sync"
+const _AAVSO_VSX_URL = "https://vsx.aavso.org/index.php"
 
 # The SkyBoT service moved here from vo.imcce.fr, which now answers 403.
 const _SKYBOT_URL = "https://ssp.imcce.fr/webservices/skybot/api/conesearch.php"
@@ -30,7 +32,8 @@ J2000), such as the table returned by [`astrometric_calibrate`](@ref);
   ADQL cone per candidate, `_CDS_BATCH_SIZE` (50) per request, and assign
   each returned row to its candidates client-side. (TAP `UPLOAD` and ADQL
   `UNION` don't work on these services.) VSX rows carry variability class,
-  magnitudes and period.
+  magnitudes and period. While the CDS is down, SIMBAD's copy at Harvard
+  and AAVSO's VSX answer instead, with a warning.
 
 Every result has `id`, `ra`, `dec` and `distance_arcsec`, one row per
 (candidate, match) pair; a candidate `id` absent from it has no known
@@ -98,7 +101,7 @@ end
 # services, when set: the tests' recorded answers
 const _TAP_RESPONSES = Ref{Any}(nothing)
 
-# `(key, request) -> body` answering astrometry.net's and the NEOCP's requests
+# `(key, request) -> body` answering astrometry.net's, the NEOCP's and AAVSO's requests
 # in place of the services, when set: the tests' recorded answers. `request()`
 # makes the request; `key` names it without what differs between runs.
 const _WEB_RESPONSES = Ref{Any}(nothing)
@@ -106,6 +109,30 @@ const _WEB_RESPONSES = Ref{Any}(nothing)
 function _web_body(request, key::AbstractString)
     respond = _WEB_RESPONSES[]
     return respond === nothing ? request() : respond(key, request)
+end
+
+# When each service last failed
+const _SERVICE_DOWN = Dict{String,Float64}()
+const _SERVICE_DOWN_LOCK = ReentrantLock()
+const _SERVICE_DOWN_SECONDS = 900
+
+# The answer of the first of `services`, `(url, name, ask)`, that gives one. A
+# service that failed a moment ago is tried last, so an outage costs its
+# timeouts once, not at every query.
+function _first_answer(services)
+    down = lock(() -> Set(u for (u, t) in _SERVICE_DOWN if time() - t < _SERVICE_DOWN_SECONDS), _SERVICE_DOWN_LOCK)
+    order = sort(collect(services); by=s -> s[1] in down)
+    for (k, (url, name, ask)) in enumerate(order)
+        try
+            answer = ask()
+            lock(() -> delete!(_SERVICE_DOWN, url), _SERVICE_DOWN_LOCK)
+            return answer
+        catch e
+            (_is_service_failure(e) && k < length(order)) || rethrow()
+            lock(() -> _SERVICE_DOWN[url] = time(), _SERVICE_DOWN_LOCK)
+            @warn "$name unavailable; trying $(order[k+1][2])" exception = e
+        end
+    end
 end
 
 # `f()`, tried up to `attempts` times while `retryable(e)`, waiting `backoff`
@@ -185,7 +212,9 @@ function _crossmatch_simbad(candidates, radius::Real)
     id = Int[]; name = String[]; ra = Float64[]; dec = Float64[]; distance_arcsec = Float64[]
     for batch in Iterators.partition(collect(candidates), _CDS_BATCH_SIZE)
         query = _cds_batch_query("main_id, ra, dec", "basic", "ra", "dec", batch, radius_deg)
-        for row in _tap_query(_SIMBAD_TAP_URL, query)
+        text = _first_answer(((_SIMBAD_TAP_URL, "SIMBAD", () -> _tap_csv(_SIMBAD_TAP_URL, query)),
+                              (_SIMBAD_CFA_TAP_URL, "SIMBAD's copy at Harvard", () -> _tap_csv(_SIMBAD_CFA_TAP_URL, query))))
+        for row in CSV.File(IOBuffer(text))
             for c in batch
                 d = _angular_distance_arcsec(c.ra, c.dec, row.ra, row.dec)
                 d > radius && continue
@@ -208,28 +237,59 @@ function _crossmatch_vsx(candidates, radius::Real)
     id = Int[]; name = String[]; class = String[]; ra = Float64[]; dec = Float64[]
     mag_max = Float64[]; mag_min = Float64[]; period = Float64[]; distance_arcsec = Float64[]
     for batch in Iterators.partition(collect(candidates), _CDS_BATCH_SIZE)
-        query = _cds_batch_query("Name, Type, RAJ2000, DEJ2000, max, min, Period", "\"B/vsx/vsx\"",
-                                  "RAJ2000", "DEJ2000", batch, radius_deg)
-        for row in _tap_query(_VIZIER_TAP_URL, query)
-            # VizieR pads Name/Type with spaces; unstripped, every comparison fails.
-            row_ra, row_dec = row.RAJ2000, row.DEJ2000
+        rows = _first_answer(((_VIZIER_TAP_URL, "VizieR", () -> _vsx_from_vizier(batch, radius_deg)),
+                              (_AAVSO_VSX_URL, "AAVSO's VSX", () -> _vsx_from_aavso(batch, radius_deg))))
+        for row in rows
             for c in batch
-                d = _angular_distance_arcsec(c.ra, c.dec, row_ra, row_dec)
+                d = _angular_distance_arcsec(c.ra, c.dec, row.ra, row.dec)
                 d > radius && continue
                 push!(id, c.id)
-                push!(name, String(strip(row.Name)))
-                push!(class, String(strip(row.Type)))
-                push!(ra, row_ra)
-                push!(dec, row_dec)
-                push!(mag_max, _nan_if_missing(row.max))
-                push!(mag_min, _nan_if_missing(row.min))
-                push!(period, _nan_if_missing(row.Period))
+                push!(name, row.name)
+                push!(class, row.class)
+                push!(ra, row.ra)
+                push!(dec, row.dec)
+                push!(mag_max, row.mag_max)
+                push!(mag_min, row.mag_min)
+                push!(period, row.period)
                 push!(distance_arcsec, d)
             end
         end
     end
 
     return Table(; id, name, class, ra, dec, mag_max, mag_min, period, distance_arcsec)
+end
+
+function _vsx_from_vizier(batch, radius_deg)
+    query = _cds_batch_query("Name, Type, RAJ2000, DEJ2000, max, min, Period", "\"B/vsx/vsx\"",
+                             "RAJ2000", "DEJ2000", batch, radius_deg)
+    # VizieR pads Name/Type with spaces; unstripped, every comparison fails.
+    return [(name=String(strip(row.Name)), class=String(strip(row.Type)), ra=row.RAJ2000, dec=row.DEJ2000,
+             mag_max=_nan_if_missing(row.max), mag_min=_nan_if_missing(row.min), period=_nan_if_missing(row.Period))
+            for row in _tap_query(_VIZIER_TAP_URL, query)]
+end
+
+# One request per candidate: AAVSO's API has only single cones. A magnitude is
+# written "16.98 G", "<18.5 V", or as an amplitude, "(0.30) V", as VizieR's are.
+function _vsx_from_aavso(batch, radius_deg)
+    number(s) = (m = match(r"\d+(\.\d+)?", s); m === nothing ? NaN : parse(Float64, m.match))
+    rows = Dict{String,NamedTuple}()
+    for c in batch
+        url = @sprintf("%s?view=api.list&format=json&ra=%.6f&dec=%.6f&radius=%.6f", _AAVSO_VSX_URL, c.ra, c.dec, radius_deg)
+        body = _web_body(url) do
+            _with_retries(_TAP_ATTEMPTS) do
+                HTTP.get(url; read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body
+            end
+        end
+        found = JSON.parse(String(body))["VSXObjects"]
+        isempty(found) && continue
+        for o in found["VSXObject"]
+            rows[o["Name"]] = (name=String(o["Name"]), class=String(get(o, "VariabilityType", "")),
+                               ra=parse(Float64, o["RA2000"]), dec=parse(Float64, o["Declination2000"]),
+                               mag_max=number(get(o, "MaxMag", "")), mag_min=number(get(o, "MinMag", "")),
+                               period=number(get(o, "Period", "")))
+        end
+    end
+    return collect(values(rows))
 end
 
 """

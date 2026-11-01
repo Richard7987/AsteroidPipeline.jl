@@ -45,27 +45,14 @@ function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
               "phot_g_mean_mag AS g FROM gaia_dr3.gaia_source " *
               "WHERE q3c_radial_query(ra, dec, $ra, $dec, $radius_deg) = 't' " *
               "AND phot_g_mean_mag BETWEEN $lo AND $hi"
-    services = ((_GAIA_ARCHIVE_TAP_URL, esa, "the Gaia archive"), (_VIZIER_TAP_URL, vizier, "VizieR"),
-                (_NOIRLAB_TAP_URL, noirlab, "NOIRLab's Data Lab"))
+    services = ((_GAIA_ARCHIVE_TAP_URL, "the Gaia archive", () -> _tap_csv(_GAIA_ARCHIVE_TAP_URL, esa)),
+                (_VIZIER_TAP_URL, "VizieR", () -> _tap_csv(_VIZIER_TAP_URL, vizier)),
+                (_NOIRLAB_TAP_URL, "NOIRLab's Data Lab", () -> _tap_csv(_NOIRLAB_TAP_URL, noirlab)))
 
     cached = cache === nothing ? nothing : joinpath(cache, string(hash(esa); base=16) * ".csv")
     text = cached !== nothing && isfile(cached) ? read(cached, String) : nothing
     if text === nothing
-        # a service that failed a moment ago is tried last, so an outage costs
-        # its timeouts once, not at every query
-        down = lock(() -> Set(u for (u, t) in _GAIA_DOWN if time() - t < _GAIA_DOWN_SECONDS), _GAIA_DOWN_LOCK)
-        order = sort(collect(services); by=s -> s[1] in down)
-        for (k, (url, query, name)) in enumerate(order)
-            try
-                text = _tap_csv(url, query)
-                lock(() -> delete!(_GAIA_DOWN, url), _GAIA_DOWN_LOCK)
-                break
-            catch e
-                (_is_service_failure(e) && k < length(order)) || rethrow()
-                lock(() -> _GAIA_DOWN[url] = time(), _GAIA_DOWN_LOCK)
-                @warn "$name unavailable; trying $(order[k+1][3])" exception = e
-            end
-        end
+        text = _first_answer(services)
         if cached !== nothing
             mkpath(cache)
             tmp = tempname(cache)
@@ -103,11 +90,6 @@ gaia_cache_dir() = joinpath(get(ENV, "XDG_CACHE_HOME", joinpath(homedir(), ".cac
 const _GAIA_DR3_EPOCH_JD = 2457389.0   # J2016.0
 const _GAIA_ARCHIVE_TAP_URL = "https://gea.esac.esa.int/tap-server/tap/sync"
 const _NOIRLAB_TAP_URL = "https://datalab.noirlab.edu/tap/sync"
-
-# Gaia services that failed, by URL, and when
-const _GAIA_DOWN = Dict{String,Float64}()
-const _GAIA_DOWN_LOCK = ReentrantLock()
-const _GAIA_DOWN_SECONDS = 900
 
 """
     refine_wcs(image, wcs, stars; threshold=10.0, mask=nothing, max_offset=60.0,
