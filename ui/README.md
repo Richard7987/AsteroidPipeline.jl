@@ -85,6 +85,8 @@ for one telescope:
   TEL;
 - from then on, every image set from that telescope gets its profile without
   asking;
+- images that don't name their telescope ask every time: nothing tells one
+  observatory's from another's;
 - Pan-STARRS 1 (IASC's images) comes built in: F51, with the observers and
   telescope IASC's own settings use.
 
@@ -104,8 +106,9 @@ Every candidate you confirm or reject is saved, with its pixels, to
   calibrated frames' pixels centred on the object in every frame.
 
 That is the material for a classifier that can, one day, make the human
-check unnecessary. Analyzing an image set again replaces its labels (its
-candidates are numbered anew).
+check unnecessary. Analyzing an image set again asks first: decisions and
+designations stay with the candidates found again, by their positions, and
+decisions on the others are lost.
 
 ## Accessibility
 

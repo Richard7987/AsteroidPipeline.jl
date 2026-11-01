@@ -20,9 +20,9 @@ takes `main`'s later changes by merging it (a pushed branch is never
 rewritten), and its release notes go under "Unreleased". CI runs on every
 pushed branch; a branch is merged once it passes.
 
-## In progress: light curves of moving objects
+## Light curves of moving objects
 
-Branch `feature/moving-light-curve`.
+In 1.3.0; what remains is below.
 
 **Done**
 
@@ -33,9 +33,7 @@ Branch `feature/moving-light-curve`.
 - [`reduced_magnitudes`](@ref) and [`object_geometry`](@ref): distance, phase
   angle and light time, with the geometry from JPL Horizons.
 - Zero points from the same comparison stars in every frame, their error
-  in `mag_err`. One night of 4775 Hansen (0.84 m, San Pedro Mártir, 40
-  unfiltered frames over 29 min): scatter 0.008 mag, reported errors
-  0.006; it fades 0.11 mag, part of its 3.12 h rotation.
+  in `mag_err`.
 - ZTF check on (624) Hektor, 107 exposures in r, July–December 2022:
   scatter within a night 0.009 mag, consistent with the reported errors of
   0.003–0.012 mag. Folded on the published 6.9205 h period, July–December
@@ -58,14 +56,9 @@ Branch `feature/moving-light-curve`.
       `mpcorb.jl` already uses for the observer), instead of supplying them
       by hand for each night.
 - [ ] The light curve in the UI, starting from a tracklet in the results.
-- [ ] Release 1.3.0.
 
 ## Pending on `main`
 
-- [ ] Shorter warning texts in [`analyze_set`](@ref) when SkyBoT or other
-      services fail.
-- [ ] Tests for `neocp.jl` and plate solving using recorded responses, so
-      Codecov measures them without depending on the services.
 - [ ] Observer positions computed locally with SPICE (SPICE.jl +
       SPICEKernels.jl), as suggested on Julia's Discourse, instead of a
       request to Horizons.

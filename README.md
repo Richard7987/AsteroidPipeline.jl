@@ -27,9 +27,9 @@ for `main`. What changed: [release notes](https://richard7987.github.io/Asteroid
 
 ## What it does
 
-- **Any image set**: a `.zip`, a folder or FITS files, from any telescope
-  whose images carry a WCS; the observatory's MPC code is found from the
-  FITS headers.
+- **Any image set**: a `.zip`, a folder or FITS files, from any telescope;
+  images without a WCS are solved from the telescope's pointing, against
+  Gaia. The observatory's MPC code is found from the FITS headers.
 - **Calibrated**: every frame's astrometry refitted to Gaia DR3 (positions
   agree with an independent reduction to 0.12–0.17″), magnitudes against
   Gaia's.
@@ -40,9 +40,13 @@ for `main`. What changed: [release notes](https://richard7987.github.io/Asteroid
 - **Is it new?** Known asteroids identified against SkyBoT and the MPC's own
   orbit file (downloaded daily); each candidate compared with every known
   object within 10′ and, for recent images, with the MPC's NEO Confirmation
-  Page.
+  Page. While a service is down, the same catalogue is asked elsewhere
+  (Gaia at NOIRLab, SIMBAD at Harvard, VSX at AAVSO).
 - **The report**: MPC 80-column or ADES, under your own designations
   (`NHU0002`) or the NEOCP's; any report checked before it is submitted.
+- **Light curves and rotation periods** (the library): photometry that
+  follows a moving asteroid from frame to frame, across nights, with its
+  period from a Fourier series.
 
 How well it works, measured on real data, is in the
 [validation reports](https://richard7987.github.io/AsteroidPipeline.jl/stable/validation/summary).
@@ -105,7 +109,7 @@ Start with [Getting started](https://richard7987.github.io/AsteroidPipeline.jl/s
 | `test/` | its tests (`julia --project=. -e 'using Pkg; Pkg.test()'`), run on Julia 1.11 and the newest release |
 | `docs/` | the documentation site (`julia --project=docs docs/make.jl`; every version: `docs/build_all_versions.sh`) |
 | `examples/` | scripts for real data, batches and completeness tests |
-| `ui/` | the terminal app (Python, [Textual](https://textual.textualize.io/)) |
+| `ui/` | the terminal app (Python, [Textual](https://textual.textualize.io/)), and its tests in `ui/tests` |
 | `pyproject.toml`, `install.sh` | packaging of the app, with the library inside |
 | `.github/workflows/` | tests, the documentation, and releases (PyPI, GitHub) |
 
@@ -128,8 +132,9 @@ julia --project=docs docs/make.jl                  # site in docs/build/1
 
 # the terminal app, editable: it uses this checkout's Julia code
 python3 -m venv .venv && . .venv/bin/activate
-pip install -e .
+pip install -e .[test]
 asteroidpipeline
+pytest ui/tests                                    # its tests: no terminal or Julia needed
 ```
 
 Releasing a version — the tag, PyPI, the documentation, Julia's registry —

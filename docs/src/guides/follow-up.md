@@ -16,9 +16,8 @@ stars = gaia_reference_stars(ra, dec, 0.3; epoch_jd=2457618.8, mag_range=(6.0, 1
 r = solve_wcs(img, ra, dec, stars)       # r.wcs, r.scale, r.rms_arcsec
 ```
 
-Frames from the 0.84 m telescope at San Pedro Mártir, whose headers hold
-only IRAF's pixel coordinates, solved at 0.478″/pixel with 0.08–0.18″
-residuals; ZTF frames with their WCS removed and the pointing 4′ off, at
+Frames whose headers hold only IRAF's pixel coordinates have been solved
+this way; ZTF frames with their WCS removed and the pointing 4′ off, at
 1.014″/pixel, within 0.13″ of ZTF's own solution.
 
 For a frame without its pointing in the header, [`plate_solve`](@ref) gets

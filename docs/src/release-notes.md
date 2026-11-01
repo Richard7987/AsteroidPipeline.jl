@@ -3,7 +3,7 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
-## Unreleased
+## 1.3.0 — 2026-11-01
 
 **Added**
 
@@ -123,8 +123,8 @@ from the version picker at the top right.
   alone now gets its own zero point.
 - [`gaia_reference_stars`](@ref) gave a `NaN` position to a star whose
   proper motion a service writes as `NaN` instead of leaving it empty.
-- Long sequences at short cadence, checked on 40 frames of 4775 Hansen
-  (0.84 m, San Pedro Mártir, 30 s apart), which gave the asteroid in
+- Long sequences at short cadence, checked on 40 frames 30 s apart,
+  which gave the asteroid in
   overlapping tracklets of at most 26 of its 40 frames, and false ones of
   3–4 frames: the hot-pixel filter took a slow mover, within 2 px of itself in the frames
   next to it, for a hot pixel (a hot pixel's recurrences now have to cover

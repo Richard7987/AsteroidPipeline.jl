@@ -74,9 +74,7 @@ is measured at the predicted position, so frames where the pipeline didn't
 detect it still count. Each frame has its own zero point, so thin cloud
 doesn't show up as a dip in the light curve, measured on the same comparison
 stars in every frame: on unfiltered frames each star's colour shifts it by
-its own amount, which a changing set of stars would turn into noise. On 40
-unfiltered frames of 4775 Hansen from the 0.84 m telescope at San Pedro
-Mártir, a fixed set of stars halved the scatter, from 0.016 to 0.008 mag.
+its own amount, which a changing set of stars would turn into noise.
 `mag_err` includes the zero point's error.
 
 Drop the frames marked `star_nearby`. An asteroid crossing a star looks
