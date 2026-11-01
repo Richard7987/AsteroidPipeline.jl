@@ -46,13 +46,25 @@ class Config:
     fps: float = 1.5
 
     def save(self) -> None:
-        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(json.dumps(asdict(self), indent=2, ensure_ascii=False))
+        write_atomic(CONFIG_FILE, json.dumps(asdict(self), indent=2, ensure_ascii=False))
+
+
+def write_atomic(path: Path, text: str) -> None:
+    """Write the whole file or none of it: a program stopped halfway leaves the old one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
 
 
 def load_config() -> Config:
     try:
-        data = json.loads(CONFIG_FILE.read_text())
+        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return Config()
-    return Config(**{k: v for k, v in data.items() if k in Config.__dataclass_fields__})
+    if not isinstance(data, dict):
+        return Config()
+    defaults = Config()
+    # a value of the wrong type, edited by hand, is left at its default
+    return Config(**{k: v for k, v in data.items() if hasattr(defaults, k)
+                     and isinstance(v, (int, float) if isinstance(getattr(defaults, k), float) else type(getattr(defaults, k)))})
