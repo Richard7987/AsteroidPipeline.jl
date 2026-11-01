@@ -1595,6 +1595,13 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         flat = analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars)
         @test flat.reliable && flat.frames_used == 1:4 && flat.dropped == [5]
         @test length(unique(flat.candidates.id)) == 1
+        @test any(==("1 of 5 frames left out as bad (5): 4 searched"), flat.warnings)
+        few = String[]
+        AsteroidPipeline._warn_dropped_frames!(few, [1], [2, 3, 4])
+        @test only(few) == "1 of 4 frames left out as bad (1): 3 searched; with so few, expect many false candidates"
+        none = String[]
+        AsteroidPipeline._warn_dropped_frames!(none, Int[], [1, 2, 3])
+        @test isempty(none)
     end
 
     @testset "moving_light_curve" begin

@@ -663,6 +663,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     reliable = length(good) >= 3
     used = reliable ? good : collect(eachindex(paths))
     dropped = setdiff(eachindex(paths), used)
+    _warn_dropped_frames!(warnings, dropped, used)
 
     candidates = Table(id=Int[], frame=Int[], x=Int[], y=Int[], ra=Float64[], dec=Float64[], epoch=Float64[],
                        mag=Float64[])
@@ -716,6 +717,14 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
             frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, known=known,
             unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, expected=expected, report=report, report_kind=report_kind,
             warnings=warnings)
+end
+
+# Three frames are the fewest a tracklet can be seen in, and their median
+# removes less: noise lines up far more often.
+function _warn_dropped_frames!(warnings, dropped, used)
+    isempty(dropped) && return
+    push!(warnings, "$(length(dropped)) of $(length(dropped) + length(used)) frames left out as bad ($(join(dropped, ", "))): " *
+                    "$(length(used)) searched" * (length(used) <= 3 ? "; with so few, expect many false candidates" : ""))
 end
 
 # The difference images subtract the sequence's median: an object moving
