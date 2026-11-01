@@ -8,7 +8,8 @@ catalogue that answers: the ESA Gaia archive (`gaiadr3.gaia_source`),
 VizieR (`I/355/gaiadr3`, Strasbourg) and NOIRLab's Astro Data Lab
 (`gaia_dr3.gaia_source`, Tucson). One is tried after another on a network
 error, a timeout or a 5xx status: the first two, both in Europe, were down
-together for days in October 2026.
+together for days in October 2026. A service that failed is tried last for
+the next 15 minutes.
 
 Gaia DR3 doesn't change, so each answer is kept in `cache` (a directory;
 `nothing` to keep none) and the same query is answered from it after,
@@ -50,13 +51,19 @@ function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
     cached = cache === nothing ? nothing : joinpath(cache, string(hash(esa); base=16) * ".csv")
     text = cached !== nothing && isfile(cached) ? read(cached, String) : nothing
     if text === nothing
-        for (k, (url, query, name)) in enumerate(services)
+        # a service that failed a moment ago is tried last, so an outage costs
+        # its timeouts once, not at every query
+        down = lock(() -> Set(u for (u, t) in _GAIA_DOWN if time() - t < _GAIA_DOWN_SECONDS), _GAIA_DOWN_LOCK)
+        order = sort(collect(services); by=s -> s[1] in down)
+        for (k, (url, query, name)) in enumerate(order)
             try
                 text = _tap_csv(url, query)
+                lock(() -> delete!(_GAIA_DOWN, url), _GAIA_DOWN_LOCK)
                 break
             catch e
-                (_is_service_failure(e) && k < length(services)) || rethrow()
-                @warn "$name unavailable; trying $(services[k+1][3])" exception = e
+                (_is_service_failure(e) && k < length(order)) || rethrow()
+                lock(() -> _GAIA_DOWN[url] = time(), _GAIA_DOWN_LOCK)
+                @warn "$name unavailable; trying $(order[k+1][3])" exception = e
             end
         end
         if cached !== nothing
@@ -96,6 +103,11 @@ gaia_cache_dir() = joinpath(get(ENV, "XDG_CACHE_HOME", joinpath(homedir(), ".cac
 const _GAIA_DR3_EPOCH_JD = 2457389.0   # J2016.0
 const _GAIA_ARCHIVE_TAP_URL = "https://gea.esac.esa.int/tap-server/tap/sync"
 const _NOIRLAB_TAP_URL = "https://datalab.noirlab.edu/tap/sync"
+
+# Gaia services that failed, by URL, and when
+const _GAIA_DOWN = Dict{String,Float64}()
+const _GAIA_DOWN_LOCK = ReentrantLock()
+const _GAIA_DOWN_SECONDS = 900
 
 """
     refine_wcs(image, wcs, stars; threshold=10.0, mask=nothing, max_offset=60.0,

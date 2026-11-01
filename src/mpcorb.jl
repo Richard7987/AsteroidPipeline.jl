@@ -70,6 +70,20 @@ function _heliocentric_equatorial(o, jd_tt::Real)
     return (xe, ye * cos(ε) - ze * sin(ε), ye * sin(ε) + ze * cos(ε))
 end
 
+# Horizons' answers (the `result` texts) to `query` at the Julian Dates
+# `times`, already formatted, asked 50 at a time: a few hundred make a URL
+# longer than it accepts (HTTP 502)
+function _horizons(query::AbstractDict, times::AbstractVector{<:AbstractString})
+    return map(Iterators.partition(times, 50)) do chunk
+        q = merge(query, Dict("format" => "json", "TLIST" => "'$(join(chunk, " "))'", "TLIST_TYPE" => "JD"))
+        body = _with_retries(_TAP_ATTEMPTS) do
+            String(HTTP.get("https://ssd.jpl.nasa.gov/api/horizons.api"; query=q,
+                            read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+        end
+        JSON.parse(body)["result"]
+    end
+end
+
 """
     _observer_heliocentric(jds_utc, observatory) -> Vector{NTuple{3,Float64}}
 
@@ -80,23 +94,18 @@ Earth's centre instead.
 """
 function _observer_heliocentric(jds_utc::AbstractVector{<:Real}, observatory)
     center = observatory === nothing ? "500@399" : "$(observatory)@399"
-    tlist = join((@sprintf("%.8f", jd + _TT_MINUS_UTC) for jd in jds_utc), " ")
-    query = Dict("format" => "json", "COMMAND" => "'10'", "EPHEM_TYPE" => "VECTORS", "CENTER" => "'$center'",
-                 "TLIST" => "'$tlist'", "TLIST_TYPE" => "JD", "TIME_TYPE" => "TT", "REF_PLANE" => "FRAME",
-                 "REF_SYSTEM" => "ICRF", "VEC_TABLE" => "1", "OUT_UNITS" => "AU-D", "CSV_FORMAT" => "YES",
-                 "OBJ_DATA" => "NO")
-    body = _with_retries(_TAP_ATTEMPTS) do
-        String(HTTP.get("https://ssd.jpl.nasa.gov/api/horizons.api"; query,
-                        read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
-    end
-    result = JSON.parse(body)["result"]
-    block = match(r"\$\$SOE(.*)\$\$EOE"s, result)
-    block === nothing && error("unexpected Horizons response: $(first(result, 300))")
+    query = Dict("COMMAND" => "'10'", "EPHEM_TYPE" => "VECTORS", "CENTER" => "'$center'", "TIME_TYPE" => "TT",
+                 "REF_PLANE" => "FRAME", "REF_SYSTEM" => "ICRF", "VEC_TABLE" => "1", "OUT_UNITS" => "AU-D",
+                 "CSV_FORMAT" => "YES", "OBJ_DATA" => "NO")
     positions = NTuple{3,Float64}[]
-    for line in split(strip(block[1]), '\n')
-        f = strip.(split(line, ','))
-        length(f) >= 5 || continue
-        push!(positions, (-parse(Float64, f[3]), -parse(Float64, f[4]), -parse(Float64, f[5])))
+    for result in _horizons(query, [@sprintf("%.8f", jd + _TT_MINUS_UTC) for jd in jds_utc])
+        block = match(r"\$\$SOE(.*)\$\$EOE"s, result)
+        block === nothing && error("unexpected Horizons response: $(first(result, 300))")
+        for line in split(strip(block[1]), '\n')
+            f = strip.(split(line, ','))
+            length(f) >= 5 || continue
+            push!(positions, (-parse(Float64, f[3]), -parse(Float64, f[4]), -parse(Float64, f[5])))
+        end
     end
     length(positions) == length(jds_utc) || error("Horizons returned $(length(positions)) vectors for $(length(jds_utc)) epochs")
     return positions

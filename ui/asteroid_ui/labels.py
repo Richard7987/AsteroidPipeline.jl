@@ -45,10 +45,14 @@ _INDEX = DATASET_DIR / "labels.json"
 
 
 def _load_index() -> dict[str, dict[str, Any]]:
+    # only a missing file is empty: an unreadable one would be overwritten,
+    # and every label lost, at the next save
     try:
         return json.loads(_INDEX.read_text())
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return {}
+    except ValueError as e:
+        raise ValueError(f"{_INDEX} is damaged ({e}): repair it, or move it away to start a new one") from e
 
 
 def _save_index(index: dict[str, dict[str, Any]]) -> None:
@@ -64,8 +68,12 @@ def _save_index(index: dict[str, dict[str, Any]]) -> None:
 
 
 def labels_for(set_name: str) -> dict[int, dict[str, Any]]:
-    """Tracklet id -> its label row, for one image set."""
-    return {int(r["tracklet"]): r for r in _load_index().values() if r["set"] == set_name}
+    """Tracklet id -> its label row, for one image set (none while the index is damaged)."""
+    try:
+        index = _load_index()
+    except ValueError:
+        return {}
+    return {int(r["tracklet"]): r for r in index.values() if r["set"] == set_name}
 
 
 def _row(set_name: str, result: dict[str, Any], tracklet: dict[str, Any], cache_dir: Path,

@@ -1290,6 +1290,7 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             return csv
         end
         try
+            empty!(AsteroidPipeline._GAIA_DOWN)
             dir = mktempdir()
             s1 = @test_logs (:warn, r"Gaia archive") (:warn, r"VizieR") gaia_reference_stars(
                 3.05, -10.74, 0.05; epoch_jd=2457389.0, cache=dir)
@@ -1297,9 +1298,14 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test s1.ra ≈ [3.05, 3.06, 3.07] && s1.gmag ≈ [15.5, 17.0, 18.0]
             s2 = gaia_reference_stars(3.05, -10.74, 0.05; epoch_jd=2457389.0 + 3652.5, cache=dir)
             @test length(answered) == 3
+            # another field: the services that just failed are tried last, so
+            # NOIRLab's copy is asked first and answers
+            gaia_reference_stars(3.5, -10.74, 0.05; epoch_jd=2457389.0, cache=dir)
+            @test length(answered) == 4 && occursin("noirlab", answered[4])
             @test s2.dec[1] ≈ -10.74 - 20.0 * 10 / 3.6e6 && s2.dec[2:3] == [-10.75, -10.76]   # proper motion, or none (empty or NaN)
         finally
             AsteroidPipeline._TAP_RESPONSES[] = recorded
+            empty!(AsteroidPipeline._GAIA_DOWN)
         end
 
         try
@@ -1441,6 +1447,10 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                 @test only(m).name == "2019 UA185" && only(m).id == 7
                 @test only(m).distance_arcsec < 10
                 @test 19 < only(m).mv < 23
+                # a long sequence's epochs, more than one request holds: every one answered
+                jds = 2461317.9 .+ (0:119) ./ 1440
+                obs = AsteroidPipeline._observer_heliocentric(jds, "F51")
+                @test length(obs) == 120 && all(o -> 0.98 < hypot(o...) < 1.02, obs)
             catch e
                 AsteroidPipeline._is_unavailable(e) || rethrow()
                 @test_skip "network unavailable"
@@ -1635,6 +1645,12 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test isnan(zp2[3]) && isnan(err2[3])
         @test zp2[[2, 4, 5]] .- zp2[1] ≈ transparency[[2, 4, 5]] .- transparency[1] atol = 0.003
         @test AsteroidPipeline._comparison_zeropoints([[25.0, NaN, 24.0, NaN] for _ in 1:3]) == (nothing, nothing)
+        # one frame under cloud, no star bright enough in it: the others keep
+        # their comparison stars, and it gets none
+        clouded = [v[1:2]; [fill(NaN, 8)]; v[4:5]]
+        zp3, err3 = AsteroidPipeline._comparison_zeropoints(clouded)
+        @test isnan(zp3[3]) && isnan(err3[3])
+        @test zp3[[2, 4, 5]] .- zp3[1] ≈ transparency[[2, 4, 5]] .- transparency[1] atol = 0.003
     end
 
     @testset "fourier_period" begin
@@ -1782,6 +1798,19 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test set.name == "XY99_p00" && basename.(set.paths) == ["frame1.fits", "frame2.fits", "frame3.fits"]
             @test isempty(filter(n -> startswith(n, ".extract-"), readdir(joinpath(dir, "out"))))
             @test extract_set(zip, joinpath(dir, "out")).paths == set.paths       # reused, not re-extracted
+            # another archive with a folder of the same name, holding other frames:
+            # its own folder, by the archive's name, and the first set untouched
+            other_src = mkpath(joinpath(dir, "src2", "XY99_p00"))
+            for k in 1:4
+                FITS(f -> write(f, fill(Int16(200 + k), 20, 10)), joinpath(other_src, "frame$k.fits"), "w")
+            end
+            other_zip = joinpath(dir, "another.zip")
+            run(pipeline(`$(P.p7zip_jll.p7zip()) a -tzip $other_zip $other_src`; stdout=devnull))
+            other = extract_set(other_zip, joinpath(dir, "out"))
+            @test other.name == "another" && length(other.paths) == 4
+            @test extract_set(zip, joinpath(dir, "out")).paths == set.paths
+            @test AsteroidPipeline._cleaned_dir(dir, "XY99_p00", set.paths) !=
+                  AsteroidPipeline._cleaned_dir(dir, "XY99_p00", other.paths)
             cleaned = clean_blank_pixels(set.paths[1]; outdir=joinpath(dir, "clean"))
             @test cleaned != set.paths[1] && FITS(f -> read(f[1])[1, 1], cleaned) ≈ 101
 

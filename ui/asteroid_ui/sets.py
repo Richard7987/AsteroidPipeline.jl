@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import zipfile
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -59,8 +62,19 @@ def zip_has_fits(path: Path) -> bool:
     return _zip_cache[key]
 
 
-def entry_for(source: Path | list[Path]) -> SetEntry:
-    """The entry for a .zip, a folder of FITS images, or a list of FITS files."""
+def _source_key(source: Path | list[Path]) -> str | list[str]:
+    """The source as the engine saves it in result.json: absolute paths."""
+    return [os.path.abspath(p) for p in source] if isinstance(source, list) else os.path.abspath(source)
+
+
+def entry_for(source: Path | list[Path], taken: Collection[str] = ()) -> SetEntry:
+    """The entry for a .zip, a folder of FITS images, or a list of FITS files.
+
+    Named after the source; another source by that name (in `taken`, or whose
+    analysis is saved under it) gets the name with a few characters of its
+    path's hash, so the two never share a saved analysis, labels or
+    designations.
+    """
     if isinstance(source, list):
         first = source[0]
         name = slug(f"{first.parent.name}_{len(source)}files") if len(source) else "set"
@@ -69,7 +83,11 @@ def entry_for(source: Path | list[Path]) -> SetEntry:
         name = slug(source.stem if source.is_file() else source.name)
         mtime = source.stat().st_mtime
     date = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+    key = _source_key(source)
     result = load_result(name)
+    if name in taken or (result is not None and result.get("source", key) != key):
+        name = slug(f"{name}-{hashlib.sha256(json.dumps(key).encode()).hexdigest()[:8]}")
+        result = load_result(name)
     if result is not None:
         date = result_date(result) or date
     return SetEntry(name, source, date, result)
@@ -100,8 +118,8 @@ def discover(folder: str, max_depth: int = 3) -> list[SetEntry]:
             except OSError:
                 continue
     for path in sorted(zips, key=lambda p: p.stat().st_mtime, reverse=True):
-        entry = entry_for(path)
-        found.setdefault(entry.name, entry)
+        entry = entry_for(path, taken=found.keys())
+        found[entry.name] = entry
     if SETS_CACHE.is_dir():
         for d in sorted(SETS_CACHE.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
             if d.name in found or (result := load_result(d.name)) is None:
