@@ -54,7 +54,7 @@ class ProfileScreen(ModalScreen[Profile | None]):
         manual = self.current.observatory if self.current and self.current.observatory not in codes else ""
 
         with VerticalScroll(id="profile-dialog", classes="dialog"):
-            yield Static(f"Telescope profile: {self.key}", classes="dialog-title")
+            yield Static(f"Telescope profile: {self.key}", classes="dialog-title", markup=False)
             yield Static(Text.assemble("The images say: ", (describe_site(self.site), "bold")), classes="dialog-help")
             yield Static("Confirm it once: every image set from this telescope will use it from now on. "
                          "You can change it later in Settings → Telescope profiles.", classes="dialog-help")
