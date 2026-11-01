@@ -98,6 +98,16 @@ end
 # services, when set: the tests' recorded answers
 const _TAP_RESPONSES = Ref{Any}(nothing)
 
+# `(key, request) -> body` answering astrometry.net's and the NEOCP's requests
+# in place of the services, when set: the tests' recorded answers. `request()`
+# makes the request; `key` names it without what differs between runs.
+const _WEB_RESPONSES = Ref{Any}(nothing)
+
+function _web_body(request, key::AbstractString)
+    respond = _WEB_RESPONSES[]
+    return respond === nothing ? request() : respond(key, request)
+end
+
 # `f()`, tried up to `attempts` times while `retryable(e)`, waiting `backoff`
 # seconds and doubling it each time; the last failure propagates.
 function _with_retries(f, attempts::Integer; retryable=_is_service_failure, backoff::Real=2.0)

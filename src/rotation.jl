@@ -265,7 +265,7 @@ end
 
 """
     recover_rotation_period(times, flux; minimum_period, maximum_period) ->
-        (period, power, false_alarm_probability, periodogram)
+        (period, peak_period, power, false_alarm_probability, periodogram)
 
 Recover a periodic signal (a rotating object's changing brightness) from a
 light curve via the Lomb-Scargle periodogram (`LombScargle.jl`), searching
@@ -273,13 +273,20 @@ periods between `minimum_period` and `maximum_period` (same time unit as
 `times`, e.g. days if `times` are Julian Dates as [`light_curve`](@ref)
 returns).
 
-Returns the period and power of the periodogram's highest peak, and its
-false-alarm probability (`LombScargle.fap`) — the probability that noise
+`peak_period` and `power` are the periodogram's highest peak, and
+`false_alarm_probability` (`LombScargle.fap`) the probability that noise
 alone would produce a peak at least this strong; a small value is what
-distinguishes a real periodic signal from a noise fluctuation. `periodogram`
-is the full `LombScargle.Periodogram`, for inspecting other peaks (e.g. a
-harmonic of the true period, a common ambiguity) with `LombScargle.jl`'s
-own tools directly.
+distinguishes a real periodic signal from a noise fluctuation.
+
+A light curve with two maxima per cycle, as an elongated asteroid's, puts
+the highest peak at half the period. `period` is twice `peak_period` where
+alternate cycles differ: four harmonics of the double period fit
+significantly better (F-test, 0.1%) than two of the peak's. It needs the
+double period within `maximum_period` and the light curve to cover it;
+otherwise, or where the two halves can't be told apart, `period` is
+`peak_period`. [`fourier_period`](@ref) fits the period itself and gives
+its uncertainty. `periodogram` is the full `LombScargle.Periodogram`, for
+inspecting other peaks with `LombScargle.jl`'s own tools directly.
 """
 function recover_rotation_period(times::AbstractVector{<:Real}, flux::AbstractVector{<:Real};
                                   minimum_period::Real, maximum_period::Real)
@@ -290,11 +297,27 @@ function recover_rotation_period(times::AbstractVector{<:Real}, flux::AbstractVe
                                minimum_frequency=1 / maximum_period,
                                maximum_frequency=1 / minimum_period)
     power = findmaxpower(periodogram)
-    period = only(findmaxperiod(periodogram))
+    peak_period = only(findmaxperiod(periodogram))
     false_alarm_probability = fap(periodogram, power)
+    period = _double_if_halves_differ(times, flux, peak_period, maximum_period)
 
-    return (period=period, power=power, false_alarm_probability=false_alarm_probability,
-            periodogram=periodogram)
+    return (period=period, peak_period=peak_period, power=power,
+            false_alarm_probability=false_alarm_probability, periodogram=periodogram)
+end
+
+# Two harmonics of P against four of 2P, which add only the difference between
+# alternate cycles: twice the period where an F-test finds it at 0.1%.
+function _double_if_halves_differ(times, flux, P, maximum_period)
+    span = maximum(times) - minimum(times)
+    (2P <= maximum_period && 2P <= 0.8span && length(times) >= 20) || return P
+    window(Q) = (minimum_period=1 / (1 / Q + 1 / span), maximum_period=min(1 / (1 / Q - 1 / span), 0.8span))
+    one = fourier_period(times, flux; window(P)..., order=2, trend=true)
+    two = fourier_period(times, flux; window(2P)..., order=4, trend=true)
+    d2 = length(times) - 10
+    rss1, rss2 = one.rms^2 * (length(times) - 6), two.rms^2 * d2
+    F = max((rss1 - rss2) / 4, 0.0) / (rss2 / d2)
+    x, a = d2 / (d2 + 4F), d2 / 2
+    return x^a * (1 + a * (1 - x)) < 0.001 ? two.period : P
 end
 
 """
@@ -370,9 +393,8 @@ function fourier_period(times::AbstractVector{<:Real}, mag::AbstractVector{<:Rea
 
     # a period about as long as the series fits a drift as well as a rotation
     period > 0.8 * span &&
-        @warn "the period found, $(round(period; sigdigits=4)), is $(round(Int, 100 * period / span))% of the " *
-              "time the light curve covers: a drift through it fits as well as a rotation; observe longer, " *
-              "fit `trend`, or lower `maximum_period`"
+        @warn "period $(round(period; sigdigits=4)) is $(round(Int, 100 * period / span))% of the light curve's span, " *
+              "where a drift fits as well: observe longer, fit `trend` or lower `maximum_period`"
     best, β, X = fit(period)
     first_harmonic = 2 + trend
     phase = range(0, 1; length=1001)

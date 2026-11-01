@@ -10,7 +10,7 @@ using Test
 using Statistics
 using Reproject
 using Distributed
-using Dates: DateTime, datetime2julian
+using Dates: Dates, DateTime, datetime2julian
 
 # Loads .env (gitignored) for local runs, e.g. ASTROMETRY_API_KEY for the live
 # plate_solve test; variables already set in the environment win.
@@ -59,6 +59,38 @@ elseif !LIVE
         answer = TAP_RECORDED[(url, query)]
         answer === nothing && throw(Base.IOError("recorded as unavailable", 0))
         return answer
+    end
+end
+
+# astrometry.net's and the NEOCP's answers likewise, recorded at WEB_NOW; a
+# recording keeps those the run didn't make (astrometry.net's needs an API key)
+const WEB_FIXTURES = joinpath(@__DIR__, "fixtures", "web_responses.json")
+const WEB_RECORDED = Dict{String,String}()
+const WEB_NOW = Ref(datetime2julian(Dates.now(Dates.UTC)))
+if !LIVE || RECORD
+    let saved = JSON.parsefile(WEB_FIXTURES)
+        RECORD || (WEB_NOW[] = saved["now_jd"])
+        merge!(WEB_RECORDED, Dict(r["key"] => r["body"] for r in saved["responses"]))
+    end
+end
+if RECORD
+    atexit() do
+        write(WEB_FIXTURES, JSON.json(Dict("now_jd" => WEB_NOW[],
+                                           "responses" => [Dict("key" => k, "body" => b) for (k, b) in sort(collect(WEB_RECORDED))]);
+                                      pretty=true))
+    end
+    AsteroidPipeline._WEB_RESPONSES[] = function (key, request)
+        body = request()
+        text = String(copy(body))
+        # astrometry.net's login names the account and its session: not kept
+        WEB_RECORDED[key] = replace(text, r"\"message\": ?\"authenticated user: [^\"]*\", ?" => "",
+                                    r"\"session\": ?\"[^\"]*\"" => "\"session\": \"recorded\"")
+        return body
+    end
+elseif !LIVE
+    AsteroidPipeline._WEB_RESPONSES[] = function (key, request)
+        haskey(WEB_RECORDED, key) || error("no recorded answer to $key; record them with ASTEROIDPIPELINE_RECORD=true")
+        return Vector{UInt8}(WEB_RECORDED[key])
     end
 end
 
@@ -1663,7 +1695,15 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         mag = 13.0 .+ shape.(hours) .+ 0.02 .* hours .+ 0.01 .* randn(300)
 
         ls = recover_rotation_period(hours, mag; minimum_period=1.0, maximum_period=5.0)
-        @test ls.period ≈ P / 2 rtol = 0.05                     # a sinusoid fits half of it
+        @test ls.peak_period ≈ P / 2 rtol = 0.05                # a sinusoid fits half of it
+        @test ls.period ≈ P rtol = 0.02                         # the two halves differ: doubled
+        # equal halves: nothing tells the period from half of it
+        equal = 13.0 .+ 0.12 .* cospi.(4 .* hours ./ P) .+ 0.01 .* randn(300)
+        eq = recover_rotation_period(hours, equal; minimum_period=1.0, maximum_period=5.0)
+        @test eq.period == eq.peak_period
+        @test eq.period ≈ P / 2 rtol = 0.05
+        # the double period beyond maximum_period: not tried
+        @test recover_rotation_period(hours, mag; minimum_period=1.0, maximum_period=2.5).period < 2
         r = fourier_period(hours, mag; minimum_period=1.0, maximum_period=5.0, trend=true)
         @test abs(r.period - P) < 3 * r.period_error && r.period_error < 0.02
         truth = [shape(x) for x in range(0, P; length=1001)]
@@ -1675,7 +1715,7 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test fourier_period(hours, mag; minimum_period=1.0, maximum_period=5.0).rms > 1.5 * r.rms
         # a period about as long as the night: warned of
         slow = 13.0 .+ 0.1 .* sinpi.(2 .* hours ./ 4.6) .+ 0.01 .* randn(300)
-        @test_logs (:warn, r"of the time the light curve covers") fourier_period(hours, slow; minimum_period=1.0,
+        @test_logs (:warn, r"of the light curve's span") fourier_period(hours, slow; minimum_period=1.0,
                                                                                   maximum_period=5.0)
         # months of sparse points: an uncertainty far below the search's first step, still measured
         days = sort(150 .* rand(85))
@@ -1951,15 +1991,15 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         c = neocp_check(old; observatory="F51", now_jd=2460100.5)
         @test isempty(c.checks) && occursin("100 days old", only(c.warnings))
 
-        # live: a tracklet built from an object now on the NEOCP is recognised
+        # a tracklet built from an object on the NEOCP at WEB_NOW is recognised
         try
             objs = neocp_objects()
             if !isempty(objs)
                 o = objs[1]
-                t0 = datetime2julian(P.Dates.now(P.Dates.UTC)) - 3 / 24
-                e = P._neocp_ephemerides([o.designation], "F51", t0)[o.designation]
+                t0 = WEB_NOW[] - 3 / 24
+                e = P._neocp_ephemerides([o.designation], "F51", t0; now_jd=WEB_NOW[])[o.designation]
                 track = [(id=1, P._interpolate_ephemeris(e, t0 + k / 96)...) for k in 0:3]
-                c = neocp_check(track; observatory="F51")
+                c = neocp_check(track; observatory="F51", now_jd=WEB_NOW[])
                 @test c.checks[1].verdict === :on_neocp
                 @test first(c.checks[1].objects).designation == o.designation
             end
@@ -2074,12 +2114,17 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test_throws ErrorException AsteroidPipeline._astrometry_poll(
             () -> nothing, 0.1, 0.05, "test condition")
 
-        # live round trip, only with an API key. It needs a real star field (one
-        # synthetic source can't be solved), so it uses a real ZTF frame.
+        # the round trip, live only with an API key. It needs a real star field (one
+        # synthetic source can't be solved), so it uses a real ZTF frame; the
+        # recorded answers need no frame, since nothing is uploaded
         api_key = get(ENV, "ASTROMETRY_API_KEY", nothing)
         real_frame = joinpath(@__DIR__, "..", "data", "real", "science",
                                "ztf_20191023195590_000451_zr_c01_o_q1_sciimg.fits")
-        if api_key === nothing
+        if !LIVE
+            solved = plate_solve(real_frame; api_key="recorded", poll_interval=0)
+            @test solved isa WCSTransform
+            @test pix_to_world(solved, [513.0, 513.0]) ≈ [36.2981, 2.0528] atol = 0.002   # its header WCS
+        elseif api_key === nothing
             @test_skip "ASTROMETRY_API_KEY not set"
         elseif !isfile(real_frame)
             @test_skip "real ZTF test frame not present — run examples/fetch_data.sh"

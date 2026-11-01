@@ -9,9 +9,8 @@ from the version picker at the top right.
 
 - [`fourier_period`](@ref): an asteroid's rotation period from a Fourier
   series of its rotation phase, the way asteroid photometry measures it,
-  with its error and amplitude; [`recover_rotation_period`](@ref)'s
-  periodogram finds half the period of a light curve with two maxima per
-  rotation. A period about as long as the light curve is warned of.
+  with its error and amplitude. A period about as long as the light curve
+  is warned of.
 - [`gaia_reference_stars`](@ref) keeps every answer on disk
   ([`gaia_cache_dir`](@ref)), so a field analyzed or observed again needs
   no query, and falls back to a third copy of Gaia DR3, NOIRLab's Astro Data
@@ -43,9 +42,17 @@ from the version picker at the top right.
 
 **Changed**
 
-- Tests: Gaia, SIMBAD and VizieR answer from recorded answers
-  (`test/fixtures`), and the suite runs without waiting on them; the
-  newest Julia in CI still queries them live ([Development setup](development/setup.md)).
+- [`recover_rotation_period`](@ref): `period` is twice the periodogram's
+  peak (now `peak_period`) where alternate cycles of the light curve
+  differ, as an elongated asteroid's two maxima per rotation do: the peak
+  is at half the period. Where the halves can't be told apart it is the
+  peak, as before.
+- Tests: Gaia, SIMBAD, VizieR, astrometry.net and the NEO Confirmation
+  Page answer from recorded answers (`test/fixtures`), and the suite runs
+  without waiting on them; [`plate_solve`](@ref) and [`neocp_check`](@ref)
+  are tested end to end without an API key. The newest Julia in CI still
+  queries them live ([Development setup](development/setup.md)).
+- Shorter warnings.
 - The Nix flake is no longer in the repository: the app and the library
   install the same way on every system ([Installation](installation.md)).
 - [`pipeline_config`](@ref) takes `n_frames`: a tracklet needs half of

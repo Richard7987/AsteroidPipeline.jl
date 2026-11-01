@@ -466,7 +466,7 @@ more. Returns the ratio.
 function _check_frame_quality(path, n_detections::Integer, n_reference_stars::Integer)
     ratio = n_detections / max(n_reference_stars, 1)
     ratio > _MAX_DETECTIONS_PER_REFERENCE_STAR &&
-        @warn "frame has far more sources than reference stars: likely detector defects; treat this set's candidates as unreliable" path n_detections n_reference_stars
+        @warn "far more sources than reference stars, likely detector defects: candidates unreliable" path n_detections n_reference_stars
     return ratio
 end
 

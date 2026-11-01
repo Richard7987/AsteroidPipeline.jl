@@ -26,8 +26,8 @@ an upload failure, a job that fails to solve, or either poll loop timing
 out — a frame astrometry.net cannot solve is a real failure, not
 something to silently pass through.
 
-The live round trip is tested when `ENV["ASTROMETRY_API_KEY"]` is set; the
-individual steps are always tested against fabricated JSON.
+The round trip is tested against astrometry.net's recorded answers, and
+live when `ENV["ASTROMETRY_API_KEY"]` is set.
 """
 function plate_solve(image_path::AbstractString; api_key::AbstractString,
                       timeout::Real=300, poll_interval::Real=5)
@@ -75,21 +75,25 @@ function _parse_astrometry_response(text::AbstractString, action::AbstractString
 end
 
 function _astrometry_login(api_key::AbstractString)
-    response = HTTP.post(_ASTROMETRY_LOGIN_URL, ["Content-Type" => "application/x-www-form-urlencoded"],
-                          _astrometry_login_body(api_key))
-    return _parse_astrometry_response(String(response.body), "login")["session"]
+    body = _web_body(_ASTROMETRY_LOGIN_URL) do
+        HTTP.post(_ASTROMETRY_LOGIN_URL, ["Content-Type" => "application/x-www-form-urlencoded"],
+                  _astrometry_login_body(api_key)).body
+    end
+    return _parse_astrometry_response(String(body), "login")["session"]
 end
 
 function _astrometry_upload(session::AbstractString, image_path::AbstractString)
     request_json = JSON.json(Dict("session" => session, "publicly_visible" => "n"))
-    return open(image_path) do io
-        body = HTTP.Form(Dict(
-            "request-json" => request_json,
-            "file" => HTTP.Multipart(basename(image_path), io, "application/octet-stream"),
-        ))
-        response = HTTP.post(_ASTROMETRY_UPLOAD_URL, [], body)
-        _parse_astrometry_response(String(response.body), "upload")["subid"]
+    answer = _web_body(_ASTROMETRY_UPLOAD_URL) do
+        open(image_path) do io
+            form = HTTP.Form(Dict(
+                "request-json" => request_json,
+                "file" => HTTP.Multipart(basename(image_path), io, "application/octet-stream"),
+            ))
+            HTTP.post(_ASTROMETRY_UPLOAD_URL, [], form).body
+        end
     end
+    return _parse_astrometry_response(String(answer), "upload")["subid"]
 end
 
 """
@@ -101,8 +105,9 @@ slot as a JSON `null`, i.e. `nothing` once parsed, as well as an empty
 `jobs` array; both mean "not ready").
 """
 function _astrometry_submission_job(subid)
-    response = HTTP.get("$_ASTROMETRY_SUBMISSIONS_URL/$subid", _ASTROMETRY_REFERER_HEADER)
-    d = JSON.parse(String(response.body))
+    url = "$_ASTROMETRY_SUBMISSIONS_URL/$subid"
+    body = _web_body(() -> HTTP.get(url, _ASTROMETRY_REFERER_HEADER).body, url)
+    d = JSON.parse(String(body))
     jobs = get(d, "jobs", [])
     isempty(jobs) && return nothing
     return jobs[1]
@@ -116,8 +121,9 @@ reported failure (no point continuing to poll); `nothing` while still
 processing.
 """
 function _astrometry_job_done(job_id)
-    response = HTTP.get("$_ASTROMETRY_JOBS_URL/$job_id", _ASTROMETRY_REFERER_HEADER)
-    d = JSON.parse(String(response.body))
+    url = "$_ASTROMETRY_JOBS_URL/$job_id"
+    body = _web_body(() -> HTTP.get(url, _ASTROMETRY_REFERER_HEADER).body, url)
+    d = JSON.parse(String(body))
     status = d["status"]
     status == "success" && return true
     status == "failure" && error("astrometry.net job $job_id failed to solve")
@@ -125,9 +131,10 @@ function _astrometry_job_done(job_id)
 end
 
 function _astrometry_fetch_wcs(job_id)
-    response = HTTP.get("$_ASTROMETRY_WCS_URL/$job_id", _ASTROMETRY_REFERER_HEADER)
+    url = "$_ASTROMETRY_WCS_URL/$job_id"
+    body = _web_body(() -> HTTP.get(url, _ASTROMETRY_REFERER_HEADER).body, url)
     path, io = mktemp()
-    write(io, response.body)
+    write(io, body)
     close(io)
     header = FITS(path, "r") do f
         read_header(f[1], String)

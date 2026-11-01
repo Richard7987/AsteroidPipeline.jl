@@ -25,13 +25,18 @@ Then, in the repository:
 | try it on real data | the scripts in `examples/` (`examples/fetch_data.sh` downloads public ZTF images) |
 
 Some tests use the network (SkyBoT, JPL Horizons, the MPC); without it they
-are skipped, not failed. Gaia, SIMBAD and VizieR, the slowest services,
-answer from recorded answers in `test/fixtures`:
+are skipped, not failed. Gaia, SIMBAD, VizieR, astrometry.net and the NEO
+Confirmation Page answer from recorded answers in `test/fixtures`:
 
 | To | Set |
 |:--|:--|
 | query them instead | `ASTEROIDPIPELINE_LIVE_TESTS=true` |
 | record their answers again (after changing a query) | `ASTEROIDPIPELINE_RECORD=true` |
+
+astrometry.net's are recorded only with an API key (`ASTROMETRY_API_KEY`,
+in the environment or in a `.env` file at the repository's root) and the
+public ZTF frames of `examples/fetch_data.sh`; without them, the recorded
+ones are kept.
 
 A query with no recorded answer fails with a message saying so. The tests
 run on GitHub on Julia 1.11, with the recorded answers, and on the newest

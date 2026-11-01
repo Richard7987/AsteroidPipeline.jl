@@ -82,9 +82,7 @@ function estimate_psf(image::AbstractMatrix{<:Real}; stamp_size::Integer=25,
 
     if isempty(stamps)
         if fallback
-            @warn "no isolated, unsaturated stars found for empirical PSF estimation, " *
-                  "even after relaxing min_separation; falling back to an analytic " *
-                  "Moffat fit" threshold min_separation relaxation_attempts
+            @warn "no isolated, unsaturated stars for an empirical PSF; using a Moffat fit" threshold min_separation relaxation_attempts
             return fit_moffat_psf(image; stamp_size, threshold, saturate)
         end
         error("no isolated, unsaturated stars found for PSF estimation, even after " *
