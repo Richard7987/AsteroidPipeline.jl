@@ -265,4 +265,24 @@ let
     save(joinpath(ASSETS_DIR, "nearby-geometry.png"), fig; px_per_unit=2)
 end
 
+# --- (624) Hektor folded on its period ---------------------------------------------------
+# The measurements of examples/moving_light_curve_demo.jl, on the published period
+# (Marchis et al. 2014), with a Fourier series of two harmonics.
+let
+    rows = [parse.(Float64, split(l, ",")) for l in readlines(joinpath(ASSETS_DIR, "hektor-reduced.csv"))[2:end]]
+    epoch, mag = first.(rows), last.(rows)
+    P = 6.920509 / 24
+    terms(t) = [1.0, sinpi(2t / P), cospi(2t / P), sinpi(4t / P), cospi(4t / P)]
+    t0 = minimum(epoch)
+    coef = reduce(vcat, permutedims.(terms.(epoch .- t0))) \ mag
+    phase = mod.((epoch .- t0) ./ P, 1)
+    fig = Figure(size=(760, 400))
+    ax = Axis(fig[1, 1]; xlabel="phase, on 6.9205 h", ylabel="reduced magnitude", yreversed=true,
+              title="(624) Hektor, ZTF r, July–December 2022")
+    grid = range(0, 1; length=300)
+    lines!(ax, grid, [sum(coef .* terms(p * P)) for p in grid]; color=:orange, linewidth=3)
+    scatter!(ax, phase, mag; color=:mediumspringgreen, markersize=10)
+    save(joinpath(ASSETS_DIR, "hektor-light-curve.png"), fig; px_per_unit=2)
+end
+
 println("Figures written to $ASSETS_DIR")

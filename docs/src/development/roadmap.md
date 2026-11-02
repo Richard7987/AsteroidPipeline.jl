@@ -43,12 +43,10 @@ In 1.3.0; what remains is below.
 
 **Missing before merging**
 
-- [ ] A period recovered from real data: several nights of one object with
-      a known period, from a Mexican telescope (data expected), and with it
-      the validation page (`validation/moving-light-curve.md`).
-      `examples/moving_light_curve_demo.jl` runs the same checks on ZTF
-      frames of Hektor, whose period is already known; a team's own
-      frames test the whole path, from its telescope to a period.
+- [ ] A period from dense nights of one object with a known period, from a
+      Mexican telescope (data expected). [ZTF's sparse frames of
+      Hektor](../validation/hektor.md) can't tell the period from half of it;
+      a team's own frames test the whole path, from its telescope to a period.
 
 **After**
 

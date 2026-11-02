@@ -71,6 +71,7 @@ makedocs(;
             "Pan-STARRS1 image sets" => "validation/pan-starrs1.md",
             "ZTF field 451" => "validation/ztf.md",
             "A known variable star" => "validation/variable-star.md",
+            "The light curve of an asteroid" => "validation/hektor.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",

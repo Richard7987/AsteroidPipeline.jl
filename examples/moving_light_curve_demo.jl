@@ -1,7 +1,7 @@
 #=
 Validates moving_light_curve on real ZTF frames of (624) Hektor, a Jupiter
-trojan with a published rotation period of 6.9205 h, in r from July to
-December 2022. The first run fetches the frames from IRSA (no
+trojan with a published rotation period of 6.9205 h (Marchis et al. 2014), in r
+from July to December 2022. The first run fetches the frames from IRSA (no
 authentication) into data/real/hektor: about 110 cutouts of 600″.
 
 Declared before running: the photometry within a night should scatter as
@@ -125,3 +125,14 @@ f = fourier_period(reduced.epoch, reduced.mag; minimum_period=2 / 24, maximum_pe
 # sparse points can't tell a double-peaked curve from one at half its period: doubled, as for asteroids
 @printf("Fourier series, 2 harmonics: %.4f ± %.4f h, doubled %.4f h, amplitude %.2f mag (published %.4f h)\n",
         24f.period, 24f.period_error, 48f.period, f.amplitude, 24PERIOD)
+
+# the same fit around the period and around half of it
+for order in (2, 4), P in (PERIOD, PERIOD / 2)
+    r = fourier_period(reduced.epoch, reduced.mag; minimum_period=0.98P, maximum_period=1.02P, order)
+    @printf("near %.3f h, %d harmonics: %.4f h, RMS %.4f mag\n", 24P, order, 24r.period, r.rms)
+end
+
+open(joinpath(DATA_DIR, "reduced.csv"), "w") do io
+    println(io, "epoch,mag")
+    foreach(k -> @printf(io, "%.6f,%.4f\n", reduced.epoch[k], reduced.mag[k]), eachindex(reduced.epoch))
+end

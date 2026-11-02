@@ -106,4 +106,4 @@ The phase angle's effect follows the H-G model with `G=0.15` unless another
 slope is given. Most asteroids' light curves have two maxima per rotation,
 so the periodogram's highest peak is usually half the period: on 107 ZTF
 frames of (624) Hektor over six months, it gave 3.460 h for a 6.9205 h
-period.
+period ([Validation: the light curve of an asteroid](../validation/hektor.md)).

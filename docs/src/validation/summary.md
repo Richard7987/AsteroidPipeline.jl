@@ -12,6 +12,7 @@ images, or synthetic asteroids added to real images.
 | 10 image sets, 2019–2026 | Pan-STARRS1 (1.8 m, 0.26″/px) | 4 × 45 s per set | 14 catalogued asteroids; an independent Astrometrica reduction; 260 injected asteroids | [Pan-STARRS1](pan-starrs1.md) |
 | field 451, one night | ZTF (1.2 m Schmidt, 1.0″/px) | 5 + 30 reference | 2 catalogued asteroids | [ZTF](ztf.md) |
 | 3 fields with known variables | ZTF | one night each | 3 catalogued variable stars | [A variable star](variable-star.md) |
+| (624) Hektor, 6 months | ZTF | 107 exposures | published rotation period | [The light curve of an asteroid](hektor.md) |
 
 ## Results at a glance
 
@@ -23,6 +24,7 @@ images, or synthetic asteroids added to real images.
 | How many false candidates? | 107 tracklets to look at across the 9 good sets (5,548 for 6 at first); 91 not identified across 20 sets (150 before the frames were fitted together) | Pan-STARRS1 |
 | Are damaged sets recognised? | the one damaged set flagged; none of the other nine | Pan-STARRS1 |
 | Variable stars? | all 3 confirmed variables found; 0.6–2% of constant stars flagged | ZTF |
+| Rotation periods? | 6.92035 ± 0.00008 h for a published 6.920509 h, doubling the fit, on one asteroid | ZTF |
 
 ![Tracklets a person has to look at, by configuration](../assets/tracklets-to-vet.png)
 
@@ -40,4 +42,4 @@ images, or synthetic asteroids added to real images.
 
 The scripts are in `examples/`: `iasc_demo.jl` and `analyze_sets.jl` (image
 sets), `injection_test.jl` (completeness), `real_data_demo.jl` (ZTF),
-`variable_star_demo.jl` (variable stars).
+`variable_star_demo.jl` (variable stars), `moving_light_curve_demo.jl` (rotation periods).
