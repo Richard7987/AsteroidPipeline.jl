@@ -40,6 +40,10 @@ CHECKS = {
               "If it is real, report it — it goes under the NEOCP's designation and helps confirm it."),
 }
 
+BELOW_LIMIT = ("▽ faint", "dim",
+               "Fainter than these images can show (limit V {limit:.1f}): most likely noise lined up by chance. "
+               "Worth looking at last, but it is still your decision.")
+
 # Verdict of an analysis -> (icon, title, style, explanation)
 VERDICTS = {
     "blank": (ICON_OK, "No new objects", "success",

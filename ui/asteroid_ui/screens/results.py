@@ -14,7 +14,7 @@ from asteroid_ui.imaging import CANDIDATE, KNOWN, MISSED, SetImages
 from asteroid_ui.labels import BOGUS, REAL, REASONS, labels_for, set_label
 from asteroid_ui.profiles import profile_of
 from asteroid_ui.sets import SetEntry
-from asteroid_ui.texts import CHECKS, ICON_CANDIDATE, ICON_KNOWN, ICON_KNOWN_MISSED, VERDICTS
+from asteroid_ui.texts import BELOW_LIMIT, CHECKS, ICON_CANDIDATE, ICON_KNOWN, ICON_KNOWN_MISSED, VERDICTS
 from asteroid_ui.widgets import SkyViewer, StatusBar
 
 _KIND_ICON = {CANDIDATE: (ICON_CANDIDATE, "bold yellow"), KNOWN: (ICON_KNOWN, "bold green"),
@@ -182,6 +182,8 @@ class ResultsScreen(Screen):
                         verdict = "neocp" if neocp else check.get("verdict")
                         text, dstyle = CHECKS[verdict][:2] if verdict in CHECKS else _DECISION_TEXT[None]
                     parts += ["  ", (text, dstyle)]
+                    if o.data.get("below_limit"):
+                        parts += ["  ", BELOW_LIMIT[:2]]
                 options.add_option(Option(Text.assemble(*parts), id=o.key))
                 first = first or o.key
             if not objs:
@@ -241,6 +243,11 @@ class ResultsScreen(Screen):
                 mag = f"{p['mag']:.1f}" if p.get("mag") is not None else " ? "
                 text.append(f" {p['frame']}  {frames.get(p['frame'], {}).get('time_utc', '')[11:]}  "
                             f"{_hms(p['ra'])} {_dms(p['dec'])}  {mag}\n", style="dim")
+            limit = self.result.get("limiting_mag")
+            if t.get("below_limit") and limit is not None:
+                tag, style, sentence = BELOW_LIMIT
+                text.append(f"{tag} ", style=style)
+                text.append(sentence.format(limit=limit) + "\n")
             check = t.get("check")
             if check:
                 tag, style, sentence = CHECKS[check["verdict"]]

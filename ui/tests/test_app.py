@@ -295,6 +295,37 @@ def test_an_object_without_a_magnitude_is_shown():
     run(scenario)
 
 
+def test_faint_candidates_are_marked_and_listed_last_but_stay():
+    result = saved_result(tracklets=[tracklet(1, ra=10.0, below_limit=True), tracklet(2, ra=50.0)], limiting_mag=21.5)
+
+    async def scenario(app, pilot):
+        app.push_screen(ResultsScreen(entry_of(result)))
+        await pilot.pause(0.2)
+        screen = app.screen
+        assert [o.key for o in screen.images.objects] == ["t:2", "t:1"]
+        assert screen._candidate_ids() == [1, 2]
+        listed = [str(screen.query_one("#objects").get_option_at_index(i).prompt)
+                  for i in range(screen.query_one("#objects").option_count)]
+        assert any("P1" in line and "faint" in line for line in listed)
+        assert not any("P2" in line and "faint" in line for line in listed)
+        screen._show_details("t:1")
+        assert "limit V 21.5" in str(screen.query_one("#details").render())
+
+    run(scenario)
+
+
+def test_results_saved_before_the_limit_still_open():
+    result = saved_result()
+
+    async def scenario(app, pilot):
+        app.push_screen(ResultsScreen(entry_of(result)))
+        await pilot.pause(0.2)
+        app.screen._show_details("t:3")
+        assert "faint" not in str(app.screen.query_one("#details").render())
+
+    run(scenario)
+
+
 @pytest.mark.parametrize("text", ["From: /home/me/[/x/a.zip", "[/red] done", "Installing: ⌅ [a93c6f00] DataFrames"])
 def test_outside_text_is_not_read_as_markup(text):
     async def scenario(app, pilot):

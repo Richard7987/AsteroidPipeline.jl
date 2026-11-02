@@ -600,7 +600,9 @@ one's own, or work without the network. Returns a named tuple: `name`, `paths` (
 frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 `frames_used`, `dropped`, `reliable`, `candidates` (an
 [`astrometric_calibrate`](@ref) table with `frame` indexing `paths`, and a
-`mag` column), `known` (`Dict` tracklet id => name), `unknown_ids`, `nearby`
+`mag` column), `limiting_mag` (the magnitude of a source 5σ above the frames'
+sky noise, `NaN` with no candidates: see [`below_limit`](@ref)), `known`
+(`Dict` tracklet id => name), `unknown_ids`, `nearby`
 (`nearby_known_objects`'s check of each unknown tracklet), `neocp`
 (`neocp_check`'s),
 `expected` (from `known_objects_in_field`, each with a `detected` flag),
@@ -668,12 +670,15 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     candidates = Table(id=Int[], frame=Int[], x=Int[], y=Int[], ra=Float64[], dec=Float64[], epoch=Float64[],
                        mag=Float64[])
     known = Dict{Int,String}()
+    limiting_mag = NaN
     if reliable
         progress(:search, 0.3)
         cfg = something(config, pipeline_config(_pixel_scale_arcsec(wcs[used[1]], image_size); n_frames=length(used)))
 found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
         if !isempty(found)
-            mags = candidate_magnitudes(cleaned[used], found; reference_stars=stars)
+            measured = _measure_candidates(cleaned[used], found; reference_stars=stars)
+            mags = measured.mags
+            limiting_mag = measured.limit
             candidates = Table(id=collect(found.id), frame=used[found.frame], x=collect(found.x), y=collect(found.y),
                                ra=collect(found.ra), dec=collect(found.dec), epoch=collect(found.epoch), mag=mags)
             progress(:identify, 0.75)
@@ -714,7 +719,8 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
     _KNOWN_FROM_JPL[] && pushfirst!(warnings, "SkyBoT unavailable: known objects from JPL's Small-Body Identification service")
     progress(:done, 1.0)
     return (name=name, paths=paths, epochs=epochs, wcs=wcs, image_size=image_size, ratios=ratios,
-            frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, known=known,
+            frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, limiting_mag=limiting_mag,
+            known=known,
             unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, expected=expected, report=report, report_kind=report_kind,
             warnings=warnings)
 end

@@ -1594,6 +1594,13 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         FITS(f -> write(f, fill(100.0, nx, ny); header), joinpath(dir, "frame5.fits"), "w")
         flat = analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars)
         @test flat.reliable && flat.frames_used == 1:4 && flat.dropped == [5]
+        # sky σ = 10 in a 5 px aperture, zero point 27
+        @test r.limiting_mag ≈ 27 - 2.5 * log10(5 * 10 * sqrt(pi) * 5) atol = 0.4
+        @test isempty(below_limit(r.candidates, r.limiting_mag))             # V 18: nowhere near it
+        @test isempty(below_limit(r.candidates, NaN))
+        @test below_limit([(id=1, mag=22.0), (id=1, mag=23.0), (id=1, mag=NaN), (id=2, mag=20.0), (id=3, mag=NaN)], 21.0) == Set([1])
+        @test isnan(AsteroidPipeline._limiting_magnitude(fill(100.0, 9, 9), falses(9, 9), 27.0, 5.0))
+        @test isnan(AsteroidPipeline._limiting_magnitude(fill(100.0, 9, 9), trues(9, 9), 27.0, 5.0))
         @test length(unique(flat.candidates.id)) == 1
         @test any(==("1 of 5 frames left out as bad (5): 4 searched"), flat.warnings)
         few = String[]
