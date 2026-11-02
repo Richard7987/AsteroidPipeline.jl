@@ -8,6 +8,7 @@ from the version picker at the top right.
 **Added**
 
 - A DOI, through Zenodo: [How to cite](citing.md) has it, and each release gets its own.
+- [How to cite](citing.md) and `CITATION.cff`: the H-G model, the Moffat profile and VSX.
 
 ## 1.3.1 — 2026-11-01
 

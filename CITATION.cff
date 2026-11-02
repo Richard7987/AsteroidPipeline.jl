@@ -200,3 +200,36 @@ references:
     end: "186"
     year: 1989
     doi: "10.1016/0019-1035(89)90015-8"
+  - type: book
+    title: "Application of photometric models to asteroids"
+    authors:
+      - family-names: "Bowell"
+      - family-names: "Hapke"
+      - family-names: "Domingue"
+      - family-names: "Lumme"
+      - family-names: "Peltoniemi"
+      - family-names: "Harris"
+    collection-title: "Asteroids II"
+    publisher:
+      name: "University of Arizona Press"
+    start: "524"
+    end: "556"
+    year: 1989
+  - type: article
+    title: "A theoretical investigation of focal stellar images in the photographic emulsion and application to photographic photometry"
+    authors:
+      - family-names: "Moffat"
+    journal: "Astronomy & Astrophysics"
+    volume: 3
+    start: "455"
+    year: 1969
+  - type: conference-paper
+    title: "The International Variable Star Index (VSX)"
+    authors:
+      - family-names: "Watson"
+      - family-names: "Henden"
+      - family-names: "Price"
+    collection-title: "Society for Astronomical Sciences Annual Symposium"
+    volume: 25
+    start: "47"
+    year: 2006

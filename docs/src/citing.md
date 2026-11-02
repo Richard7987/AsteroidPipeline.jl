@@ -30,6 +30,9 @@ Please also cite what your results depend on.
 | Gaia through NOIRLab's Astro Data Lab | [Nikutta et al. 2020](https://doi.org/10.1016/j.ascom.2020.100411) |
 | known objects: SkyBoT | [Berthier et al. 2016](https://doi.org/10.1093/mnras/stw492) |
 | cross-matching: SIMBAD | [Wenger et al. 2000](https://doi.org/10.1051/aas:2000332) |
+| cross-matching: VSX | Watson, Henden & Price 2006, Society for Astronomical Sciences Annual Symposium 25, 47 |
+| asteroid magnitudes: the H-G model | Bowell et al. 1989, in *Asteroids II*, University of Arizona Press, 524–556 |
+| analytic PSF: Moffat profile | Moffat 1969, Astronomy & Astrophysics 3, 455 |
 | difference imaging: ZOGY | [Zackay, Ofek & Gal-Yam 2016](https://doi.org/10.3847/0004-637X/830/1/27) |
 | plate solving: astrometry.net | [Lang et al. 2010](https://doi.org/10.1088/0004-6256/139/5/1782) |
 | NEO score: digest2 | [Keys et al. 2019](https://doi.org/10.1088/1538-3873/ab1157) |
@@ -45,6 +48,6 @@ Pan-STARRS1 ([Chambers et al. 2016](https://arxiv.org/abs/1612.05560)) and ZTF
 catalogues also ask for an acknowledgement in their own words: check their
 terms of use.
 
-The Minor Planet Center's orbits and Confirmation Page, JPL's Horizons and
-Small-Body Identification services, and AAVSO's VSX are online services: name
-the ones you used, with the date you queried them.
+The Minor Planet Center's orbits and Confirmation Page, and JPL's Horizons and
+Small-Body Identification services, are online services: name the ones you
+used, with the date you queried them.
