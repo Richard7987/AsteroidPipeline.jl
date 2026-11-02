@@ -267,8 +267,9 @@ end
 
 # --- (624) Hektor folded on its period ---------------------------------------------------
 # The measurements of examples/moving_light_curve_demo.jl, on the published period
-# (Marchis et al. 2014), with a Fourier series of two harmonics.
-let
+# (Marchis et al. 2014), with a Fourier series of two harmonics. Every version's
+# documentation is built with this script, and the earlier ones have no such data.
+isfile(joinpath(ASSETS_DIR, "hektor-reduced.csv")) && let
     rows = [parse.(Float64, split(l, ",")) for l in readlines(joinpath(ASSETS_DIR, "hektor-reduced.csv"))[2:end]]
     epoch, mag = first.(rows), last.(rows)
     P = 6.920509 / 24

@@ -37,7 +37,7 @@ for `main`. What changed: [release notes](https://richard7987.github.io/Asteroid
 - **The search**: each frame minus the set's median, artifacts removed (hot
   pixels, bright-star halos, ghosts and diffraction spikes), detections
   linked along straight lines at constant rates; damaged frames and sets
-  recognised.
+  recognised, and candidates fainter than the set's own limit marked.
 - **Is it new?** Known asteroids identified against SkyBoT and the MPC's own
   orbit file (downloaded daily); each candidate compared with every known
   object within 10′ and, for recent images, with the MPC's NEO Confirmation
