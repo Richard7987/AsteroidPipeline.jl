@@ -1594,13 +1594,29 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         FITS(f -> write(f, fill(100.0, nx, ny); header), joinpath(dir, "frame5.fits"), "w")
         flat = analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars)
         @test flat.reliable && flat.frames_used == 1:4 && flat.dropped == [5]
-        # sky σ = 10 in a 5 px aperture, zero point 27
-        @test r.limiting_mag ≈ 27 - 2.5 * log10(5 * 10 * sqrt(pi) * 5) atol = 0.4
+        # sky σ = 10 in an aperture of the stars' FWHM, zero point 27
+        @test r.limiting_mag ≈ 27 - 2.5 * log10(5 * 10 * sqrt(pi) * 2.355 * sigma) atol = 0.4
         @test isempty(below_limit(r.candidates, r.limiting_mag))             # V 18: nowhere near it
         @test isempty(below_limit(r.candidates, NaN))
         @test below_limit([(id=1, mag=22.0), (id=1, mag=23.0), (id=1, mag=NaN), (id=2, mag=20.0), (id=3, mag=NaN)], 21.0) == Set([1])
         @test isnan(AsteroidPipeline._limiting_magnitude(fill(100.0, 9, 9), falses(9, 9), 27.0, 5.0))
         @test isnan(AsteroidPipeline._limiting_magnitude(fill(100.0, 9, 9), trues(9, 9), 27.0, 5.0))
+        @test AsteroidPipeline._source_radius(fill(100.0, 40, 40), falses(40, 40), 5.0) == 5.0
+
+        # headers further off than one frame's refinement searches: still measured
+        far = mktempdir()
+        for k in 1:4
+            image = FITS(f -> read(f[1]), joinpath(dir, "frame$k.fits"))
+            h = FITSHeader(["CTYPE1", "CTYPE2", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2",
+                            "DATE-OBS", "EXPTIME"],
+                           Any["RA---TAN", "DEC--TAN", 250.0 + 128, 250.0, 210.0, 45.0, -scale / 3600, scale / 3600,
+                               "2020-03-01T08:$(lpad(15 * (k - 1), 2, '0')):00", 45.0], fill("", 10))
+            FITS(f -> write(f, image; header=h), joinpath(far, "frame$k.fits"), "w")
+        end
+        offset = analyze_set(far; workdir=mktempdir(), observatory="F51", reference_stars=stars)
+        @test length(unique(offset.candidates.id)) == 1
+        @test all(m -> isapprox(m, mover_mag; atol=0.3), offset.candidates.mag)
+        @test isfinite(offset.limiting_mag)
         @test length(unique(flat.candidates.id)) == 1
         @test any(==("1 of 5 frames left out as bad (5): 4 searched"), flat.warnings)
         few = String[]

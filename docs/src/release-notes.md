@@ -3,6 +3,17 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Fixed**
+
+- [`analyze_set`](@ref) measured candidates with no magnitude on sets whose
+  header is further off than one frame's refinement searches (`NaN`, and no
+  magnitude in the report): it now uses the frames' joint fit.
+- `limiting_mag` used a fixed 5-pixel aperture, too bright on telescopes with
+  large pixels, where [`below_limit`](@ref) could reach real objects: it now
+  uses an aperture of the frames' measured FWHM.
+
 ## 1.4.0 — 2026-11-01
 
 **Added**

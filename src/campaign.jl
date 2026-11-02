@@ -601,7 +601,8 @@ frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 `frames_used`, `dropped`, `reliable`, `candidates` (an
 [`astrometric_calibrate`](@ref) table with `frame` indexing `paths`, and a
 `mag` column), `limiting_mag` (the magnitude of a source 5σ above the frames'
-sky noise, `NaN` with no candidates: see [`below_limit`](@ref)), `known`
+sky noise in an aperture of their FWHM, `NaN` with no candidates: see
+[`below_limit`](@ref)), `known`
 (`Dict` tracklet id => name), `unknown_ids`, `nearby`
 (`nearby_known_objects`'s check of each unknown tracklet), `neocp`
 (`neocp_check`'s),
@@ -676,7 +677,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
         cfg = something(config, pipeline_config(_pixel_scale_arcsec(wcs[used[1]], image_size); n_frames=length(used)))
 found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
         if !isempty(found)
-            measured = _measure_candidates(cleaned[used], found; reference_stars=stars)
+            measured = _measure_candidates(cleaned[used], found; reference_stars=stars, wcs=wcs[used])
             mags = measured.mags
             limiting_mag = measured.limit
             candidates = Table(id=collect(found.id), frame=used[found.frame], x=collect(found.x), y=collect(found.y),
