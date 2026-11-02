@@ -7,6 +7,8 @@ from the version picker at the top right.
 
 **Added**
 
+- [Validation: the light curve of an asteroid](validation/hektor.md): (624) Hektor
+  on public ZTF images, 6.92035 ± 0.00008 h for a published 6.920509 h.
 - [`analyze_set`](@ref) returns `limiting_mag`, from the frames' own noise and
   zero point, and [`below_limit`](@ref) the candidates fainter than it, most
   likely noise. The terminal app marks them and lists them last; none is discarded.
