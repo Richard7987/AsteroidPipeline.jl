@@ -57,7 +57,9 @@ Images are shown at full resolution in terminals with a graphics protocol
    that known object: kept as a real asteroid for the training data, left
    out of the report. For images up to 30 days old it is also compared with
    the MPC's NEO Confirmation Page: *◆ NEOCP* if an object awaiting
-   confirmation moves like it — someone else's recent find.
+   confirmation moves like it — someone else's recent find. A candidate fainter
+   than the set's own limit (5σ of the images' noise) is marked `▽ faint` and
+   listed last: most likely noise, but the decision stays yours.
 5. **Report** (`r`): the observations of the candidates you confirmed, or the
    blank report if there are none — copy it (`c`) or save it (`s`). Each
    confirmed candidate gets your next designation, and keeps it whenever the

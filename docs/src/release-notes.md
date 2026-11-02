@@ -7,6 +7,9 @@ from the version picker at the top right.
 
 **Added**
 
+- [`analyze_set`](@ref) returns `limiting_mag`, from the frames' own noise and
+  zero point, and [`below_limit`](@ref) the candidates fainter than it, most
+  likely noise. The terminal app marks them and lists them last; none is discarded.
 - A DOI, through Zenodo: [How to cite](citing.md) has it, and each release gets its own.
 - [How to cite](citing.md) and `CITATION.cff`: the H-G model, the Moffat profile and VSX.
 

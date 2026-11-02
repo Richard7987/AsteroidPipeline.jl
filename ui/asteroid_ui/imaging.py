@@ -49,7 +49,8 @@ DECISION_MARK = {"real": " ✓", "bogus": " ✗"}
 
 
 def objects_from_result(result: dict[str, Any], decisions: dict[int, str] | None = None) -> list[SkyObject]:
-    """New candidates first, then known asteroids detected, then those not detected.
+    """New candidates first, those fainter than the set's limit last among them,
+    then known asteroids detected, then those not detected.
 
     `decisions` (tracklet id -> "real" / "bogus") adds ✓ / ✗ to candidates' labels.
     A detected known asteroid is drawn where it was measured, not where its
@@ -58,7 +59,7 @@ def objects_from_result(result: dict[str, Any], decisions: dict[int, str] | None
     decisions = decisions or {}
     tracklets = {t["id"]: t for t in result["tracklets"]}
     objects: list[SkyObject] = []
-    for t in result["tracklets"]:
+    for t in sorted(result["tracklets"], key=lambda t: bool(t.get("below_limit"))):
         if t.get("known"):
             continue
         mag = f"V {t['mag']:.1f}" if t.get("mag") is not None else "V ?"

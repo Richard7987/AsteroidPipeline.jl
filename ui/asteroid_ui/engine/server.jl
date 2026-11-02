@@ -168,6 +168,7 @@ function analyze(id, msg)
     px(ra, dec) = world_to_pix(w1, Float64[ra, dec])
 
     rows = collect(r.candidates)
+    faint = below_limit(r.candidates, r.limiting_mag)
     tracklets = Dict{String,Any}[]
     for tid in sort(unique(r.candidates.id))
         pts = sort(filter(x -> x.id == tid, rows); by=x -> x.epoch)
@@ -180,7 +181,7 @@ function analyze(id, msg)
         push!(tracklets, Dict{String,Any}(
             "id" => tid, "label" => label(tid), "known" => get(r.known, tid, nothing),
             "speed_arcsec_h" => motion.rate_arcsec_h, "pa_deg" => motion.pa_deg, "rms_arcsec" => motion.rms_arcsec,
-            "mag" => isempty(mags) ? nothing : median(mags), "stamp" => stamp,
+            "mag" => isempty(mags) ? nothing : median(mags), "stamp" => stamp, "below_limit" => tid in faint,
             "check" => check === nothing ? nothing : Dict(
                 "verdict" => string(check.verdict),
                 "objects" => [Dict("name" => o.name, "source" => o.source, "separation_arcsec" => o.separation_arcsec,
@@ -210,6 +211,7 @@ function analyze(id, msg)
         "source" => source isa AbstractVector ? abspath.(source) : abspath(source),
         "analyzed_at" => string(now()), "image_size" => [nx, ny], "reliable" => r.reliable,
         "report_kind" => string(r.report_kind), "report" => r.report, "warnings" => r.warnings,
+        "limiting_mag" => r.limiting_mag,
         "mpcorb" => ORBITS_INFO[], "stamp_size" => STAMP_SIZE,
         "frames" => [Dict("index" => k, "file" => basename(p), "epoch" => r.epochs[k], "time_utc" => utc(r.epochs[k]),
                           "ratio" => r.ratios[k], "used" => k in r.frames_used, "image" => "frame_$k.pgm",

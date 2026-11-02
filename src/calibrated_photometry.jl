@@ -111,11 +111,15 @@ Each frame gets its own zero point, so a frame taken through thin cloud
 doesn't make an object look fainter. `examples/iasc_demo.jl` compares the
 result with Astrometrica's.
 """
-function candidate_magnitudes(fits_paths::AbstractVector{<:AbstractString}, candidates;
-                              timestamp_key::Union{Nothing,AbstractString}=nothing,
-                              reference_stars=nothing, aperture_radius::Real=5.0)
+candidate_magnitudes(fits_paths::AbstractVector{<:AbstractString}, candidates; kw...) =
+    _measure_candidates(fits_paths, candidates; kw...).mags
+
+# The candidates' magnitudes and the limit of the frames they are measured on
+function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothing,AbstractString}=nothing,
+                             reference_stars=nothing, aperture_radius::Real=5.0)
     rows = collect(candidates)
     mags = fill(NaN, length(rows))
+    limits = Float64[]
     for (k, path) in enumerate(fits_paths)
         idx = [i for (i, r) in enumerate(rows) if r.frame == k]
         isempty(idx) && continue
@@ -131,11 +135,42 @@ function candidate_magnitudes(fits_paths::AbstractVector{<:AbstractString}, cand
         refined.refined && (wcs = refined.wcs)
         zp = photometric_zeropoint(image, wcs, reference_stars; mask, aperture_radius)
         isnan(zp.zeropoint) && continue
+        push!(limits, _limiting_magnitude(image, mask, zp.zeropoint, aperture_radius))
         for i in idx
             x, y = world_to_pix(wcs, Float64[rows[i].ra, rows[i].dec])
             flux = aperture_flux(image, x, y; aperture_radius, mask)
             flux > 0 && (mags[i] = zp.zeropoint - 2.5 * log10(flux))
         end
     end
-    return mags
+    finite = filter(isfinite, limits)
+    return (mags=mags, limit=isempty(finite) ? NaN : median(finite))
+end
+
+# The magnitude of a source 5σ above the sky's noise in the aperture candidates
+# are measured with: what this frame can show, from its own noise and zero point.
+function _limiting_magnitude(image, mask, zeropoint, aperture_radius)
+    sky = image[.!mask]
+    isempty(sky) && return NaN
+    sigma = 1.4826 * median(abs.(sky .- median(sky)))
+    sigma > 0 || return NaN
+    return zeropoint - 2.5 * log10(5 * sigma * sqrt(pi) * aperture_radius)
+end
+
+"""
+    below_limit(candidates, limiting_mag) -> Set{Int}
+
+The tracklet ids in `candidates` whose median magnitude is fainter than
+`limiting_mag`, what [`analyze_set`](@ref) returns: nothing a single exposure
+can show, so most likely noise lined up by chance. They are worth looking at
+last, not to be discarded: a stack of frames can hold what one doesn't.
+"""
+function below_limit(candidates, limiting_mag::Real)
+    isfinite(limiting_mag) || return Set{Int}()
+    rows = collect(candidates)
+    faint = Set{Int}()
+    for id in unique(r.id for r in rows)
+        mags = filter(isfinite, [r.mag for r in rows if r.id == id])
+        !isempty(mags) && median(mags) > limiting_mag && push!(faint, id)
+    end
+    return faint
 end
