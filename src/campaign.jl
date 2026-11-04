@@ -602,7 +602,8 @@ frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 [`astrometric_calibrate`](@ref) table with `frame` indexing `paths`, and a
 `mag` column), `limiting_mag` (the magnitude of a source 5σ above the frames'
 sky noise in an aperture of their FWHM, `NaN` with no candidates: see
-[`below_limit`](@ref)), `known`
+[`below_limit`](@ref); when only 3 frames are searched, candidates fainter
+than it or with no magnitude are left out, with a warning), `known`
 (`Dict` tracklet id => name), `unknown_ids`, `nearby`
 (`nearby_known_objects`'s check of each unknown tracklet), `neocp`
 (`neocp_check`'s),
@@ -682,6 +683,7 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
             limiting_mag = measured.limit
             candidates = Table(id=collect(found.id), frame=used[found.frame], x=collect(found.x), y=collect(found.y),
                                ra=collect(found.ra), dec=collect(found.dec), epoch=collect(found.epoch), mag=mags)
+            length(used) == 3 && (candidates = _without_faint(candidates, limiting_mag, warnings))
             progress(:identify, 0.75)
             known = _identify_tracklets(candidates, mpcorb, observatory, min(3, length(used)), warnings)
         end
@@ -724,6 +726,22 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
             known=known,
             unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, expected=expected, report=report, report_kind=report_kind,
             warnings=warnings)
+end
+
+# With three frames no further frame can confirm a tracklet: noise lines up
+# by the thousand on dense fields, each one a query to the catalogues. A
+# tracklet with no magnitude in any frame shows no light above the sky in them.
+function _without_faint(candidates, limiting_mag, warnings)
+    isfinite(limiting_mag) || return candidates
+    faint = below_limit(candidates, limiting_mag)
+    for id in unique(candidates.id)
+        all(isnan, candidates.mag[candidates.id .== id]) && push!(faint, id)
+    end
+    isempty(faint) && return candidates
+    n = length(unique(candidates.id))
+    push!(warnings, "$(length(faint)) of $n candidates left out, fainter than this set's limit " *
+                    "(V $(round(limiting_mag; digits=1))): with 3 frames, nothing can confirm them")
+    return candidates[findall(id -> !(id in faint), candidates.id)]
 end
 
 # Three frames are the fewest a tracklet can be seen in, and their median

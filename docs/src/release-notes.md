@@ -5,6 +5,12 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Changed**
+
+- [`analyze_set`](@ref), when only 3 frames are searched, leaves out candidates
+  fainter than the set's `limiting_mag` or with no magnitude, with a warning: nothing can confirm them,
+  and on dense fields they ran to over a thousand, each asked of the catalogues.
+
 **Fixed**
 
 - [`analyze_set`](@ref) measured candidates with no magnitude on sets whose

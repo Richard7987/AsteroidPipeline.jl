@@ -1603,6 +1603,15 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test isnan(AsteroidPipeline._limiting_magnitude(fill(100.0, 9, 9), trues(9, 9), 27.0, 5.0))
         @test AsteroidPipeline._source_radius(fill(100.0, 40, 40), falses(40, 40), 5.0) == 5.0
 
+        # three frames: what is fainter than the limit or unmeasured goes, and is said to
+        three = AsteroidPipeline.Table(id=[1, 1, 2, 2, 3], mag=[20.0, 20.0, 23.0, 23.0, NaN])
+        said = String[]
+        @test AsteroidPipeline._without_faint(three, 21.0, said).id == [1, 1]
+        @test only(said) == "2 of 3 candidates left out, fainter than this set's limit (V 21.0): with 3 frames, nothing can confirm them"
+        empty!(said)
+        @test AsteroidPipeline._without_faint(three, NaN, said) === three
+        @test isempty(AsteroidPipeline._without_faint(three, 10.0, said).id)
+
         # headers further off than one frame's refinement searches: still measured
         far = mktempdir()
         for k in 1:4
