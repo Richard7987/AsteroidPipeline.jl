@@ -3,6 +3,14 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Added**
+
+- [Validation: rotation periods of eight asteroids](validation/ztf-periods.md), chosen
+  before looking at their ZTF data: two of the six measured within 1% of the
+  published period, four on aliases of the nightly sampling or without a clear period.
+
 ## 1.4.0 — 2026-11-01
 
 **Added**
