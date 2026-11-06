@@ -5,6 +5,12 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Added**
+
+- [Validation: rotation periods of eight asteroids](validation/ztf-periods.md), chosen
+  before looking at their ZTF data: two of the six measured within 1% of the
+  published period, four on aliases of the nightly sampling or without a clear period.
+
 **Changed**
 
 - [`analyze_set`](@ref), when only 3 frames are searched, leaves out candidates

@@ -72,6 +72,7 @@ makedocs(;
             "ZTF field 451" => "validation/ztf.md",
             "A known variable star" => "validation/variable-star.md",
             "The light curve of an asteroid" => "validation/hektor.md",
+            "Rotation periods of eight asteroids" => "validation/ztf-periods.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",
