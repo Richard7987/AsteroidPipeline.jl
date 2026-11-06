@@ -94,7 +94,7 @@ end
 
 """
     candidate_magnitudes(fits_paths, candidates; timestamp_key=nothing,
-                         reference_stars=nothing, aperture_radius=5.0) -> Vector{Float64}
+                         reference_stars=nothing, aperture_radius=5.0, wcs=nothing) -> Vector{Float64}
 
 Calibrated (Gaia G-equivalent) magnitude of every row of `candidates` — an
 [`astrometric_calibrate`](@ref) table from a [`run_pipeline`](@ref) call on
@@ -104,7 +104,10 @@ zero point fitted ([`photometric_zeropoint`](@ref)) against Gaia DR3 stars
 (`reference_stars`, or fetched once for the first frame's field — a live
 network request), then each row's sky position is photometered at its pixel
 in that frame. Working from `ra`/`dec` rather than the table's `x`/`y` keeps
-this independent of which pixel grid the pipeline linked on.
+this independent of which pixel grid the pipeline linked on. `wcs`, one
+solution per frame, is used instead of refining each frame on its own, which
+fails where a header is further off than [`refine_wcs`](@ref) searches:
+[`analyze_set`](@ref) passes the frames' joint fit.
 
 `NaN` where a row's aperture falls off the frame or measures no positive flux.
 Each frame gets its own zero point, so a frame taken through thin cloud
@@ -116,7 +119,7 @@ candidate_magnitudes(fits_paths::AbstractVector{<:AbstractString}, candidates; k
 
 # The candidates' magnitudes and the limit of the frames they are measured on
 function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothing,AbstractString}=nothing,
-                             reference_stars=nothing, aperture_radius::Real=5.0)
+                             reference_stars=nothing, aperture_radius::Real=5.0, wcs=nothing)
     rows = collect(candidates)
     mags = fill(NaN, length(rows))
     limits = Float64[]
@@ -128,16 +131,18 @@ function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothin
             frame_epoch(read_header(f[1]); timestamp_key)
         end
         mask = fill_value_mask(image)
-        wcs = load_wcs(header)
+        frame_wcs = wcs === nothing ? load_wcs(header) : wcs[k]
         reference_stars === nothing &&
-            (reference_stars = _field_reference_stars(image, wcs, epoch))
-        refined = refine_wcs(image, wcs, reference_stars; mask)
-        refined.refined && (wcs = refined.wcs)
-        zp = photometric_zeropoint(image, wcs, reference_stars; mask, aperture_radius)
+            (reference_stars = _field_reference_stars(image, frame_wcs, epoch))
+        if wcs === nothing
+            refined = refine_wcs(image, frame_wcs, reference_stars; mask)
+            refined.refined && (frame_wcs = refined.wcs)
+        end
+        zp = photometric_zeropoint(image, frame_wcs, reference_stars; mask, aperture_radius)
         isnan(zp.zeropoint) && continue
-        push!(limits, _limiting_magnitude(image, mask, zp.zeropoint, aperture_radius))
+        push!(limits, _limiting_magnitude(image, mask, zp.zeropoint, _source_radius(image, mask, aperture_radius)))
         for i in idx
-            x, y = world_to_pix(wcs, Float64[rows[i].ra, rows[i].dec])
+            x, y = world_to_pix(frame_wcs, Float64[rows[i].ra, rows[i].dec])
             flux = aperture_flux(image, x, y; aperture_radius, mask)
             flux > 0 && (mags[i] = zp.zeropoint - 2.5 * log10(flux))
         end
@@ -146,8 +151,18 @@ function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothin
     return (mags=mags, limit=isempty(finite) ? NaN : median(finite))
 end
 
-# The magnitude of a source 5σ above the sky's noise in the aperture candidates
-# are measured with: what this frame can show, from its own noise and zero point.
+# An aperture of one FWHM holds most of a point source's light and little sky,
+# whatever the size of the pixels; `fallback` if no star shows the FWHM.
+function _source_radius(image, mask, fallback)
+    try
+        return _measure_fwhm(image, mask)
+    catch
+        return fallback
+    end
+end
+
+# The magnitude of a source 5σ above the sky's noise in an aperture of
+# `aperture_radius`: what this frame can show, from its own noise and zero point.
 function _limiting_magnitude(image, mask, zeropoint, aperture_radius)
     sky = image[.!mask]
     isempty(sky) && return NaN
