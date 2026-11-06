@@ -9,6 +9,7 @@ fix it.
 | Slow objects | 50% found at 5–10″/h; in general, lost below about 4 × seeing ÷ the sequence's span ([`analyze_set`](@ref) warns when that passes 10″/h: a 5-minute sequence at 1.9″ seeing lost an asteroid at 83″/h) | they overlap their own positions in the set's median and partly subtract themselves | a longer sequence, or a reference from other nights |
 | Fast objects | 44% at 100–400″/h, 7% above 700″/h | they leave the frame, or trail beyond recognition, within one or two frames | detection of trails |
 | Objects on bright stars | lost in that frame (2 of 180 in a test) | masked as star light | — (3 frames out of 4 still give a tracklet) |
+| Only 3 frames | on 6 Pan-STARRS1 sets with one frame removed: 100 unidentified candidates left, 52 of them on one set, after 3,940 of 4,053 are left out; the same 13 known objects and 92 injected ones found | no further frame confirms a tracklet, and their median removes less | more frames; [`analyze_set`](@ref) leaves out what is fainter than the set's limit, so a real object that faint is lost |
 | Known objects with poor orbits | flagged `:possibly_known` only if displaced along the track | an orbit's error can be in any direction | — |
 | Objects awaiting confirmation | NEOCP checked for images up to 30 days old, within 30′ | NEOCP predictions come from arcs of hours | — |
 | Linking across nights | synthetic tests only | no real multi-night object in the test data | a real campaign's data |
