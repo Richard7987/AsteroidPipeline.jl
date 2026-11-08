@@ -13,6 +13,7 @@ images, or synthetic asteroids added to real images.
 | field 451, one night | ZTF (1.2 m Schmidt, 1.0″/px) | 5 + 30 reference | 2 catalogued asteroids | [ZTF](ztf.md) |
 | 3 fields with known variables | ZTF | one night each | 3 catalogued variable stars | [A variable star](variable-star.md) |
 | (624) Hektor, 6 months | ZTF | 107 exposures | published rotation period | [The light curve of an asteroid](hektor.md) |
+| 4 fields, 80 injected asteroids each | Pan-STARRS1 | 4 × 45 s per set | 320 injected asteroids | [Fainter objects by stacking](stacking.md) |
 | 8 asteroids, 2022 | ZTF | 21–132 exposures each | published rotation periods, chosen beforehand | [Rotation periods of eight asteroids](ztf-periods.md) |
 
 ## Results at a glance
@@ -21,7 +22,7 @@ images, or synthetic asteroids added to real images.
 |:--|:--|:--|
 | Are the positions right? | within 0.12–0.17″ of an independent reduction | Pan-STARRS1, 4 frames |
 | Are catalogued asteroids found? | 17 of the 30 predicted on the frames; of the 13 missed, 5 are in the one damaged set, 7 are fainter than V≈21, and one crosses a cell gap and a star; with the frames' astrometry fitted together, 28 identified on 20 sets (24 before) | 10, then 20 Pan-STARRS1 sets |
-| How faint? | ~82% found to V≈21.5, 21% at 22–22.5 | 180 injected asteroids |
+| How faint? | ~82% found to V≈21.5, 21% at 22–22.5 frame by frame; with stacking, 101 of 320 injected at V 21–24 instead of 82 | 180 + 320 injected asteroids |
 | How many false candidates? | 107 tracklets to look at across the 9 good sets (5,548 for 6 at first); 91 not identified across 20 sets (150 before the frames were fitted together) | Pan-STARRS1 |
 | Are damaged sets recognised? | the one damaged set flagged; none of the other nine | Pan-STARRS1 |
 | Variable stars? | all 3 confirmed variables found; 0.6–2% of constant stars flagged | ZTF |

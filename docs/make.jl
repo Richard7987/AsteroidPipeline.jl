@@ -73,6 +73,7 @@ makedocs(;
             "A known variable star" => "validation/variable-star.md",
             "The light curve of an asteroid" => "validation/hektor.md",
             "Rotation periods of eight asteroids" => "validation/ztf-periods.md",
+            "Fainter objects by stacking" => "validation/stacking.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",
