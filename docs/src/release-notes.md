@@ -7,6 +7,12 @@ from the version picker at the top right.
 
 **Added**
 
+- [`stack_search`](@ref) finds moving objects too faint for any one frame, by
+  adding the frames along trial motions, with a threshold measured on the set's
+  own noise; [`analyze_set`](@ref) adds what it finds (`stacked`). On four
+  Pan-STARRS1 fields with injected asteroids: 82 recovered → 101, none false
+  ([Fainter objects by stacking](validation/stacking.md)).
+
 - [Validation: rotation periods of eight asteroids](validation/ztf-periods.md), chosen
   before looking at their ZTF data: two of the six measured within 1% of the
   published period, four on aliases of the nightly sampling or without a clear period.

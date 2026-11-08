@@ -219,6 +219,52 @@ end
         @test isnan(B(A, nothing, 2.5, 1.0)) && isnan(B(A, BitMatrix([0 0; 0 1]), 1.5, 1.5))
     end
 
+    @testset "stack_search" begin
+        rng = Xoshiro(5)
+        nx, ny = 260, 240
+        truth = WCSTransform(2; crpix=[130.0, 120.0], crval=[150.0, 20.0],
+                             cdelt=[-1 / 3600, 1 / 3600], ctype=["RA---TAN", "DEC--TAN"])
+        dithers = [(0, 0), (3, -2), (-4, 1), (2, 5)]
+        epochs = 2.46e6 .+ (0:3) ./ 72                     # 4 frames over an hour
+        fwhm = 5.0; σ = fwhm / 2.355
+        faint = [(70.0 + 12k, 150.0 - 8k) for k in 0:3]    # ~14″/h, frame-1 grid
+        images = Matrix{Float64}[]; wcss = WCSTransform[]
+        for k in 1:4
+            dx, dy = dithers[k]
+            push!(wcss, WCSTransform(2; crpix=truth.crpix .+ [dx, dy], crval=truth.crval,
+                                     cdelt=truth.cdelt, ctype=truth.ctype))
+            img = 100.0 .+ randn(rng, ny, nx)
+            for j in 1:nx, i in 1:ny
+                img[i, j] += 1.8 * exp(-((j - faint[k][1] - dx)^2 + (i - faint[k][2] - dy)^2) / (2σ^2))
+            end
+            push!(images, img)
+        end
+        # 1.8σ at its brightest pixel: below any per-frame threshold
+        found = stack_search(images, wcss, epochs)
+        @test length(unique(found.tracklets.id)) == 1
+        @test found.threshold >= 7
+        t = found.tracklets
+        @test t.frame == 1:4
+        for k in 1:4
+            @test hypot(t.x[k] - faint[k][1] - dithers[k][1], t.y[k] - faint[k][2] - dithers[k][2]) < 1.5
+        end
+
+        # noise alone: nothing
+        quiet = [100.0 .+ randn(rng, ny, nx) for _ in 1:4]
+        @test isempty(stack_search(quiet, wcss, epochs).tracklets)
+
+        @test AsteroidPipeline._scrambled_orders(4) == [[2, 1, 4, 3], [1, 3, 2, 4]]
+        @test AsteroidPipeline._scrambled_orders(3) == [[2, 1, 3], [1, 3, 2]]
+        M = zeros(Float32, 5, 5); M[3, 3] = 4; M[3, 4] = 2; M[3, 2] = 1
+        x, y = AsteroidPipeline._refined_peak(M, falses(5, 5), 3, 3)
+        @test 3 < x < 3.5 && y == 3
+        E = AsteroidPipeline._elongation
+        round_spot = Float32[exp(-(i^2 + j^2) / 8) for i in -10:10, j in -10:10]
+        spike = Float32[exp(-i^2 / 2) for i in -10:10, j in -10:10]
+        @test E(round_spot, falses(21, 21), 11, 11, 8) < 1.1
+        @test E(spike, falses(21, 21), 11, 11, 8) > 1.7
+    end
+
     @testset "refine_wcs" begin
         Random.seed!(13)
         nx, ny = 300, 260
