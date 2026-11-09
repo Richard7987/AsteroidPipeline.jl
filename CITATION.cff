@@ -201,6 +201,39 @@ references:
     year: 1989
     doi: "10.1016/0019-1035(89)90015-8"
   - type: book
+    title: "Orbital Mechanics for Engineering Students"
+    authors:
+      - family-names: "Curtis"
+        given-names: "Howard D."
+    edition: "3rd"
+    publisher:
+      name: "Butterworth-Heinemann"
+    year: 2014
+  - type: article
+    title: "Statistical Ranging of Asteroid Orbits"
+    authors:
+      - family-names: "Virtanen"
+      - family-names: "Muinonen"
+      - family-names: "Bowell"
+    journal: "Icarus"
+    volume: 154
+    start: "412"
+    end: "431"
+    year: 2001
+    doi: "10.1006/icar.2001.6592"
+  - type: article
+    title: "Error statistics of asteroid optical astrometric observations"
+    authors:
+      - family-names: "Carpino"
+      - family-names: "Milani"
+      - family-names: "Chesley"
+    journal: "Icarus"
+    volume: 166
+    start: "248"
+    end: "270"
+    year: 2003
+    doi: "10.1016/S0019-1035(03)00051-4"
+  - type: book
     title: "Application of photometric models to asteroids"
     authors:
       - family-names: "Bowell"
