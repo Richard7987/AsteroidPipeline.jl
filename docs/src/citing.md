@@ -9,7 +9,7 @@ or BibTeX:
 @software{asteroidpipeline,
   author  = {Bernal Estrada, Alejandro},
   title   = {{AsteroidPipeline.jl}},
-  version = {1.4.0},
+  version = {1.5.0},
   year    = {2026},
   doi     = {10.5281/zenodo.23871668},
   url     = {https://github.com/Richard7987/AsteroidPipeline.jl},
