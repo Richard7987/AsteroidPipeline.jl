@@ -12,6 +12,7 @@ fix it.
 | Only 3 frames | on 6 Pan-STARRS1 sets with one frame removed: 100 unidentified candidates left, 52 of them on one set, after 3,940 of 4,053 are left out; the same 13 known objects and 92 injected ones found | no further frame confirms a tracklet, and their median removes less | more frames; [`analyze_set`](@ref) leaves out what is fainter than the set's limit, so a real object that faint is lost |
 | Known objects with poor orbits | flagged `:possibly_known` only if displaced along the track | an orbit's error can be in any direction | — |
 | Objects awaiting confirmation | NEOCP checked for images up to 30 days old, within 30′ | NEOCP predictions come from arcs of hours | — |
+| Orbits | from 3 nights, a median 4.8% off in a; from 30 days, 0.03%; a sparse arc's error can exceed its linear 1σ many times ([Preliminary orbits](../validation/orbits.md)) | two-body, no planets; linear covariance | more nights; ranging or sampling of the uncertainty |
 | Linking across nights | synthetic tests only | no real multi-night object in the test data | a real campaign's data |
 | Variable stars | 0.6–2% of constant stars flagged | photometric systematics | confirm with a catalogue or a period |
 | Network | needs Gaia, SkyBoT, JPL Horizons and the MPC | calibration and identification are against them | a service that fails is reported in `warnings`, and the rest goes on |

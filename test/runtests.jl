@@ -1785,6 +1785,70 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test zp3[[2, 4, 5]] .- zp3[1] ≈ transparency[[2, 4, 5]] .- transparency[1] atol = 0.003
     end
 
+    @testset "orbits" begin
+        P = AsteroidPipeline
+        nrm(v) = sqrt(sum(abs2, v))
+        μ = P._GM_SUN
+        @test P._tt_minus_utc(2460310.5) ≈ (37 + 32.184) / 86400
+        @test P._tt_minus_utc(2451545.0) ≈ (32 + 32.184) / 86400
+        @test_throws ArgumentError P._tt_minus_utc(2441000.0)
+
+        # a circular orbit at 1 AU comes back after one sidereal year, energy kept on an eccentric one
+        r0, v0 = [1.0, 0.0, 0.0], [0.0, sqrt(μ), 0.0]
+        r1, v1 = P._kepler_propagate(r0, v0, 2π / sqrt(μ))
+        @test nrm(r1 .- r0) < 1e-9 && nrm(v1 .- v0) < 1e-11
+        r0, v0 = [1.5, 0.2, 0.1], [0.002, 0.013, 0.001]
+        energy(r, v) = sum(abs2, v) / 2 - μ / nrm(r)
+        r1, v1 = P._kepler_propagate(r0, v0, 137.0)
+        @test energy(r1, v1) ≈ energy(r0, v0) rtol = 1e-10
+        back = P._kepler_propagate(r1, v1, -137.0)
+        @test nrm(back[1] .- r0) < 1e-9
+        # Lambert's arc between two propagated points has their velocity
+        @test nrm(P._lambert(r0, r1, 137.0) .- v0) < 1e-9
+
+        # an orbit given as MPCORB elements, seen from an Earth on a circular orbit
+        o = (a=2.7, e=0.12, incl=11.0, node=80.0, peri=150.0, M=30.0, epoch=2.4605e6)
+        o = merge(o, (n=0.9856076686 / o.a^1.5,))
+        ε = deg2rad(23.4392911)
+        earth(t) = (θ = 2π * (t - 2.4605e6) / 365.256 + 1.0; [cos(θ), sin(θ) * cos(ε), sin(θ) * sin(ε)])
+        rng = Xoshiro(1)
+        t = Float64[]; ra = Float64[]; dec = Float64[]; R = Vector{Float64}[]
+        for d in (0, 10, 20, 30), h in (0.0, 0.02, 0.04)
+            ti = 2.4605e6 + 20 + d + h
+            Ri = earth(ti)
+            p, Δ = nothing, 1.0
+            for _ in 1:3
+                p = collect(P._heliocentric_equatorial(o, ti - Δ / P._AU_PER_DAY_LIGHT))
+                Δ = nrm(p .- Ri)
+            end
+            v = p .- Ri
+            δ = asind(v[3] / nrm(v))
+            push!(ra, mod(atand(v[2], v[1]), 360) + 0.3 / 3600 * randn(rng) / cosd(δ))
+            push!(dec, δ + 0.3 / 3600 * randn(rng)); push!(t, ti); push!(R, Ri)
+        end
+        f = P._fit_orbit(ra, dec, t, R, fill(0.3, length(t)), 3.0)
+        el, s = f.elements, f.sigma_elements
+        @test abs(el.a - 2.7) < 3s.a && abs(el.e - 0.12) < 3s.e && abs(el.i - 11.0) < 3s.i
+        @test s.a < 0.1 && s.i < 0.1
+        @test 0.15 < f.rms < 0.5 && all(f.used)
+        @test f.arc_days ≈ 30.04
+
+        # one observation 20″ off is left out
+        ra[5] += 20 / 3600
+        g = P._fit_orbit(ra, dec, t, R, fill(0.3, length(t)), 3.0)
+        @test !g.used[5] && count(g.used) == length(t) - 1
+        @test abs(g.elements.a - 2.7) < 3g.sigma_elements.a
+
+        # the state's elements match the ones it came from
+        p = collect(P._heliocentric_equatorial(o, o.epoch))
+        q = collect(P._heliocentric_equatorial(o, o.epoch + 1e-3))
+        r = collect(P._heliocentric_equatorial(o, o.epoch - 1e-3))
+        e = P._state_to_elements(p, (q .- r) ./ 2e-3)
+        @test e.a ≈ 2.7 rtol = 1e-6
+        @test e.e ≈ 0.12 atol = 1e-6
+        @test all(abs.([e.i, e.node, e.peri, e.M] .- [11.0, 80.0, 150.0, 30.0]) .< 1e-3)
+    end
+
     @testset "fourier_period" begin
         # an elongated asteroid over one 5 h night: two maxima per 3.0 h rotation,
         # unequal, 0.01 mag of noise, and a drift of 0.02 mag/h through the night

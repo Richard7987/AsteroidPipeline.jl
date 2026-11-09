@@ -7,6 +7,11 @@ from the version picker at the top right.
 
 **Added**
 
+- [`fit_orbit`](@ref) and [`orbit_ephemeris`](@ref): a preliminary two-body orbit
+  from astrometry over several nights (Gauss's method and systematic ranging, then
+  least squares), with its uncertainty, and where it puts the object later. On 40
+  arcs of MPC astrometry of 15 known asteroids, a within a median 4.8% of JPL's from
+  3 nights and 0.03% from 30 days ([Preliminary orbits](validation/orbits.md)).
 - [`stack_search`](@ref) finds moving objects too faint for any one frame, by
   adding the frames along trial motions, with a threshold measured on the set's
   own noise; [`analyze_set`](@ref) adds what it finds (`stacked`). On four

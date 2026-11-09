@@ -38,6 +38,9 @@ Please also cite what your results depend on.
 | NEO score: digest2 | [Keys et al. 2019](https://doi.org/10.1088/1538-3873/ab1157) |
 | periodogram: Lomb–Scargle | [Lomb 1976](https://doi.org/10.1007/BF00648343), [Scargle 1982](https://doi.org/10.1086/160554) |
 | rotation periods: Fourier series of the phase | [Harris et al. 1989](https://doi.org/10.1016/0019-1035(89)90015-8) |
+| orbits: Gauss's method, Lambert's problem, universal-variable propagation | Curtis 2014, *Orbital Mechanics for Engineering Students*, 3rd ed., Butterworth-Heinemann |
+| orbits: systematic ranging | [Virtanen, Muinonen & Bowell 2001](https://doi.org/10.1006/icar.2001.6592) |
+| orbits: rejecting outlying observations | [Carpino, Milani & Chesley 2003](https://doi.org/10.1016/S0019-1035(03)00051-4) |
 | world coordinates in FITS | [Greisen & Calabretta 2002](https://doi.org/10.1051/0004-6361:20021326) |
 | the language | [Bezanson et al. 2017](https://doi.org/10.1137/141000671) |
 
