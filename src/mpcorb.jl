@@ -92,13 +92,17 @@ Julian Date, from JPL Horizons (a live request): the Sun's vector as seen
 from the MPC site `observatory`, negated. `observatory=nothing` gives the
 Earth's centre instead.
 """
-function _observer_heliocentric(jds_utc::AbstractVector{<:Real}, observatory)
+_observer_heliocentric(jds_utc::AbstractVector{<:Real}, observatory) =
+    _observer_heliocentric_tt(jds_utc .+ _TT_MINUS_UTC, observatory)
+
+# The same at TT Julian Dates.
+function _observer_heliocentric_tt(jds_tt::AbstractVector{<:Real}, observatory)
     center = observatory === nothing ? "500@399" : "$(observatory)@399"
     query = Dict("COMMAND" => "'10'", "EPHEM_TYPE" => "VECTORS", "CENTER" => "'$center'", "TIME_TYPE" => "TT",
                  "REF_PLANE" => "FRAME", "REF_SYSTEM" => "ICRF", "VEC_TABLE" => "1", "OUT_UNITS" => "AU-D",
                  "CSV_FORMAT" => "YES", "OBJ_DATA" => "NO")
     positions = NTuple{3,Float64}[]
-    for result in _horizons(query, [@sprintf("%.8f", jd + _TT_MINUS_UTC) for jd in jds_utc])
+    for result in _horizons(query, [@sprintf("%.8f", jd) for jd in jds_tt])
         block = match(r"\$\$SOE(.*)\$\$EOE"s, result)
         block === nothing && error("unexpected Horizons response: $(first(result, 300))")
         for line in split(strip(block[1]), '\n')
@@ -107,7 +111,7 @@ function _observer_heliocentric(jds_utc::AbstractVector{<:Real}, observatory)
             push!(positions, (-parse(Float64, f[3]), -parse(Float64, f[4]), -parse(Float64, f[5])))
         end
     end
-    length(positions) == length(jds_utc) || error("Horizons returned $(length(positions)) vectors for $(length(jds_utc)) epochs")
+    length(positions) == length(jds_tt) || error("Horizons returned $(length(positions)) vectors for $(length(jds_tt)) epochs")
     return positions
 end
 
