@@ -41,6 +41,7 @@ include("reference.jl")
 include("psf.jl")
 include("zogy.jl")
 include("stack_difference.jl")
+include("stack_search.jl")
 include("pipeline.jl")
 include("rotation.jl")
 include("mpc_export.jl")
@@ -52,7 +53,7 @@ export detect_sources, fill_value_mask, link_candidates, load_wcs, pix_to_sky,
        recover_rotation_period, fourier_period, object_geometry, reduced_magnitudes, plate_solve, solve_wcs, frame_pointing,
        search_field, find_variable_sources, gaia_cache_dir,
        variability_chi2, photometric_scale, ades_psv, mpc80_report, julian_date_to_iso8601,
-       digest2_score, link_across_nights, gaia_reference_stars, refine_wcs, refine_wcs_set, stack_difference,
+       digest2_score, link_across_nights, gaia_reference_stars, refine_wcs, refine_wcs_set, stack_difference, stack_search,
        aperture_flux, photometric_zeropoint, candidate_magnitudes, below_limit, frame_epoch,
        inject_movers, injection_recovery, read_mpcorb, set_quality,
        extract_set, clean_blank_pixels, download_mpcorb, default_mpcorb_path, astrometrica_settings,

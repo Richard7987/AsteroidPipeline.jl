@@ -604,7 +604,8 @@ frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 sky noise in an aperture of their FWHM, `NaN` with no candidates: see
 [`below_limit`](@ref); when only 3 frames are searched, candidates fainter
 than it or with no magnitude are left out, with a warning), `known`
-(`Dict` tracklet id => name), `unknown_ids`, `nearby`
+(`Dict` tracklet id => name), `stacked` (the ids found only by
+[`stack_search`](@ref), which `stack=false` turns off), `unknown_ids`, `nearby`
 (`nearby_known_objects`'s check of each unknown tracklet), `neocp`
 (`neocp_check`'s),
 `expected` (from `known_objects_in_field`, each with a `detected` flag),
@@ -614,7 +615,8 @@ than it or with no magnitude are left out, with a warning), `known`
 function analyze_set(source; workdir::AbstractString, observatory::AbstractString, mpcorb=nothing,
                      header=(;), name=nothing,
                      extract_to::AbstractString=dirname(abspath(source isa AbstractString ? source : first(source))),
-                     config=nothing, reference_stars=nothing, progress=(stage, fraction) -> nothing)
+                     config=nothing, reference_stars=nothing, stack::Bool=true,
+                     progress=(stage, fraction) -> nothing)
     warnings = String[]
     _KNOWN_FROM_JPL[] = false
     progress(:extract, 0.0)
@@ -672,11 +674,18 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     candidates = Table(id=Int[], frame=Int[], x=Int[], y=Int[], ra=Float64[], dec=Float64[], epoch=Float64[],
                        mag=Float64[])
     known = Dict{Int,String}()
+    stacked = Set{Int}()
     limiting_mag = NaN
     if reliable
         progress(:search, 0.3)
         cfg = something(config, pipeline_config(_pixel_scale_arcsec(wcs[used[1]], image_size); n_frames=length(used)))
-found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
+        found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
+        if stack
+            progress(:stack, 0.6)
+            extra = _stacked_tracklets(cleaned[used], wcs[used], epochs[used], found, cfg.match_radius)
+            stacked = Set(extra.id)
+            found = vcat(found, extra)
+        end
         if !isempty(found)
             measured = _measure_candidates(cleaned[used], found; reference_stars=stars, wcs=wcs[used])
             mags = measured.mags
@@ -723,7 +732,7 @@ found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
     progress(:done, 1.0)
     return (name=name, paths=paths, epochs=epochs, wcs=wcs, image_size=image_size, ratios=ratios,
             frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, limiting_mag=limiting_mag,
-            known=known,
+            known=known, stacked=stacked,
             unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, expected=expected, report=report, report_kind=report_kind,
             warnings=warnings)
 end
@@ -742,6 +751,22 @@ function _without_faint(candidates, limiting_mag, warnings)
     push!(warnings, "$(length(faint)) of $n candidates left out, fainter than this set's limit " *
                     "(V $(round(limiting_mag; digits=1))): with 3 frames, nothing can confirm them")
     return candidates[findall(id -> !(id in faint), candidates.id)]
+end
+
+# stack_search's tracklets that the frame-by-frame search didn't find: none
+# with a point within `radius` pixels of one of `found`'s in the same frame.
+function _stacked_tracklets(paths, wcss, epochs, found, radius)
+    images = [FITS(f -> permutedims(Float64.(read(f[1]))), p, "r") for p in paths]
+    masks = [fill_value_mask(img) for img in images]
+    new = stack_search(images, wcss, epochs; masks).tracklets
+    rows = collect(found)
+    seen(r) = any(f -> f.frame == r.frame && hypot(f.x - r.x, f.y - r.y) <= radius, rows)
+    ids = [id for id in unique(new.id) if !any(seen, filter(r -> r.id == id, collect(new)))]
+    first_id = maximum(found.id; init=0)
+    renumber = Dict(id => first_id + i for (i, id) in enumerate(ids))
+    keep = findall(id -> haskey(renumber, id), new.id)
+    return Table(id=[renumber[i] for i in new.id[keep]], frame=new.frame[keep], x=new.x[keep], y=new.y[keep],
+                 ra=new.ra[keep], dec=new.dec[keep], epoch=new.epoch[keep])
 end
 
 # Three frames are the fewest a tracklet can be seen in, and their median

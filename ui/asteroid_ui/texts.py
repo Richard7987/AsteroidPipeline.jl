@@ -11,6 +11,7 @@ STAGES: list[tuple[str, str]] = [
     ("clean", "Clean invalid pixels"),
     ("refine", "Calibrate positions against Gaia stars"),
     ("search", "Search for moving objects"),
+    ("stack", "Stack the frames for fainter ones"),
     ("identify", "Identify known asteroids"),
     ("nearby", "Check the known objects near each candidate"),
     ("field", "Predict the known asteroids in the field"),
