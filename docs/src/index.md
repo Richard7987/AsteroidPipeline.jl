@@ -20,8 +20,10 @@ format the Minor Planet Center (MPC) accepts.
 
 It works with the FITS images of any telescope: with an astrometric solution
 (a WCS) in their headers, or solved from the telescope's pointing. It has been
-tested on real data from Pan-STARRS1 and the Zwicky Transient Facility. It also
-measures the light curve of a moving asteroid and its rotation period.
+tested on real data from Pan-STARRS1 and the Zwicky Transient Facility. It
+adds the frames along trial motions for objects too faint for any one of them,
+fits a preliminary orbit to observations over several nights, and measures the
+light curve of a moving asteroid and its rotation period.
 
 ## In a few lines
 
@@ -48,13 +50,14 @@ print(result.report)      # the MPC report (blank if nothing new was found)
 | try it on your own images | [Getting started](getting-started.md) |
 | do a specific task (reports, known objects, another telescope…) | the [Guides](guides/image-sets.md) |
 | measure an asteroid's light curve and rotation period | [Light curves](guides/variable-stars.md) |
+| fit an orbit to observations over several nights | [`fit_orbit`](@ref), and how well it does: [Preliminary orbits](validation/orbits.md) |
 | understand how it decides what is real | [How it works](concepts/pipeline.md) |
 | know how well it works, and where it doesn't | [Validation](validation/summary.md) |
 | look up a function | the [Reference](reference/sets.md) |
 
 ## Status
 
-Version 1.4.0. Every stage has been run on real telescope data and checked
+Version 1.5.0. Every stage has been run on real telescope data and checked
 against independent results — catalogued asteroids, another program's
 measurements, and synthetic asteroids injected into real images. See the
 [validation summary](validation/summary.md). Limits are listed in
