@@ -61,9 +61,10 @@ function stack_search(images::AbstractVector{<:AbstractMatrix{<:Real}}, wcss, ep
     dmax = max_rate * span * 24 / scale
     clear(c, order) = _clear_of_masks(c, order, dmasks, offsets, τ, ceil(Int, 3fwhm))
 
+    kept_from = min_score / 1.1
     best = 0.0
     for order in _scrambled_orders(n)
-        found = _pair_search(maps[order], dmasks[order], offsets[order], τ, dmin, dmax, peak_threshold)
+        found = _pair_search(maps[order], dmasks[order], offsets[order], τ, dmin, dmax, peak_threshold, kept_from)
         for c in found
             c.score > best && clear(c, order) && (best = c.score)
         end
@@ -72,12 +73,11 @@ function stack_search(images::AbstractVector{<:AbstractMatrix{<:Real}}, wcss, ep
 
     order = collect(1:n)
     r = round(Int, 4fwhm)
-    tracks = filter(_pair_search(maps, dmasks, offsets, τ, dmin, dmax, peak_threshold)) do c
+    tracks = filter(_pair_search(maps, dmasks, offsets, τ, dmin, dmax, peak_threshold, kept_from)) do c
         c.score >= threshold && clear(c, order) &&
             !any(k -> _on_bright_light(images[k], masks[k], _track_pixel(c, k, offsets, τ)), 1:n) &&
             median(_elongation(maps[k], dmasks[k], _track_pixel(c, k, offsets, τ)..., r) for k in 1:n) <= 1.7
     end
-    # a point source makes one track: several through one spot are a patch of extended light
     shared(a, b) = any(k -> hypot((_track_pixel(a, k, offsets, τ) .- _track_pixel(b, k, offsets, τ))...) <= fwhm, 1:n)
     tracks = [a for a in tracks if !any(b -> b !== a && shared(a, b), tracks)]
     tracklets = map(tracks) do c
@@ -92,7 +92,7 @@ end
 # `S` convolved with a Gaussian of `fwhm`, in units of its own robust noise
 # (masked pixels 0): a matched filter for a point source.
 function _matched_filter(S::AbstractMatrix, mask::AbstractMatrix{Bool}, fwhm::Real)
-    σ = fwhm / 2.355
+    σ = fwhm / (2sqrt(2log(2)))
     r = ceil(Int, 3σ)
     kernel = [exp(-i^2 / (2σ^2)) for i in -r:r]
     A = Float32.(ifelse.(mask .| .!isfinite.(S), 0.0, S))
@@ -169,8 +169,9 @@ _track_pixel(c, k, offsets, τ) =
     (round(Int, c.x + c.dx * τ[k]) + offsets[k][1], round(Int, c.y + c.dy * τ[k]) + offsets[k][2])
 
 # Tracks from each pair of peaks in the first and last frame, `dmin` to
-# `dmax` pixels apart, scored in every frame; one per position, the best.
-function _pair_search(maps, masks, offsets, τ, dmin, dmax, threshold)
+# `dmax` pixels apart, scored in every frame; those scoring at least `kept_from`,
+# one per position, the best.
+function _pair_search(maps, masks, offsets, τ, dmin, dmax, threshold, kept_from)
     n = length(maps)
     first_peaks = [(x - offsets[1][1], y - offsets[1][2]) for (x, y) in _local_peaks(maps[1], masks[1], threshold)]
     last_peaks = [(x - offsets[n][1], y - offsets[n][2]) for (x, y) in _local_peaks(maps[n], masks[n], threshold)]
@@ -188,8 +189,7 @@ function _pair_search(maps, masks, offsets, τ, dmin, dmax, threshold)
                     values[k] = _best_near(maps[k], masks[k], _track_pixel(c, k, offsets, τ)...)
                 end
                 score = minimum(values) * sqrt(n)
-                # not worth keeping below what the threshold could ever be
-                score >= 6 && push!(out, merge(c, (score=Float64(score),)))
+                score >= kept_from && push!(out, merge(c, (score=Float64(score),)))
             end
             out
         end
