@@ -1917,6 +1917,31 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test rows[2] == (r=5.260182936355, delta=5.05448490840793, phase=10.9186)
         @test_throws ErrorException AsteroidPipeline._horizons_geometry("No matches found.")
         @test length(object_geometry(624, Float64[])) == 0
+
+        # a list of times Horizons can't read is asked one time at a time, and the answers joined
+        P = AsteroidPipeline
+        @test P._horizons_table("LTP: input TIM outside +-500K range\n") === nothing
+        @test P._horizons_table("header\n\$\$SOE\n\$\$EOE\n") === nothing
+        answer(row) = "header\n****\n\$\$SOE\n$row\n\$\$EOE\nfooter\n"
+        merged = P._horizons_merge([answer(" 2022-Aug-09 00:00, , ,  5.2, -0.3,  5.7,-21.2,  9.18,"),
+                                    answer(" 2022-Sep-28 04:48, , ,  5.3, -0.3,  5.0,-25.7, 10.92,")])
+        @test merged == "header\n****\n\$\$SOE\n 2022-Aug-09 00:00, , ,  5.2, -0.3,  5.7,-21.2,  9.18,\n" *
+                        " 2022-Sep-28 04:48, , ,  5.3, -0.3,  5.0,-25.7, 10.92,\n\$\$EOE\nfooter\n"
+        @test_throws ErrorException P._horizons_merge([answer("row"), "LTP: input TIM outside +-500K range"])
+        span = P._horizons_span("2460000.51234567")
+        @test span["START_TIME"] == "'JD 2460000.51234567'" && span["STOP_TIME"] == "'JD 2460000.52234567'"
+
+        vectors = """
+            \$\$SOE
+            2460000.500000000 = A.D. 2023-Feb-25 00:00:00.0000 TT
+             X = 9.026348786838672E-01 Y =-3.723625324192599E-01 Z =-1.614366922363924E-01
+            2460001.500000000 = A.D. 2023-Feb-26 00:00:00.0000 TT
+             X = 9.098268336099955E-01 Y =-3.578455906012492E-01 Z =-1.551427829731817E-01
+            \$\$EOE
+            """
+        @test P._horizons_vectors(vectors) == [(-0.9026348786838672, 0.3723625324192599, 0.1614366922363924),
+                                               (-0.9098268336099955, 0.3578455906012492, 0.1551427829731817)]
+        @test_throws ErrorException P._horizons_vectors("Insufficient ephemeris data has been loaded")
     end
 
     @testset "image sets, MPC reports and their checks" begin
