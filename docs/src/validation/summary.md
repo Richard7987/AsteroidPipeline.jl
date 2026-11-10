@@ -16,6 +16,7 @@ images, or synthetic asteroids added to real images.
 | 4 fields, 80 injected asteroids each | Pan-STARRS1 | 4 × 45 s per set | 320 injected asteroids | [Fainter objects by stacking](stacking.md) |
 | 15 known asteroids, 40 arcs since 2024 | MPC astrometry, every station | 3 nights to 30 days | JPL's orbits | [Preliminary orbits](orbits.md) |
 | 8 asteroids, 2022 | ZTF | 21–132 exposures each | published rotation periods, chosen beforehand | [Rotation periods of eight asteroids](ztf-periods.md) |
+| 30 asteroids chosen by a rule, 2018–2024 | ZTF | 32–687 exposures each | published rotation periods; a shuffled control | [Rotation periods of thirty asteroids](period-sample.md) |
 
 ## Results at a glance
 
@@ -28,7 +29,7 @@ images, or synthetic asteroids added to real images.
 | Are damaged sets recognised? | the one damaged set flagged; none of the other nine | Pan-STARRS1 |
 | Variable stars? | all 3 confirmed variables found; 0.6–2% of constant stars flagged | ZTF |
 | Orbits? | semi-major axis within a median 4.8% from 3 nights, 0.03% from 30 days; 39 of 40 predictions 30 days ahead within 2σ | MPC astrometry |
-| Rotation periods? | 6.92035 ± 0.00008 h for a published 6.920509 h, doubling the fit, on one asteroid; on eight chosen beforehand, two of the six measured within 1%, four not | ZTF |
+| Rotation periods? | 6.92035 ± 0.00008 h for a published 6.920509 h, doubling the fit, on one asteroid; on eight chosen beforehand, two of the six measured within 1%, four not; on thirty chosen by a rule, the period or its half within 1% for 13 of 29, against 3 of 29 with the magnitudes shuffled | ZTF |
 
 ![Tracklets a person has to look at, by configuration](../assets/tracklets-to-vet.png)
 
@@ -46,4 +47,4 @@ images, or synthetic asteroids added to real images.
 
 The scripts are in `examples/`: `iasc_demo.jl` and `analyze_sets.jl` (image
 sets), `injection_test.jl` (completeness), `real_data_demo.jl` (ZTF),
-`variable_star_demo.jl` (variable stars), `moving_light_curve_demo.jl` and `ztf_periods.jl` (rotation periods), `stacking_test.jl` (stacking), `orbit_test.jl` (orbits).
+`variable_star_demo.jl` (variable stars), `moving_light_curve_demo.jl`, `ztf_periods.jl` and `rotation_period_sample.jl` (rotation periods), `stacking_test.jl` (stacking), `orbit_test.jl` (orbits).

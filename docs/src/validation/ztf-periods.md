@@ -72,3 +72,6 @@ few nights, as for Hektor's published period; or combining ZTF's g and r.
 
 Two of six. A period from ZTF survey data alone is a candidate, to be checked
 for daily aliases and confirmed with a dedicated light curve.
+
+A larger sample, chosen by a rule and with a shuffled control, is in
+[Rotation periods of thirty asteroids](period-sample.md).

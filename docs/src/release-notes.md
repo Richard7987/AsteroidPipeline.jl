@@ -5,6 +5,13 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Added**
+
+- [Validation: rotation periods of thirty asteroids](validation/period-sample.md), chosen
+  from the LCDB by a rule fixed before measuring (10 near-Earth, 10 Jupiter trojans,
+  10 main belt): the period or its half within 1% for 13 of the 29 measured, against
+  3 of 29 with each object's magnitudes shuffled.
+
 **Fixed**
 
 - Every request to JPL Horizons for a list of times failed on 2026-11-09, and with
