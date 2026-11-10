@@ -7,6 +7,8 @@ from the version picker at the top right.
 
 **Fixed**
 
+- [`fit_orbit`](@ref) stopped with an error when one of its first orbits made the
+  derivatives overflow; that first orbit is now passed over.
 - The observer's positions from JPL Horizons were matched to the wrong epochs when
   asked out of time order: Horizons answers in time order. [`fit_orbit`](@ref) sorts
   its observations first and was not affected; [`orbit_ephemeris`](@ref) at unsorted

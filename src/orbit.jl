@@ -165,12 +165,12 @@ end
 # observation (systematic ranging: Virtanen, Muinonen & Bowell 2001), the
 # arc between them by Lambert's problem; the `keep` best by weighted
 # residuals, as states at `t0`.
-function _ranging_orbits(ra, dec, t, R, σ, t0; keep::Integer=5)
+function _ranging_orbits(ra, dec, t, R, σ, t0; keep::Integer=5,
+                         distances=exp10.(range(log10(2_MIN_DISTANCE), log10(20.0); length=40)))
     n = length(ra)
     ρ̂1, ρ̂n = _line_of_sight(ra[1], dec[1]), _line_of_sight(ra[n], dec[n])
     w = repeat(1 ./ σ .^ 2; inner=2)
     tried = Tuple{Float64,Vector{Float64}}[]
-    distances = exp10.(range(log10(2_MIN_DISTANCE), log10(20.0); length=40))
     for ρ1 in distances, ρn in distances
         r1, rn = R[1] .+ ρ1 .* ρ̂1, R[n] .+ ρn .* ρ̂n
         v1 = _lambert(r1, rn, t[n] - t[1])
@@ -233,6 +233,8 @@ function _orbit_least_squares(x, t0, ra, dec, R, t, σ, use)
         J = _orbit_jacobian(x, t0, ra, dec, R, t)
         N = J' * (w .* J)
         g = J' * (w .* res)
+        # a start far off can make the derivatives overflow
+        all(isfinite, N) && all(isfinite, g) || break
         improved = false
         for _ in 1:20
             step = (N + λ * Diagonal(diag(N))) \ g
@@ -330,14 +332,23 @@ function fit_orbit(ra::AbstractVector{<:Real}, dec::AbstractVector{<:Real}, epoc
 end
 
 # fit_orbit given TT epochs `t` and observer positions `R`, sorted in time.
-function _fit_orbit(ra, dec, t, R, σ, outlier_sigma)
+# Faster starts, for many fits: ranging over `distances` only, or one state
+# `from` = (state, epoch) already near.
+function _fit_orbit(ra, dec, t, R, σ, outlier_sigma; distances=nothing, from=nothing)
     n = length(ra)
     mid = (1 + n) ÷ 2
     t0 = t[mid]
-    picks = (1, mid, n)
-    ρ̂ = [_line_of_sight(ra[i], dec[i]) for i in picks]
-    starts = [vcat(r, v) for (r, v) in _gauss_orbits(ρ̂, [R[i] for i in picks], [t[i] for i in picks])]
-    append!(starts, _ranging_orbits(ra, dec, t, R, σ, t0))
+    starts = if from !== nothing
+        r, v = _kepler_propagate(from[1][1:3], from[1][4:6], t0 - from[2])
+        [vcat(r, v)]
+    elseif distances !== nothing
+        _ranging_orbits(ra, dec, t, R, σ, t0; distances=distances)
+    else
+        picks = (1, mid, n)
+        ρ̂ = [_line_of_sight(ra[i], dec[i]) for i in picks]
+        vcat([vcat(r, v) for (r, v) in _gauss_orbits(ρ̂, [R[i] for i in picks], [t[i] for i in picks])],
+             _ranging_orbits(ra, dec, t, R, σ, t0))
+    end
     isempty(starts) && error("no first orbit found: the arc may be too short")
 
     use = trues(n)
@@ -345,7 +356,7 @@ function _fit_orbit(ra, dec, t, R, σ, outlier_sigma)
     for x0 in starts
         x, c = _orbit_least_squares(x0, t0, ra, dec, R, t, σ, use)
         far = all(i -> norm(x[1:3] .- R[i]) > _MIN_DISTANCE, 1:n)
-        far && (best === nothing || c < best[2]) && (best = (x, c))
+        far && isfinite(c) && (best === nothing || c < best[2]) && (best = (x, c))
     end
     best === nothing && error("no orbit converged away from the observer")
     x = best[1]
