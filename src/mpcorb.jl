@@ -72,16 +72,51 @@ end
 
 # Horizons' answers (the `result` texts) to `query` at the Julian Dates
 # `times`, already formatted, asked 50 at a time: a few hundred make a URL
-# longer than it accepts (HTTP 502)
+# longer than it accepts (HTTP 502). If a list of times gets no table back
+# (on 2026-11-09 Horizons misread every TLIST), each time is asked alone.
 function _horizons(query::AbstractDict, times::AbstractVector{<:AbstractString})
     return map(Iterators.partition(times, 50)) do chunk
-        q = merge(query, Dict("format" => "json", "TLIST" => "'$(join(chunk, " "))'", "TLIST_TYPE" => "JD"))
-        body = _with_retries(_TAP_ATTEMPTS) do
-            String(HTTP.get("https://ssd.jpl.nasa.gov/api/horizons.api"; query=q,
-                            read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
-        end
-        JSON.parse(body)["result"]
+        result = _horizons_result(merge(query, Dict("TLIST" => "'$(join(chunk, " "))'", "TLIST_TYPE" => "JD")))
+        _horizons_table(result) === nothing || return result
+        _horizons_merge([_horizons_result(merge(query, _horizons_span(t))) for t in chunk])
     end
+end
+
+function _horizons_result(q::AbstractDict)
+    body = _with_retries(_TAP_ATTEMPTS) do
+        String(HTTP.get("https://ssd.jpl.nasa.gov/api/horizons.api"; query=merge(q, Dict("format" => "json")),
+                        read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+    end
+    return JSON.parse(body)["result"]
+end
+
+# One time as a span: Horizons lists the start, and a step longer than the span
+# nothing after it.
+function _horizons_span(time::AbstractString)
+    jd = parse(Float64, time)
+    return Dict("START_TIME" => "'JD $time'", "STOP_TIME" => "'JD $(@sprintf("%.8f", jd + 0.01))'",
+                "STEP_SIZE" => "'1 d'")
+end
+
+# The rows between $$SOE and $$EOE, or `nothing` if there are none.
+function _horizons_table(result::AbstractString)
+    m = match(r"\$\$SOE\n(.*?)\$\$EOE"s, result)
+    (m === nothing || isempty(strip(m[1]))) && return nothing
+    return m[1]
+end
+
+# Answers to one time each, as one answer: the first one's text with every
+# answer's rows, in order.
+function _horizons_merge(results::AbstractVector{<:AbstractString})
+    rows = map(results) do r
+        t = _horizons_table(r)
+        t === nothing && error("unexpected Horizons response: $(first(r, 300))")
+        t
+    end
+    s = first(results)
+    m = match(r"\$\$SOE\n.*?\$\$EOE"s, s)
+    return string(SubString(s, 1, prevind(s, m.offset)), "\$\$SOE\n", join(rows), "\$\$EOE",
+                  SubString(s, m.offset + ncodeunits(m.match)))
 end
 
 """
@@ -100,19 +135,22 @@ function _observer_heliocentric_tt(jds_tt::AbstractVector{<:Real}, observatory)
     center = observatory === nothing ? "500@399" : "$(observatory)@399"
     query = Dict("COMMAND" => "'10'", "EPHEM_TYPE" => "VECTORS", "CENTER" => "'$center'", "TIME_TYPE" => "TT",
                  "REF_PLANE" => "FRAME", "REF_SYSTEM" => "ICRF", "VEC_TABLE" => "1", "OUT_UNITS" => "AU-D",
-                 "CSV_FORMAT" => "YES", "OBJ_DATA" => "NO")
+                 "OBJ_DATA" => "NO")
     positions = NTuple{3,Float64}[]
     for result in _horizons(query, [@sprintf("%.8f", jd) for jd in jds_tt])
-        block = match(r"\$\$SOE(.*)\$\$EOE"s, result)
-        block === nothing && error("unexpected Horizons response: $(first(result, 300))")
-        for line in split(strip(block[1]), '\n')
-            f = strip.(split(line, ','))
-            length(f) >= 5 || continue
-            push!(positions, (-parse(Float64, f[3]), -parse(Float64, f[4]), -parse(Float64, f[5])))
-        end
+        append!(positions, _horizons_vectors(result))
     end
     length(positions) == length(jds_tt) || error("Horizons returned $(length(positions)) vectors for $(length(jds_tt)) epochs")
     return positions
+end
+
+# The Sun as seen from the observer, negated, from a vector table in text form:
+# on 2026-11-09 Horizons left the numbers out of its CSV vector tables.
+function _horizons_vectors(result::AbstractString)
+    table = _horizons_table(result)
+    table === nothing && error("unexpected Horizons response: $(first(result, 300))")
+    return [(-parse(Float64, m[1]), -parse(Float64, m[2]), -parse(Float64, m[3]))
+            for m in eachmatch(r"X\s*=\s*(\S+)\s+Y\s*=\s*(\S+)\s+Z\s*=\s*(\S+)", table)]
 end
 
 # Topocentric astrometric (RA, Dec) in degrees, distance Δ and heliocentric r (AU)
