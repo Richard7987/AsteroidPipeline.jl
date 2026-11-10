@@ -7,6 +7,10 @@ from the version picker at the top right.
 
 **Fixed**
 
+- The observer's positions from JPL Horizons were matched to the wrong epochs when
+  asked out of time order: Horizons answers in time order. [`fit_orbit`](@ref) sorts
+  its observations first and was not affected; [`orbit_ephemeris`](@ref) at unsorted
+  epochs was.
 - Documentation: the [limitations](concepts/limitations.md) and the
   [completeness guide](guides/completeness.md) quoted an earlier version's
   completeness (44% at 100–400″/h, 16% at V 22–22.5); the measured values are 57%
