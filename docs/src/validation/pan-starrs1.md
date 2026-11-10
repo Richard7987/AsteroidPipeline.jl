@@ -3,9 +3,9 @@
 ## Summary
 
 On ten real Pan-STARRS1 image sets, the pipeline's positions agree with an
-independent reduction to 0.13–0.19″; it recovers 17 of the 30 catalogued
+independent reduction to 0.12–0.17″; it recovers 17 of the 30 catalogued
 asteroids predicted on the frames (every miss explained) and an uncatalogued
-one confirmed by hand, finds ~80% of injected asteroids down to V≈21.5, and
+one confirmed by hand, finds 82% of injected asteroids down to V≈21.5, and
 leaves 107 tracklets to check across the nine good sets. In a
 blind test on four sets, it missed no real object, and each of its false
 candidates led to a filter that now removes that kind.
@@ -65,6 +65,9 @@ orbits.
 | 2 | 00 12 25.279 −10 43 54.80 | 00 12 25.286 −10 43 54.70 | 0.14″ |
 | 3 | 00 12 24.750 −10 43 59.11 | 00 12 24.753 −10 43 58.99 | 0.13″ |
 | 4 | 00 12 24.206 −10 44 03.48 | 00 12 24.215 −10 44 03.43 | 0.14″ |
+
+These are from each frame fitted on its own; with the frames fitted together
+([`refine_wcs_set`](@ref), below) they agree to 0.12–0.17″.
 
 ![Pipeline minus Astrometrica, four frames](../assets/astrometry-vs-astrometrica.png)
 
