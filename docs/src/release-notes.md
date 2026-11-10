@@ -3,6 +3,16 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Fixed**
+
+- Documentation: the [limitations](concepts/limitations.md) and the
+  [completeness guide](guides/completeness.md) quoted an earlier version's
+  completeness (44% at 100–400″/h, 16% at V 22–22.5); the measured values are 57%
+  and 21%. The limitations add rotation periods from surveys, and the Pan-STARRS1
+  report says which astrometry its table of positions comes from.
+
 ## 1.5.1 — 2026-11-09
 
 **Added**

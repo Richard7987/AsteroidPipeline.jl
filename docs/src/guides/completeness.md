@@ -24,7 +24,7 @@ magnitude and by rate. On a real Pan-STARRS1 set:
 
 ![Fraction of injected asteroids recovered, by magnitude and by rate](../assets/completeness.png)
 
-About 80% are recovered down to V ≈ 21.5, falling to 16% at 22–22.5 and none
-fainter. Fast objects are harder: above ~400″/h most cross the chip, or
+On the Pan-STARRS1 set it was measured on, 82% are recovered down to V ≈ 21.5,
+falling to 21% at 22–22.5 and none fainter. Fast objects are harder: above ~400″/h most cross the chip, or
 trail beyond recognition, within one or two frames. Run it on your own
 images: the numbers are theirs, not these.
