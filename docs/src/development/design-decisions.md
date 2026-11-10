@@ -315,3 +315,7 @@ than decided on general reputation:
   multi-night same-object case is hard to find by chance: every object
   in the field changes completely within days, since even a "slow"
   Main Belt object outpaces a ZTF quadrant's own width in under a week.
+  Its successor, `link_nights`, links by orbit instead of a straight line,
+  and was tested on real MPC astrometry of 73 asteroids over 12 nights
+  ([Linking across nights](../validation/linking.md)): a third night is
+  what separates real linkages from false ones.

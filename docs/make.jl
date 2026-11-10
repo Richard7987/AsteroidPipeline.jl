@@ -76,6 +76,7 @@ makedocs(;
             "Rotation periods of thirty asteroids" => "validation/period-sample.md",
             "Fainter objects by stacking" => "validation/stacking.md",
             "Preliminary orbits" => "validation/orbits.md",
+            "Linking across nights" => "validation/linking.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",
