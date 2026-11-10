@@ -3,6 +3,17 @@
 What changed in each version. Each release's documentation stays available
 from the version picker at the top right.
 
+## Unreleased
+
+**Fixed**
+
+- Every request to JPL Horizons for a list of times failed on 2026-11-09, and with
+  it [`analyze_set`](@ref) (the observer's position, to identify known asteroids),
+  [`object_geometry`](@ref) and [`fit_orbit`](@ref). A list that gets no table back
+  is now asked one time at a time, and the observer's position is read from
+  Horizons' vector tables in text form, which kept their numbers when the CSV ones
+  lost them.
+
 ## 1.5.0 — 2026-11-08
 
 **Added**
