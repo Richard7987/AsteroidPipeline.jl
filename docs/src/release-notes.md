@@ -5,6 +5,15 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Added**
+
+- [`link_nights`](@ref): links tracklets of different nights by orbit. Pairs whose
+  motion agrees, with the diurnal parallax taken out, are fitted with a two-body
+  orbit and grown while every observation fits; linkages of 3 nights or more by
+  default. [Validation: linking across nights](validation/linking.md), on real
+  astrometry of 73 asteroids over 12 nights: all 47 objects seen on 3 nights or
+  more linked, none wrong, also among 969 false tracklets.
+
 **Fixed**
 
 - [`fit_orbit`](@ref) stopped with an error when one of its first orbits made the

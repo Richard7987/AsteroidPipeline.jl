@@ -2573,4 +2573,52 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test Set(g.night for g in tight_groups[1]) == Set([1, 3])
     end
 
+    @testset "link_nights" begin
+        P = AsteroidPipeline
+        nrm(v) = sqrt(sum(abs2, v))
+        ε = deg2rad(23.4392911)
+        earth(t) = (θ = 2π * (t - 2.4605e6) / 365.256 + 1.0; [cos(θ), sin(θ) * cos(ε), sin(θ) * sin(ε)])
+        # a site 1 Earth radius from the geocentre, turning once a day
+        site(t) = earth(t) .+ 4.26e-5 .* [cos(2π * t), sin(2π * t), 0.0]
+        function seen(o, t)
+            p, Δ = nothing, 1.0
+            for _ in 1:3
+                p = collect(P._heliocentric_equatorial(o, t - Δ / P._AU_PER_DAY_LIGHT))
+                Δ = nrm(p .- site(t))
+            end
+            v = p .- site(t)
+            return mod(atand(v[2], v[1]), 360), asind(v[3] / nrm(v))
+        end
+        orbit(a, e, i, node, peri, M) = (a=a, e=e, incl=i, node=node, peri=peri, M=M, epoch=2.4605e6, n=0.9856076686 / a^1.5)
+        # two main-belt orbits a few arcminutes apart on the sky, moving alike
+        objects = [orbit(2.7, 0.12, 11.0, 80.0, 150.0, 30.0), orbit(2.72, 0.12, 11.0, 80.0, 150.0, 30.05)]
+        rng = Xoshiro(2)
+        tracklets = NamedTuple[]
+        id = 0
+        for (night, d) in enumerate((20, 23, 27)), o in objects
+            t = [2.4605e6 + d + h for h in (0.0, 0.015, 0.03, 0.045)]
+            radec = [seen(o, ti) for ti in t]
+            id += 1
+            push!(tracklets, (night=night, id=id, code="XXX", t=t,
+                              ra=[r[1] + 0.2 / 3600 * randn(rng) / cosd(r[2]) for r in radec],
+                              dec=[r[2] + 0.2 / 3600 * randn(rng) for r in radec],
+                              R=site.(t), G=earth.(t)))
+        end
+        # an unrelated tracklet on night 2
+        t = [2.4605e6 + 23 + h for h in (0.0, 0.015, 0.03)]
+        push!(tracklets, (night=2, id=99, code="XXX", t=t, ra=tracklets[3].ra[1] .+ [0.0, 1e-3, 2e-3],
+                          dec=tracklets[3].dec[1] .+ [0.0, 1e-3, 2e-3], R=site.(t), G=earth.(t)))
+
+        linked = P._link_nights(tracklets, 0.5, 15.0, 3.0, 2)
+        @test length(linked) == 2
+        @test sort([[t.id for t in l.tracklets] for l in linked]) == [[1, 3, 5], [2, 4, 6]]
+        @test all(l -> l.orbit.rms < 0.5, linked)
+        # min_nights above what they span
+        @test isempty(P._link_nights(tracklets, 0.5, 15.0, 3.0, 4))
+        # the last night 4 days after the second
+        short = P._link_nights(tracklets, 0.5, 3.5, 3.0, 2)
+        @test sort([[t.id for t in l.tracklets] for l in short]) == [[1, 3], [2, 4]]
+        @test_throws ArgumentError link_nights([Table(id=Int[], ra=Float64[], dec=Float64[], epoch=Float64[])], ["F51", "F51"])
+    end
+
 end
