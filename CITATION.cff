@@ -12,9 +12,9 @@ authors:
     given-names: "Alejandro"
     orcid: "https://orcid.org/0009-0008-8959-5114"
     affiliation: "Universidad Autónoma del Estado de Hidalgo"
-version: "1.5.0"
+version: "1.5.1"
 doi: "10.5281/zenodo.23871668"
-date-released: "2026-11-08"
+date-released: "2026-11-09"
 license: MIT
 repository-code: "https://github.com/Richard7987/AsteroidPipeline.jl"
 url: "https://richard7987.github.io/AsteroidPipeline.jl/stable/"
