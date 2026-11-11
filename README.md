@@ -50,7 +50,8 @@ for `main`. What changed: [release notes](https://richard7987.github.io/Asteroid
 - **The report**: MPC 80-column or ADES, under your own designations
   (`NHU0002`) or the NEOCP's; any report checked before it is submitted.
 - **Orbits** (the library): a preliminary orbit from astrometry over several
-  nights, with its uncertainty and where it puts the object next.
+  nights, with its uncertainty and where it puts the object next; tracklets
+  of different nights linked into one object by that orbit.
 - **Light curves and rotation periods** (the library): photometry that
   follows a moving asteroid from frame to frame, across nights, with its
   period from a Fourier series.

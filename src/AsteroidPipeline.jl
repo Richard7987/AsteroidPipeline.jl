@@ -11,7 +11,7 @@ using WCS
 using Printf
 using Reproject
 using Statistics
-using LinearAlgebra: norm, dot, cross, Diagonal, diag, Symmetric, eigvals
+using LinearAlgebra: norm, normalize, dot, cross, Diagonal, diag, Symmetric, eigvals
 using Interpolations
 using FFTW
 using LsqFit
@@ -55,7 +55,7 @@ export detect_sources, fill_value_mask, link_candidates, load_wcs, pix_to_sky,
        recover_rotation_period, fourier_period, fit_orbit, orbit_ephemeris, object_geometry, reduced_magnitudes, plate_solve, solve_wcs, frame_pointing,
        search_field, find_variable_sources, gaia_cache_dir,
        variability_chi2, photometric_scale, ades_psv, mpc80_report, julian_date_to_iso8601,
-       digest2_score, link_across_nights, gaia_reference_stars, refine_wcs, refine_wcs_set, stack_difference, stack_search,
+       digest2_score, link_across_nights, link_nights, gaia_reference_stars, refine_wcs, refine_wcs_set, stack_difference, stack_search,
        aperture_flux, photometric_zeropoint, candidate_magnitudes, below_limit, frame_epoch,
        inject_movers, injection_recovery, read_mpcorb, set_quality,
        extract_set, clean_blank_pixels, download_mpcorb, default_mpcorb_path, astrometrica_settings,

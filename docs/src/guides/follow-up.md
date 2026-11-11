@@ -59,16 +59,31 @@ digest2_score(candidates, "I41"; digest2_path="digest2/digest2/digest2")
 
 ## Linking across nights
 
-[`link_across_nights`](@ref) groups tracklets from different nights that fit
-one object moving in a straight line, allowing for curvature with
-`max_accel_arcsec_per_day2`:
+[`link_nights`](@ref) groups tracklets from different nights that one orbit
+fits: the candidates of a field's sets from several nights, each set's
+table as one night.
 
 ```julia
-nights = [search_field(p; timestamp_key="OBSMJD").movers for p in (night1, night2, night3)]
-groups = link_across_nights(nights)            # each group: (night, id) pairs
+sets = [analyze_set(dir; observatory="F51") for dir in ("night1", "night2", "night3")]
+linkages = link_nights([s.candidates for s in sets], "F51")
+for l in linkages
+    println(l.tracklets, "  a = ", l.orbit.elements.a, " AU, rms ", l.orbit.rms, "″")
+end
 ```
 
-!!! note "Not yet tested on real data"
-    It recovers objects exactly in synthetic tests, but no real object seen
-    on several nights in the same field has been available to test it on.
-    The defaults (5″, no curvature allowance) are starting points.
+Each linkage lists its tracklets as `(night, id)` and carries the
+[`fit_orbit`](@ref) result for all their observations together. Pass the
+astrometry's uncertainty as `sigma` (0.5″ by default): every observation must
+lie within 3σ of the orbit, so a tracklet with one point off by more is left
+out of its object's linkage. Tested on real astrometry of 73 asteroids over
+12 nights, with and without false tracklets: [Linking across nights](../validation/linking.md).
+
+Linkages need 3 nights by default (`min_nights`): two tracklets moving like
+asteroids often fit some orbit, so a 2-night linkage is a guess to
+check, not an identification. An object seen on one night only can't be
+linked at all: its field has to be observed on two more nights, each within
+`max_days` (15) of another.
+
+[`link_across_nights`](@ref), the earlier linker, extrapolates each tracklet
+in a straight line instead; it needs no orbit and no network, but its
+tolerance (5″ by default) has not been tested on real data.

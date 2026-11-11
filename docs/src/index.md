@@ -22,8 +22,9 @@ It works with the FITS images of any telescope: with an astrometric solution
 (a WCS) in their headers, or solved from the telescope's pointing. It has been
 tested on real data from Pan-STARRS1 and the Zwicky Transient Facility. It
 adds the frames along trial motions for objects too faint for any one of them,
-fits a preliminary orbit to observations over several nights, and measures the
-light curve of a moving asteroid and its rotation period.
+fits preliminary orbits to observations over several nights and links
+tracklets by them, and measures the light curve of a moving asteroid and its
+rotation period.
 
 ## In a few lines
 
@@ -51,6 +52,7 @@ print(result.report)      # the MPC report (blank if nothing new was found)
 | do a specific task (reports, known objects, another telescope…) | the [Guides](guides/image-sets.md) |
 | measure an asteroid's light curve and rotation period | [Light curves](guides/variable-stars.md) |
 | fit an orbit to observations over several nights | [`fit_orbit`](@ref), and how well it does: [Preliminary orbits](validation/orbits.md) |
+| link the tracklets of several nights into objects | [`link_nights`](@ref), and how well it does: [Linking across nights](validation/linking.md) |
 | understand how it decides what is real | [How it works](concepts/pipeline.md) |
 | know how well it works, and where it doesn't | [Validation](validation/summary.md) |
 | look up a function | the [Reference](reference/sets.md) |

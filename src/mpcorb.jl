@@ -136,12 +136,15 @@ function _observer_heliocentric_tt(jds_tt::AbstractVector{<:Real}, observatory)
     query = Dict("COMMAND" => "'10'", "EPHEM_TYPE" => "VECTORS", "CENTER" => "'$center'", "TIME_TYPE" => "TT",
                  "REF_PLANE" => "FRAME", "REF_SYSTEM" => "ICRF", "VEC_TABLE" => "1", "OUT_UNITS" => "AU-D",
                  "OBJ_DATA" => "NO")
+    # Horizons answers in time order, whatever the order asked
+    jds = sort(unique(Float64.(jds_tt)))
     positions = NTuple{3,Float64}[]
-    for result in _horizons(query, [@sprintf("%.8f", jd) for jd in jds_tt])
+    for result in _horizons(query, [@sprintf("%.8f", jd) for jd in jds])
         append!(positions, _horizons_vectors(result))
     end
-    length(positions) == length(jds_tt) || error("Horizons returned $(length(positions)) vectors for $(length(jds_tt)) epochs")
-    return positions
+    length(positions) == length(jds) || error("Horizons returned $(length(positions)) vectors for $(length(jds)) epochs")
+    at = Dict(zip(jds, positions))
+    return [at[Float64(jd)] for jd in jds_tt]
 end
 
 # The Sun as seen from the observer, negated, from a vector table in text form:
