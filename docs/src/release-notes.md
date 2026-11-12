@@ -22,6 +22,10 @@ from the version picker at the top right.
   asked out of time order: Horizons answers in time order. [`fit_orbit`](@ref) sorts
   its observations first and was not affected; [`orbit_ephemeris`](@ref) at unsorted
   epochs was.
+- With SkyBoT unavailable, identifying a set's candidates could take hours: each
+  waited its turn for JPL's Small-Body Identification service, which answered
+  HTTP 504 after 6 minutes, three times over. Once JPL fails, it is not asked
+  again for 10 minutes and the candidates waiting fail at once.
 - Documentation: the [limitations](concepts/limitations.md) and the
   [completeness guide](guides/completeness.md) quoted an earlier version's
   completeness (44% at 100–400″/h, 16% at V 22–22.5); the measured values are 57%
