@@ -64,7 +64,7 @@ fits: the candidates of a field's sets from several nights, each set's
 table as one night.
 
 ```julia
-sets = [analyze_set(dir; observatory="F51") for dir in ("night1", "night2", "night3")]
+sets = [analyze_set(dir; observatory="F51", workdir=joinpath("work", dir)) for dir in ("night1", "night2", "night3")]
 linkages = link_nights([s.candidates for s in sets], "F51")
 for l in linkages
     println(l.tracklets, "  a = ", l.orbit.elements.a, " AU, rms ", l.orbit.rms, "″")
@@ -72,10 +72,10 @@ end
 ```
 
 Each linkage lists its tracklets as `(night, id)` and carries the
-[`fit_orbit`](@ref) result for all their observations together. Pass the
+[`fit_orbit`](@ref) result for their observations together. Pass the
 astrometry's uncertainty as `sigma` (0.5″ by default): every observation must
-lie within 3σ of the orbit, so a tracklet with one point off by more is left
-out of its object's linkage. Tested on real astrometry of 73 asteroids over
+lie within 3σ of the orbit, except one point of a tracklet of 3 or more, which
+is then left out of the orbit and listed in `dropped`. Tested on real astrometry of 73 asteroids over
 12 nights, with and without false tracklets: [Linking across nights](../validation/linking.md).
 
 Linkages need 3 nights by default (`min_nights`): two tracklets moving like

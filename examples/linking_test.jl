@@ -132,6 +132,7 @@ function run(movers, truth, label)
     long = [length(l.tracklets) >= 3 for l in linkages]
     @printf("  on 2 nights: %d right, %d wrong; on 3 or more: %d right, %d wrong\n", count(pure .& .!long),
             count(.!pure .& .!long), count(pure .& long), count(.!pure .& long))
+    @printf("  %d points left out, in %d linkages\n", sum(l -> length(l.dropped), linkages; init=0), count(l -> !isempty(l.dropped), linkages))
     @printf("objects on 2+ nights: %d all tracklets linked, %d in part, %d not linked\n",
             length(complete), length(partial), length(missed))
     for k in 2:maximum(values(per_object); init=2)
