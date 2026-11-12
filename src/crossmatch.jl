@@ -303,6 +303,11 @@ Up to `_SKYBOT_ATTEMPTS` tries on any `HTTP.HTTPError` or
 which clears on a resend). `fetch` is the HTTP call itself, injectable so
 the retries can be tested without the network.
 
+At some epochs (2009 in Pan-STARRS1's archive, on 2026-11-12 in half the
+tries) SkyBoT answers "comet conesearch -> Bad request: Epoch … not
+available" for the whole cone; it is then asked again without comets
+(`-objFilter=110`), and its asteroids are found.
+
 The cone asked of SkyBoT is never smaller than `_SKYBOT_MIN_CONE` (2′),
 and matches beyond `radius_deg` are dropped here: asked for 5″, SkyBoT
 missed a known asteroid 0.94″ from the centre in two of four ZTF frames.
@@ -321,7 +326,13 @@ function _skybot_matches(c, radius_deg::Real;
     observatory === nothing || (query["-observer"] = observatory)
     retryable(e) = e isa HTTP.HTTPError || e isa SkyBoTServiceError
     return _with_retries(_SKYBOT_ATTEMPTS; retryable, backoff=backoff_seconds) do
-        filter(m -> m.distance_arcsec <= radius_deg * 3600, _parse_skybot(fetch(query)))
+        text = fetch(query)
+        # at some epochs SkyBoT has no comets and fails the whole cone; asked again without them
+        if occursin(r"comet.*not available"i, text)
+            query["-objFilter"] = "110"
+            text = fetch(query)
+        end
+        filter(m -> m.distance_arcsec <= radius_deg * 3600, _parse_skybot(text))
     end
 end
 
