@@ -199,7 +199,11 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
 
             if reference === nothing
                 image = permutedims(raw)
+                # pixels with no data, NaN in some surveys' images: a constant, and masked
+                blank = .!isfinite.(image)
+                any(blank) && (image[blank] .= 0)
                 mask = mask_fill_values ? fill_value_mask(image) : nothing
+                any(blank) && (mask = mask === nothing ? blank : mask .| blank)
                 if refine_astrometry
                     reference_stars === nothing &&
                         (reference_stars = _field_reference_stars(image, frame_wcs, timestamps[end]))

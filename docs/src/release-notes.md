@@ -24,6 +24,10 @@ from the version picker at the top right.
   asked out of time order: Horizons answers in time order. [`fit_orbit`](@ref) sorts
   its observations first and was not affected; [`orbit_ephemeris`](@ref) at unsorted
   epochs was.
+- [`analyze_set`](@ref) stopped with an error ("median of an empty array") on
+  images whose pixels without data are `NaN`, as Pan-STARRS1's single-exposure
+  warps have them: [`fill_value_mask`](@ref) now masks every pixel that is not
+  finite, and [`run_pipeline`](@ref) sets them to a constant.
 - Documentation: the [limitations](concepts/limitations.md) and the
   [completeness guide](guides/completeness.md) quoted an earlier version's
   completeness (44% at 100–400″/h, 16% at V 22–22.5); the measured values are 57%

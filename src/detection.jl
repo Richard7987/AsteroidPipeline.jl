@@ -137,7 +137,8 @@ IASC/Pan-STARRS1 frames need it: the gaps between the detector's cells hold
 one constant value, marked neither with `BLANK` nor `NaN`. Unmasked, each
 gap edge is a sharp step that background estimation and peak finding
 treat as signal. Finding plateaus, rather than a particular fill value,
-works for any survey.
+works for any survey. Pixels that are not finite, as other images mark
+theirs (Pan-STARRS1's single-exposure warps among them), are masked too.
 
 Pass the result to [`detect_sources`](@ref) as `mask`.
 """
@@ -150,6 +151,7 @@ function fill_value_mask(image::AbstractMatrix{<:Real}; dilate::Integer=1)
         all(image[i+a, j+b] == v for a in -1:1, b in -1:1) || continue
         mask[max(1, i-r):min(n1, i+r), max(1, j-r):min(n2, j+r)] .= true
     end
+    mask .|= .!isfinite.(image)
     return mask
 end
 
