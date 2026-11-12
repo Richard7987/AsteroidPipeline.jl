@@ -146,6 +146,8 @@ end
         mask = fill_value_mask(image)
         @test all(mask[:, 40:45])
         @test !any(mask[:, 1:30])            # real noisy sky is never a plateau
+        blank = copy(image); blank[1, 1:3] .= NaN; blank[50, 10] = Inf
+        @test fill_value_mask(blank)[1, 1:3] == trues(3) && fill_value_mask(blank)[50, 10]
 
         masked = detect_sources(image; threshold=5.0, mask)
         @test !any(d -> 38 <= d.x <= 47, masked)
@@ -1496,6 +1498,18 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         P = AsteroidPipeline
         @test P._unpack_mpc_epoch("K2669") ≈ datetime2julian(DateTime(2026, 6, 9))
         @test P._unpack_mpc_epoch("J9611") ≈ datetime2julian(DateTime(1996, 1, 1))
+            # pixels with no data written as NaN, as Pan-STARRS1 warps have them
+            blanked = map(enumerate(injected)) do (k, p)
+                raw, header = FITS(f -> (read(f[1]), read_header(f[1])), p)
+                raw[1:40, :] .= NaN
+                path = joinpath(dir, "nan$k.fits")
+                FITS(f -> write(f, raw; header=header), path, "w")
+                path
+            end
+            with_nan = run_pipeline(blanked; threshold=5.0, match_radius=8.0, mask_fill_values=true,
+                                    refine_astrometry=true, reference_stars=catalog, difference_stack=true,
+                                    min_sharpness=0.3)
+            @test count(injection_recovery(with_nan, truth; radius=1.0).recovered) >= 3
         @test P._unpack_mpc_epoch("K26A1") ≈ datetime2julian(DateTime(2026, 10, 1))
         @test P._unpack_mpc_epoch("X2669") === nothing
 
