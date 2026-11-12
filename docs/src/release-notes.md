@@ -22,6 +22,10 @@ from the version picker at the top right.
   asked out of time order: Horizons answers in time order. [`fit_orbit`](@ref) sorts
   its observations first and was not affected; [`orbit_ephemeris`](@ref) at unsorted
   epochs was.
+- Known objects in older images: at some epochs (Pan-STARRS1's of 2009, in half
+  the tries) SkyBoT fails the whole cone because it has no comets then, and the
+  pipeline took SkyBoT for unavailable. The cone is now asked again without
+  comets.
 - Documentation: the [limitations](concepts/limitations.md) and the
   [completeness guide](guides/completeness.md) quoted an earlier version's
   completeness (44% at 100–400″/h, 16% at V 22–22.5); the measured values are 57%

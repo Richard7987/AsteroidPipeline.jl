@@ -1290,6 +1290,14 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test_throws SkyBoTServiceError AsteroidPipeline._skybot_matches(c, 0.12; fetch=always_down, backoff_seconds=0)
         @test calls[] == AsteroidPipeline._SKYBOT_ATTEMPTS
 
+        # no comets at that epoch: the cone is asked again without them, at once
+        no_comets = "# Flag: -1\n# Ticket: 188161735657695208\n" *
+                    "SkyBoT comet conesearch -> Bad request: Epoch 2455098.510000 not available...\n"
+        calls[] = 0
+        comets = q -> (calls[] += 1; get(q, "-objFilter", "111") == "110" ? found : no_comets)
+        @test only(AsteroidPipeline._skybot_matches(c, 0.12; fetch=comets, backoff_seconds=0)).name == "2018 LT"
+        @test calls[] == 2
+
         # observatory -> topocentric ephemerides (SkyBoT's -loc); unset -> geocentric
         sent = Ref{Dict}()
         capture = q -> (sent[] = q; found)
