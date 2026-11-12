@@ -1353,14 +1353,14 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             m = only(A._known_objects_near(later, 5 / 3600; observatory="F51"))
             @test m.name == "2018 LT" && m.source == "JPL"
             @test m.distance_arcsec < 0.5
-        finally
-            A._SKYBOT_DOWN_UNTIL[] = down
             # with JPL failed too, a field not fetched fails at once, with its error
             A._JPL_DOWN_UNTIL[] = time() + 600
             A._JPL_LAST_ERROR[] = Base.IOError("JPL down", 0)
             elsewhere = (ra=200.0, dec=10.0, epoch=t0)
             @test (@elapsed @test_throws Base.IOError A._known_objects_near(elsewhere, 5 / 3600; observatory="F51")) < 5
             @test only(A._known_objects_near(later, 5 / 3600; observatory="F51")).name == "2018 LT"
+        finally
+            A._SKYBOT_DOWN_UNTIL[] = down
             empty!(A._JPL_FIELDS); append!(A._JPL_FIELDS, fields)
             A._JPL_DOWN_UNTIL[] = 0.0
         end
