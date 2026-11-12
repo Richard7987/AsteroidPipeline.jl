@@ -30,7 +30,7 @@ images, or synthetic asteroids added to real images.
 | Are damaged sets recognised? | the one damaged set flagged; none of the other nine | Pan-STARRS1 |
 | Variable stars? | all 3 confirmed variables found; 0.6–2% of constant stars flagged | ZTF |
 | Orbits? | semi-major axis within a median 4.8% from 3 nights, 0.03% from 30 days; 39 of 40 predictions 30 days ahead within 2σ | MPC astrometry |
-| Tracklets linked across nights? | all 47 objects seen on 3 nights or more, 43 with every tracklet, none wrong, with or without 969 false tracklets; on 2 nights, 110 wrong among false tracklets | MPC astrometry |
+| Tracklets linked across nights? | every tracklet of the 47 objects seen on 3 nights or more, none wrong, with or without 969 false tracklets; on 2 nights, 168 wrong among false tracklets | MPC astrometry |
 | Rotation periods? | 6.92035 ± 0.00008 h for a published 6.920509 h, doubling the fit, on one asteroid; on eight chosen beforehand, two of the six measured within 1%, four not; on thirty chosen by a rule, the period or its half within 1% for 13 of 29, against 3 of 29 with the magnitudes shuffled | ZTF |
 
 ![Tracklets a person has to look at, by configuration](../assets/tracklets-to-vet.png)

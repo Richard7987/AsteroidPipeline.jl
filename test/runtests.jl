@@ -2599,14 +2599,14 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             t = [2.4605e6 + d + h for h in (0.0, 0.015, 0.03, 0.045)]
             radec = [seen(o, ti) for ti in t]
             id += 1
-            push!(tracklets, (night=night, id=id, code="XXX", t=t,
+            push!(tracklets, (night=night, id=id, code="XXX", t=t, epoch=t,
                               ra=[r[1] + 0.2 / 3600 * randn(rng) / cosd(r[2]) for r in radec],
                               dec=[r[2] + 0.2 / 3600 * randn(rng) for r in radec],
                               R=site.(t), G=earth.(t)))
         end
         # an unrelated tracklet on night 2
         t = [2.4605e6 + 23 + h for h in (0.0, 0.015, 0.03)]
-        push!(tracklets, (night=2, id=99, code="XXX", t=t, ra=tracklets[3].ra[1] .+ [0.0, 1e-3, 2e-3],
+        push!(tracklets, (night=2, id=99, code="XXX", t=t, epoch=t, ra=tracklets[3].ra[1] .+ [0.0, 1e-3, 2e-3],
                           dec=tracklets[3].dec[1] .+ [0.0, 1e-3, 2e-3], R=site.(t), G=earth.(t)))
 
         linked = P._link_nights(tracklets, 0.5, 15.0, 3.0, 2)
@@ -2618,6 +2618,15 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         # the last night 4 days after the second
         short = P._link_nights(tracklets, 0.5, 3.5, 3.0, 2)
         @test sort([[t.id for t in l.tracklets] for l in short]) == [[1, 3], [2, 4]]
+        @test all(l -> isempty(l.dropped), linked)
+        # one point of a tracklet 3" off is left out; two points 3" off leave the tracklet out
+        off(k, ps) = merge(k, (dec=[k.dec[p] + (p in ps) * 3 / 3600 for p in eachindex(k.dec)],))
+        bad1 = [k.id == 3 ? off(k, (2,)) : k for k in tracklets]
+        l = only(filter(l -> any(t -> t.id == 3, l.tracklets), P._link_nights(bad1, 0.5, 15.0, 3.0, 2)))
+        @test [t.id for t in l.tracklets] == [1, 3, 5]
+        @test l.dropped == [(night=2, id=3, epoch=bad1[3].t[2])]
+        bad2 = [k.id == 3 ? off(k, (2, 3)) : k for k in tracklets]
+        @test sort([[t.id for t in l.tracklets] for l in P._link_nights(bad2, 0.5, 15.0, 3.0, 2)]) == [[1, 5], [2, 4, 6]]
         @test_throws ArgumentError link_nights([Table(id=Int[], ra=Float64[], dec=Float64[], epoch=Float64[])], ["F51", "F51"])
     end
 
