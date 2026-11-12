@@ -2618,10 +2618,6 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         # the last night 4 days after the second
         short = P._link_nights(tracklets, 0.5, 3.5, 3.0, 2)
         @test sort([[t.id for t in l.tracklets] for l in short]) == [[1, 3], [2, 4]]
-        @test_throws ArgumentError link_nights([Table(id=Int[], ra=Float64[], dec=Float64[], epoch=Float64[])], ["F51", "F51"])
-    end
-
-end
         @test all(l -> isempty(l.dropped), linked)
         # one point of a tracklet 3" off is left out; two points 3" off leave the tracklet out
         off(k, ps) = merge(k, (dec=[k.dec[p] + (p in ps) * 3 / 3600 for p in eachindex(k.dec)],))
@@ -2631,3 +2627,7 @@ end
         @test l.dropped == [(night=2, id=3, epoch=bad1[3].t[2])]
         bad2 = [k.id == 3 ? off(k, (2, 3)) : k for k in tracklets]
         @test sort([[t.id for t in l.tracklets] for l in P._link_nights(bad2, 0.5, 15.0, 3.0, 2)]) == [[1, 5], [2, 4, 6]]
+        @test_throws ArgumentError link_nights([Table(id=Int[], ra=Float64[], dec=Float64[], epoch=Float64[])], ["F51", "F51"])
+    end
+
+end
