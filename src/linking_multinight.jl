@@ -111,7 +111,9 @@ tracklet's own angular rate plus the Earth's mean motion. The diurnal
 parallax is taken out first, for a grid of distances from 0.02 to 50 AU;
 a pair passes at any one of them. A pair that passes is then fitted
 with an orbit, started by ranging over those distances only; it is linked
-when every observation is within `outlier_sigma` times `sigma` of it.
+when every observation is within `outlier_sigma` times `sigma` of it; the
+point farthest from it may be left out and the orbit refitted, one point
+of a tracklet of 3 or more.
 Linked pairs are grown, best fitting first, by the tracklet from another
 night whose addition fits best, refitted from the orbit already found,
 while the orbit still fits every observation. Each tracklet ends in at
@@ -122,8 +124,9 @@ Returns the linkages spanning at least `min_nights` nights. Two nights are
 not enough: two tracklets moving like asteroids often fit some orbit, and
 false tracklets were linked on two nights by the dozen, never on three
 ([Linking across nights](../validation/linking.md)). Each linkage is a
-named tuple: `tracklets` (`(night, id)` named tuples, in time order) and
-`orbit` (the [`fit_orbit`](@ref) result).
+named tuple: `tracklets` (`(night, id)` named tuples, in time order),
+`orbit` (the [`fit_orbit`](@ref) result, without the points left out) and
+`dropped` (`(night, id, epoch)` of the points left out).
 """
 function link_nights(night_movers::AbstractVector, observatory; sigma::Real=0.5, max_days::Real=15,
                      outlier_sigma::Real=3.0, min_nights::Integer=3)
@@ -134,7 +137,8 @@ function link_nights(night_movers::AbstractVector, observatory; sigma::Real=0.5,
         pts = sort(collect(filter(r -> r.id == id, rows)); by=r -> r.epoch)
         length(pts) < 2 && continue
         push!(tracklets, (night=night, id=id, code=codes[night], ra=Float64[p.ra for p in pts],
-                          dec=Float64[p.dec for p in pts], t=[p.epoch + _tt_minus_utc(p.epoch) for p in pts]))
+                          dec=Float64[p.dec for p in pts], epoch=Float64[p.epoch for p in pts],
+                          t=[p.epoch + _tt_minus_utc(p.epoch) for p in pts]))
     end
     R = Dict{Tuple{String,Float64},Vector{Float64}}()
     for code in unique(codes), center in (code, nothing)
@@ -170,17 +174,28 @@ function _motion_consistent(a, b)
     return norm(chord .- v̄) <= allowed
 end
 
+# The group's orbit, and the points left out of it as (tracklet in group,
+# point) pairs: a tracklet of 3 points or more may lose one.
 function _linkage_orbit(group, σ, outlier_sigma; kwargs...)
-    ra = reduce(vcat, [k.ra for k in group]); dec = reduce(vcat, [k.dec for k in group])
-    t = reduce(vcat, [k.t for k in group]); R = reduce(vcat, [k.R for k in group])
-    o = sortperm(t)
-    f = try
-        _fit_orbit(ra[o], dec[o], t[o], R[o], fill(σ, length(t)), Inf; kwargs...)
-    catch
-        return nothing
+    points = [(g, p) for (g, k) in enumerate(group) for p in eachindex(k.t)]
+    sort!(points; by=((g, p),) -> group[g].t[p])
+    dropped = Tuple{Int,Int}[]
+    f = nothing
+    while true
+        f = try
+            col(x) = [getfield(group[g], x)[p] for (g, p) in points]
+            _fit_orbit(col(:ra), col(:dec), col(:t), col(:R), fill(σ, length(points)), Inf;
+                       (f === nothing ? kwargs : (from=(f.state, f.epoch),))...)
+        catch
+            return nothing
+        end
+        r = hypot.(f.residuals.ra, f.residuals.dec)
+        worst = argmax(r)
+        r[worst] <= outlier_sigma * σ && return (orbit=f, dropped=dropped)
+        g = points[worst][1]
+        (length(group[g].t) < 3 || any(d -> d[1] == g, dropped)) && return nothing
+        push!(dropped, popat!(points, worst))
     end
-    all(i -> hypot(f.residuals.ra[i], f.residuals.dec[i]) <= outlier_sigma * σ, eachindex(f.residuals.ra)) || return nothing
-    return f
 end
 
 function _link_nights(tracklets, σ, max_days, outlier_sigma, min_nights)
@@ -209,17 +224,17 @@ function _link_nights(tracklets, σ, max_days, outlier_sigma, min_nights)
     end
     linkages = Dict{Vector{Int},Any}()
     grown = Set{Tuple{Int,Int}}()
-    for ((i, j), f) in sort(collect(pairs); by=p -> p[2].rms)
+    for ((i, j), f) in sort(collect(pairs); by=p -> p[2].orbit.rms)
         (i, j) in grown && continue
         members = [i, j]
         while true
-            linkages[sort(members)] = f
+            linkages[sort(members)] = (orbit=f.orbit, dropped=[(members[g], p) for (g, p) in f.dropped])
             nights = Set(tracklets[m].night for m in members)
             best = nothing
             for c in unique(reduce(vcat, neighbours[members]))
                 (c in members || tracklets[c].night in nights) && continue
-                g = _linkage_orbit(tracklets[vcat(members, c)], σ, outlier_sigma; from=(f.state, f.epoch))
-                g === nothing || (best !== nothing && g.rms >= best[2].rms) || (best = (c, g))
+                g = _linkage_orbit(tracklets[vcat(members, c)], σ, outlier_sigma; from=(f.orbit.state, f.orbit.epoch))
+                g === nothing || (best !== nothing && g.orbit.rms >= best[2].orbit.rms) || (best = (c, g))
             end
             best === nothing && break
             members, f = vcat(members, best[1]), best[2]
@@ -229,12 +244,14 @@ function _link_nights(tracklets, σ, max_days, outlier_sigma, min_nights)
 
     taken = falses(n)
     out = NamedTuple[]
-    for (members, f) in sort(collect(linkages); by=p -> (-length(p[1]), p[2].rms))
+    for (members, f) in sort(collect(linkages); by=p -> (-length(p[1]), p[2].orbit.rms))
         any(taken[members]) && continue
         length(members) < min_nights && continue
         taken[members] .= true
         sorted = sort(members; by=m -> mean(tracklets[m].t))
-        push!(out, (tracklets=[(night=tracklets[m].night, id=tracklets[m].id) for m in sorted], orbit=f))
+        dropped = [(night=tracklets[m].night, id=tracklets[m].id, epoch=tracklets[m].epoch[p]) for (m, p) in f.dropped]
+        push!(out, (tracklets=[(night=tracklets[m].night, id=tracklets[m].id) for m in sorted], orbit=f.orbit,
+                    dropped=sort(dropped; by=d -> d.epoch)))
     end
     return out
 end
