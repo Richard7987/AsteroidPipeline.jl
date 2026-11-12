@@ -28,6 +28,10 @@ from the version picker at the top right.
   images whose pixels without data are `NaN`, as Pan-STARRS1's single-exposure
   warps have them: [`fill_value_mask`](@ref) now masks every pixel that is not
   finite, and [`run_pipeline`](@ref) sets them to a constant.
+- With SkyBoT unavailable, identifying a set's candidates could take hours: each
+  waited its turn for JPL's Small-Body Identification service, which answered
+  HTTP 504 after 6 minutes, three times over. Once JPL fails, it is not asked
+  again for 10 minutes and the candidates waiting fail at once.
 - Documentation: the [limitations](concepts/limitations.md) and the
   [completeness guide](guides/completeness.md) quoted an earlier version's
   completeness (44% at 100–400″/h, 16% at V 22–22.5); the measured values are 57%

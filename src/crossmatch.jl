@@ -365,6 +365,8 @@ end
 
 const _SKYBOT_RETRY_AFTER = 600
 const _SKYBOT_DOWN_UNTIL = Ref(0.0)
+const _JPL_DOWN_UNTIL = Ref(0.0)
+const _JPL_LAST_ERROR = Ref{Any}(nothing)
 # Set when a search fell back to JPL, so analyze_set can say so once.
 const _KNOWN_FROM_JPL = Ref(false)
 
@@ -377,7 +379,10 @@ positions (degrees) and rates (″/h, the RA rate times cos Dec): a field
 already fetched is reused when it covers the cone and lies within
 `_JPL_MAX_HOURS` of `c.epoch`, where its objects are moved along their rates.
 Its second pass, the one with precise positions, takes a minute or more,
-hence one query per field rather than one per candidate.
+hence one query per field rather than one per candidate. Once it fails
+(on 2026-11-11 it answered HTTP 504 after 6 minutes, three times over), it
+is not asked again for `_SKYBOT_RETRY_AFTER` seconds: the same error is
+thrown at once.
 """
 function _jpl_field(c, radius_deg::Real, observatory::AbstractString)
     lock(_JPL_LOCK) do
@@ -386,14 +391,21 @@ function _jpl_field(c, radius_deg::Real, observatory::AbstractString)
             Δra = abs(mod(c.ra - f.ra + 180, 360) - 180) * cosd(c.dec)
             (Δra + radius_deg <= f.half_width && abs(c.dec - f.dec) + radius_deg <= f.half_width) && return f
         end
+        # once it fails, the candidates waiting here fail at once rather than in turn
+        time() < _JPL_DOWN_UNTIL[] && throw(_JPL_LAST_ERROR[])
         half_width = max(_JPL_HALF_WIDTH, 1.2 * radius_deg)
         query = Dict("mpc-code" => observatory, "obs-time" => @sprintf("%.6f", c.epoch),
                      "fov-ra-center" => _jpl_sexagesimal(c.ra / 15, "-"),
                      "fov-dec-center" => _jpl_sexagesimal(c.dec, "M"),
                      "fov-ra-hwidth" => string(half_width), "fov-dec-hwidth" => string(half_width),
                      "two-pass" => "true", "suppress-first-pass" => "true")
-        body = _with_retries(_TAP_ATTEMPTS) do
-            String(HTTP.get(_JPL_SBIDENT_URL; query, read_idle_timeout=_JPL_TIMEOUT).body)
+        body = try
+            _with_retries(_TAP_ATTEMPTS) do
+                String(HTTP.get(_JPL_SBIDENT_URL; query, read_idle_timeout=_JPL_TIMEOUT).body)
+            end
+        catch e
+            _is_unavailable(e) && (_JPL_DOWN_UNTIL[] = time() + _SKYBOT_RETRY_AFTER; _JPL_LAST_ERROR[] = e)
+            rethrow()
         end
         field = (ra=Float64(c.ra), dec=Float64(c.dec), half_width=half_width, epoch=Float64(c.epoch),
                  observatory=String(observatory), objects=_parse_jpl_sbident(body))
