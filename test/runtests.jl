@@ -1491,13 +1491,6 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             end
             # a run that finds nothing recovers nothing
             @test !any(injection_recovery(candidates[candidates.id .== -1], truth).recovered)
-        end
-    end
-
-    @testset "MPCORB orbits and :mpcorb crossmatch" begin
-        P = AsteroidPipeline
-        @test P._unpack_mpc_epoch("K2669") ≈ datetime2julian(DateTime(2026, 6, 9))
-        @test P._unpack_mpc_epoch("J9611") ≈ datetime2julian(DateTime(1996, 1, 1))
             # pixels with no data written as NaN, as Pan-STARRS1 warps have them
             blanked = map(enumerate(injected)) do (k, p)
                 raw, header = FITS(f -> (read(f[1]), read_header(f[1])), p)
@@ -1510,6 +1503,13 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                                     refine_astrometry=true, reference_stars=catalog, difference_stack=true,
                                     min_sharpness=0.3)
             @test count(injection_recovery(with_nan, truth; radius=1.0).recovered) >= 3
+        end
+    end
+
+    @testset "MPCORB orbits and :mpcorb crossmatch" begin
+        P = AsteroidPipeline
+        @test P._unpack_mpc_epoch("K2669") ≈ datetime2julian(DateTime(2026, 6, 9))
+        @test P._unpack_mpc_epoch("J9611") ≈ datetime2julian(DateTime(1996, 1, 1))
         @test P._unpack_mpc_epoch("K26A1") ≈ datetime2julian(DateTime(2026, 10, 1))
         @test P._unpack_mpc_epoch("X2669") === nothing
 
