@@ -15,6 +15,13 @@ from the version picker at the top right.
   on real astrometry of 73 asteroids over 12 nights: every tracklet of the 47
   objects seen on 3 nights or more linked, none wrong, also among 969 false
   tracklets.
+- The MPC's Isolated Tracklet File: [`download_itf`](@ref), [`read_itf`](@ref)
+  and [`itf_check`](@ref), and [`analyze_set`](@ref)'s `itf` keyword, which
+  marks the unidentified tracklets already reported to the MPC unlinked — by
+  Pan-STARRS's own pipeline, for an IASC set, which IASC rejects as a
+  duplicate. One of the two candidates of the October 2026 campaign was
+  there, reported by Pan-STARRS in 3 of its 4 exposures, 0.1–0.2″ from our
+  positions.
 
 **Fixed**
 

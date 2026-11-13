@@ -581,7 +581,11 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
 6. check every candidate left against the known objects within 10' of it
    ([`nearby_known_objects`](@ref)): one there moving the same way is
    most likely a known object with a poor orbit — and, for recent images,
-   against the MPC's NEO Confirmation Page ([`neocp_check`](@ref));
+   against the MPC's NEO Confirmation Page ([`neocp_check`](@ref)); and, given
+   `itf` (the file [`download_itf`](@ref) keeps, or [`read_itf`](@ref)'s
+   observations), against the MPC's Isolated Tracklet File: one there was
+   most likely reported already, by Pan-STARRS's own pipeline for an IASC set
+   ([`itf_check`](@ref));
 7. list the known objects expected in the field
    ([`known_objects_in_field`](@ref)), marking which were detected;
 8. write the report: the unidentified tracklets' observations (for vetting in
@@ -607,12 +611,12 @@ than it or with no magnitude are left out, with a warning), `known`
 (`Dict` tracklet id => name), `stacked` (the ids found only by
 [`stack_search`](@ref), which `stack=false` turns off), `unknown_ids`, `nearby`
 (`nearby_known_objects`'s check of each unknown tracklet), `neocp`
-(`neocp_check`'s),
+(`neocp_check`'s), `itf` (`itf_check`'s, empty without `itf`),
 `expected` (from `known_objects_in_field`, each with a `detected` flag),
 `report`, `report_kind` (`:blank`, `:candidates` or `:unreliable`) and
 `warnings`.
 """
-function analyze_set(source; workdir::AbstractString, observatory::AbstractString, mpcorb=nothing,
+function analyze_set(source; workdir::AbstractString, observatory::AbstractString, mpcorb=nothing, itf=nothing,
                      header=(;), name=nothing,
                      extract_to::AbstractString=dirname(abspath(source isa AbstractString ? source : first(source))),
                      config=nothing, reference_stars=nothing, stack::Bool=true,
@@ -701,6 +705,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     # every candidate left: is a known object near it, moving the same way?
     nearby = Dict{Int,Any}()
     neocp = Dict{Int,Any}()
+    in_itf = Dict{Int,Vector{NamedTuple}}()
     unknown_rows = filter(r -> !haskey(known, r.id), collect(candidates))
     if !isempty(unknown_rows)
         progress(:nearby, 0.8)
@@ -710,6 +715,11 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
         on_neocp = neocp_check(unknown_rows; observatory)
         neocp = on_neocp.checks
         append!(warnings, on_neocp.warnings)
+        if itf !== nothing
+            in_itf = itf_check(unknown_rows, itf isa AbstractString ? read_itf(itf, epochs) : itf)
+            isempty(in_itf) || push!(warnings, "$(length(in_itf)) of the unidentified tracklets are already in the MPC's Isolated Tracklet File: " *
+                                            join(sort(unique(m.trksub for ms in values(in_itf) for m in ms)), ", "))
+        end
     end
 
     progress(:field, 0.85)
@@ -733,7 +743,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     return (name=name, paths=paths, epochs=epochs, wcs=wcs, image_size=image_size, ratios=ratios,
             frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, limiting_mag=limiting_mag,
             known=known, stacked=stacked,
-            unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, expected=expected, report=report, report_kind=report_kind,
+            unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, itf=in_itf, expected=expected, report=report, report_kind=report_kind,
             warnings=warnings)
 end
 
