@@ -11,6 +11,7 @@ using Statistics
 using Reproject
 using Distributed
 using Dates: Dates, DateTime, datetime2julian
+using CodecZlib
 
 # Loads .env (gitignored) for local runs, e.g. ASTROMETRY_API_KEY for the live
 # plate_solve test; variables already set in the environment win.
@@ -2233,6 +2234,32 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         catch e
             AsteroidPipeline._is_unavailable(e) || rethrow()
             @test_skip "network unavailable"
+        end
+    end
+
+    @testset "Isolated Tracklet File" begin
+        # Pan-STARRS's own report of NHU0003 (XY75_p01, 2026-10-12), one far
+        # off the same night, and one of another night at the same place
+        lines = ["     P12rfge 0C2026 10 12.45472702 31 45.209+07 08 02.95         21.86wX     F51",
+                 "     P12rfge 0C2026 10 12.46732102 31 44.671+07 08 00.13         21.33wX     F51",
+                 "     P12rfge 0C2026 10 12.49227302 31 43.593+07 07 55.15         21.69wX     F51",
+                 "     P12zzzz 0C2026 10 12.46731602 31 50.000+07 08 00.30         21.50wX     F51",
+                 "     P13aaaa 0C2026 10 20.45472102 31 45.210+07 08 03.03         21.80wX     F51"]
+        mktempdir() do dir
+            path = joinpath(dir, "itf.txt.gz")
+            open(io -> (s = CodecZlib.GzipCompressorStream(io); write(s, join(lines, "\n") * "\n"); close(s)), path, "w")
+            # our measurements of NHU0003 (its MPC report)
+            jd(day) = datetime2julian(DateTime(2026, 10, 1)) + day - 1
+            ours = Table(id=fill(3, 4), epoch=jd.([12.454721, 12.467316, 12.479794, 12.492268]),
+                         ra=15 .* (2 .+ 31 / 60 .+ [45.210, 44.674, 44.131, 43.582] ./ 3600),
+                         dec=7 .+ 8 / 60 .+ [3.03, 0.30, -2.30, -4.98] ./ 3600)
+            itf = read_itf(path, ours.epoch)
+            @test sort(unique(o.trksub for o in itf)) == ["P12rfge", "P12zzzz"]   # the other night skipped
+            checks = itf_check(ours, itf)
+            @test [m.trksub for m in checks[3]] == fill("P12rfge", 3)
+            @test all(m -> m.distance_arcsec < 0.3, checks[3])
+            # the same motion half a degree away passes through nothing
+            @test isempty(itf_check(Table(id=ours.id, epoch=ours.epoch, ra=ours.ra, dec=ours.dec .+ 0.5), itf))
         end
     end
 

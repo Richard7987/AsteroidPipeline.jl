@@ -21,6 +21,10 @@ r = analyze_set("set.zip"; observatory="F51", workdir="work", mpcorb=orbits)
 
 Reuse `orbits` across sets: reading the file (1.5 million orbits) takes ~10 s.
 
+For an IASC campaign, pass also `itf=download_itf()`: candidates Pan-STARRS
+already reported are marked, as IASC would reject them as duplicates. The
+file is ~130 MB; reading one night of it takes ~11 s.
+
 ### What comes back
 
 | Field | Meaning |
@@ -33,6 +37,7 @@ Reuse `orbits` across sets: reading the file (1.5 million orbits) takes ~10 s.
 | `unknown_ids` | the rest: candidates for a person to check |
 | `nearby` | for each candidate, the known objects within 10′ and whether one is probably it — see [Is a candidate new?](../concepts/known-objects.md) |
 | `neocp` | for each candidate, the objects on the MPC's NEO Confirmation Page near it, for images up to 30 days old |
+| `itf` | with `itf=download_itf()`, the candidates already reported to the MPC unlinked, and by whom — see [Already reported](../validation/itf.md) |
 | `expected` | every known object predicted on the frames, detected or not |
 | `report`, `report_kind` | the MPC report: `:blank`, `:candidates` or `:unreliable` |
 | `warnings` | services that couldn't be reached, frames that couldn't be calibrated |

@@ -77,6 +77,7 @@ makedocs(;
             "Fainter objects by stacking" => "validation/stacking.md",
             "Preliminary orbits" => "validation/orbits.md",
             "Linking across nights" => "validation/linking.md",
+            "Already reported: the ITF" => "validation/itf.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",
