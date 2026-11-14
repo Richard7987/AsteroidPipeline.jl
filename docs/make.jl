@@ -75,6 +75,7 @@ makedocs(;
             "Rotation periods of eight asteroids" => "validation/ztf-periods.md",
             "Rotation periods of thirty asteroids" => "validation/period-sample.md",
             "Fainter objects by stacking" => "validation/stacking.md",
+            "How faint, on campaign sets" => "validation/faint.md",
             "Preliminary orbits" => "validation/orbits.md",
             "Linking across nights" => "validation/linking.md",
             "Already reported: the ITF" => "validation/itf.md",
