@@ -7,7 +7,8 @@ searched by one team, the MPC's digest2 gave 25 of the 26 catalogued
 asteroids found a NEO score below 65, the score at which the MPC posts a
 tracklet to its NEO Confirmation Page; none of the 26 is a near-Earth
 object. The one above, 2026 SE8 (perihelion 1.46 au), scored 98. Of the 4
-unidentified tracklets, one scored 69 and three 1–2.
+unidentified tracklets, one scored 69 and three 1–2; looked at, the one at 69
+is not in any frame.
 
 ## 1. Method
 
@@ -58,7 +59,12 @@ Mars-crosser on a nearby orbit, as 2026 SE8 is.
 **What it doesn't.** It doesn't tell a real object from a false tracklet:
 a star's jitter linked into a tracklet scores as a fast NEO
 ([Follow-up tools](../guides/follow-up.md)). The tracklet on `XY55_p01`, at
-69, is a candidate only until someone looks at it.
+69, was found only by stacking, at 9.8″/h, with magnitudes of V 23.4–24.1
+where measured: 0.8–1.5 mag fainter than the set's 5σ limit (22.6), where
+the search found 1 of 297 injected asteroids between V 22.75 and 23.5
+([How faint](faint.md)). Looked at, it is in none of the four frames nor in
+their mean along its motion, and its light within 7 × 7 pixels is 0.5–3.6σ:
+noise, scored as a slow near-Earth object.
 
 **What wasn't tested.** No near-Earth object was among the identified
 asteroids, so how often digest2 scores a real one below 65 here wasn't
