@@ -22,7 +22,9 @@ FWHM, smeared along its motion during the exposure (`exptime_key`; fast
 objects really do trail, and whether the detector finds trails is part of
 what this measures), with Poisson noise from its own counts (header `GAIN`,
 default 1). Detector gaps are not avoided: an object crossing one is lost
-there, as a real one would be.
+there, as a real one would be. A frame whose zero point can't be fitted (no catalogue
+star matched) is copied unchanged, with a warning, and has no
+rows in `truth`: its brightness would be a guess.
 
 Returns the written paths (same order) and a `truth` table, one row per
 object per frame: `object`, `frame`, `ra`, `dec` (degrees, mid-exposure),
@@ -53,9 +55,13 @@ function inject_movers(fits_paths::AbstractVector{<:AbstractString}, out_dir::Ab
         refined = refine_wcs(fr.image, wcs, reference_stars; mask)
         refined.refined && (wcs = refined.wcs)
         zp = photometric_zeropoint(fr.image, wcs, reference_stars; mask)
-        isnan(zp.zeropoint) && error("no photometric zero point for $(fits_paths[k])")
+        isnan(zp.zeropoint) && return (wcs=wcs, zeropoint=NaN, fwhm=NaN)
         (wcs=wcs, zeropoint=zp.zeropoint, fwhm=_measure_fwhm(fr.image, mask))
     end
+    uncalibrated = findall(c -> isnan(c.zeropoint), calib)
+    length(uncalibrated) == length(frames) && error("no photometric zero point in any frame")
+    isempty(uncalibrated) ||
+        @warn "no photometric zero point; nothing injected in these frames" frames=fits_paths[uncalibrated]
 
     n1, n2 = size(frames[1].image)
     object = Int[]; frame = Int[]; ra = Float64[]; dec = Float64[]; epoch = Float64[]
@@ -73,6 +79,7 @@ function inject_movers(fits_paths::AbstractVector{<:AbstractString}, out_dir::Ab
         end
         for (k, fr) in enumerate(frames)
             c = calib[k]
+            isnan(c.zeropoint) && continue
             half = fr.exptime / 2 / 86400
             sky_mid = at(epochs[k])
             px = world_to_pix(c.wcs, collect(sky_mid))

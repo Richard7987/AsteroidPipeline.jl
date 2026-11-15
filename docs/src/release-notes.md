@@ -43,6 +43,10 @@ from the version picker at the top right.
   the tries) SkyBoT fails the whole cone because it has no comets then, and the
   pipeline took SkyBoT for unavailable. The cone is now asked again without
   comets.
+- [`inject_movers`](@ref) stopped with an error when one frame had no photometric
+  zero point, and with it a whole set's completeness test (two of 13 Pan-STARRS1
+  sets in [How faint, on campaign sets](validation/faint.md)). That frame is now
+  copied unchanged, with a warning, and left out of the truth table.
 - Documentation: the [limitations](concepts/limitations.md) and the
   [completeness guide](guides/completeness.md) quoted an earlier version's
   completeness (44% at 100–400″/h, 16% at V 22–22.5); the measured values are 57%

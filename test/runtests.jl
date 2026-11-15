@@ -1519,6 +1519,17 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                                     refine_astrometry=true, reference_stars=catalog, difference_stack=true,
                                     min_sharpness=0.3)
             @test count(injection_recovery(with_nan, truth; radius=1.0).recovered) >= 3
+            # a frame with no catalogue star to fit a zero point on: copied as it is,
+            # and the objects injected in the others
+            starless = joinpath(dir, "starless.fits")
+            FITS(f -> write(f, 100.0 .+ 5.0 .* randn(nx, ny); header=FITS(g -> read_header(g[1]), paths[2])), starless, "w")
+            partial, partial_truth = @test_logs (:warn, r"no photometric zero point") match_mode=:any inject_movers(
+                [paths[1], starless, paths[3]], joinpath(dir, "partial"); n=4, rng=Xoshiro(3),
+                reference_stars=catalog, margin=60)
+            @test sort(unique(partial_truth.frame)) == [1, 3]
+            @test length(partial_truth) == 4 * 2
+            @test FITS(f -> read(f[1]), partial[2]) == FITS(f -> read(f[1]), starless)
+            @test_throws ErrorException inject_movers([starless], joinpath(dir, "none"); reference_stars=catalog)
         end
     end
 
