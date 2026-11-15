@@ -2570,6 +2570,33 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test_throws ArgumentError digest2_score(candidates, "XX")  # not 3 characters
         @test_throws ArgumentError digest2_score(candidates, "I41"; digest2_path="not-a-real-digest2-binary")
 
+        # what it is given and how its output is read, with a stand-in program
+        if Sys.isunix()
+            mktempdir() do dir
+                write(joinpath(dir, "MPC.config"), "repeatable\nNEO\nobserrF51=0.13\nobserr704 = 1\n")
+                fake = joinpath(dir, "digest2")
+                write(fake, """
+                    #!/bin/sh
+                    while [ "\$#" -gt 0 ]; do [ "\$1" = "-c" ] && cp "\$2" "$dir/seen.config"; shift; done
+                    cat > "$dir/seen.obs"
+                    echo "1        0.15  98  97  30   0"
+                    echo "2       **.**   3   1   0   0"
+                    """)
+                chmod(fake, 0o755)
+                two = Table(id=[1, 1, 1, 2, 2], frame=[1, 2, 3, 1, 2], x=zeros(5), y=zeros(5),
+                            ra=[150.0, 150.05, 150.10, 151.0, 151.01], dec=[20.0, 20.02, 20.04, 21.0, 21.0],
+                            epoch=[2451545.0, 2451545.04, 2451545.08, 2451545.0, 2451545.04])
+                s = digest2_score(two, "F51"; digest2_path=fake)
+                @test s.id == [1, 2]
+                @test s.neo_score == [97.0, 1.0]
+                @test s.rms[1] == 0.15 && isnan(s.rms[2])
+                config = readlines(joinpath(dir, "seen.config"))
+                @test "obserrF51=0.13" in config && "obserr704 = 1" in config && "repeatable" in config
+                @test count(==("NEO"), config) == 1          # only the uncertainties are taken from MPC.config
+                @test length(readlines(joinpath(dir, "seen.obs"))) == 5
+            end
+        end
+
         if resolved === nothing
             @test_skip "digest2 not installed"
         else
@@ -2577,6 +2604,7 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test length(scores) == 1
             @test scores.id[1] == 1
             @test 0.0 <= scores.neo_score[1] <= 100.0  # a real score, not this test asserting a specific value
+            @test digest2_score(candidates, "I41"; digest2_path=resolved) == scores   # seeded the same way every run
         end
     end
 

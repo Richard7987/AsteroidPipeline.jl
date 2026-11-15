@@ -22,6 +22,16 @@ from the version picker at the top right.
   duplicate. One of the two candidates of the October 2026 campaign was
   there, reported by Pan-STARRS in 3 of its 4 exposures, 0.1–0.2″ from our
   positions.
+- [`analyze_set`](@ref)'s `digest2` keyword: the unidentified tracklets scored with
+  the MPC's digest2 ([`digest2_score`](@ref)), and a warning for those with a NEO
+  score of 65 or more, the MPC's threshold for its NEO Confirmation Page.
+
+**Changed**
+
+- [`digest2_score`](@ref) runs digest2 as the MPC does: with each station's
+  astrometric uncertainty from `MPC.config` (for Pan-STARRS1, 0.13″ in digest2
+  1.0's, instead of 1″) and the same seed for every tracklet, so its scores can
+  differ from before and no longer vary between runs.
 
 **Fixed**
 
