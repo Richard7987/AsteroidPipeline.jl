@@ -43,13 +43,14 @@ jobs:
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
       # digest2, the MPC's orbit-class program, for digest2_score's tests:
-      # built from its repository, at a fixed commit
+      # built from its repository, at a fixed commit; its d2ades.c calls strptime and
+      # timegm without the feature macro that declares them, an error since GCC 14
       - name: Build digest2
         run: |
           sudo apt-get install -y -qq libxml2-dev
           git clone -q https://github.com/Smithsonian/digest2.git "$RUNNER_TEMP/digest2"
           git -C "$RUNNER_TEMP/digest2" checkout -q d324a4816fc49e9c7624335a6aa5499d7fdf3b9a
-          make -s -C "$RUNNER_TEMP/digest2/digest2"
+          make -s -C "$RUNNER_TEMP/digest2/digest2" CFLAGS="-std=c99 -D_GNU_SOURCE -O2 -pthread -I/usr/include/libxml2"
           echo "DIGEST2_PATH=$RUNNER_TEMP/digest2/digest2/digest2" >> "$GITHUB_ENV"
       # the catalogue services queried live once, on the newest release, so a
       # change in their answers is seen; recorded answers on the other
