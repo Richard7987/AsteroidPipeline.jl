@@ -79,6 +79,7 @@ makedocs(;
             "Preliminary orbits" => "validation/orbits.md",
             "Linking across nights" => "validation/linking.md",
             "Already reported: the ITF" => "validation/itf.md",
+            "Near-Earth or not: digest2" => "validation/digest2.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",

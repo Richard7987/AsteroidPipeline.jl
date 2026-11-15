@@ -18,6 +18,7 @@ images, or synthetic asteroids added to real images.
 | 15 known asteroids, 40 arcs since 2024 | MPC astrometry, every station | 3 nights to 30 days | JPL's orbits | [Preliminary orbits](orbits.md) |
 | 73 asteroids near opposition, 12 nights of 2025 | MPC astrometry, one station (P07) | 323 tracklets, then 969 false ones added | the objects' designations | [Linking across nights](linking.md) |
 | 19 sets of IASC's October 2026 campaign | Pan-STARRS1 | 4 × 45 s per set | the MPC's Isolated Tracklet File | [Already reported: the ITF](itf.md) |
+| the same sets | Pan-STARRS1 | 4 × 45 s per set | the MPC's orbits of the asteroids identified | [Near-Earth or not: digest2](digest2.md) |
 | 8 asteroids, 2022 | ZTF | 21–132 exposures each | published rotation periods, chosen beforehand | [Rotation periods of eight asteroids](ztf-periods.md) |
 | 30 asteroids chosen by a rule, 2018–2024 | ZTF | 32–687 exposures each | published rotation periods; a shuffled control | [Rotation periods of thirty asteroids](period-sample.md) |
 
@@ -34,6 +35,7 @@ images, or synthetic asteroids added to real images.
 | Orbits? | semi-major axis within a median 4.8% from 3 nights, 0.03% from 30 days; 39 of 40 predictions 30 days ahead within 2σ | MPC astrometry |
 | Tracklets linked across nights? | every tracklet of the 47 objects seen on 3 nights or more, none wrong, with or without 969 false tracklets; on 2 nights, 168 wrong among false tracklets | MPC astrometry |
 | Were the candidates reported already? | 2 of the 5 unidentified on 19 campaign sets, by Pan-STARRS itself in the same exposures, 0.10–0.21″ from ours | Pan-STARRS1, the MPC's ITF |
+| Near-Earth by digest2? | 25 of 26 catalogued main-belt and Mars-crossing asteroids below 65, the NEO Confirmation Page's threshold; one Mars-crosser at 98 | Pan-STARRS1, 18 campaign sets |
 | Rotation periods? | 6.92035 ± 0.00008 h for a published 6.920509 h, doubling the fit, on one asteroid; on eight chosen beforehand, two of the six measured within 1%, four not; on thirty chosen by a rule, the period or its half within 1% for 13 of 29, against 3 of 29 with the magnitudes shuffled | ZTF |
 
 ![Tracklets a person has to look at, by configuration](../assets/tracklets-to-vet.png)
