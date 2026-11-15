@@ -2,11 +2,11 @@
 
 ## Summary
 
-On 10 Pan-STARRS1 sets of IASC campaigns, with 100 synthetic asteroids
+On 11 Pan-STARRS1 sets of IASC campaigns, with 100 synthetic asteroids
 injected into each (V 21.0–23.5), [`analyze_set`](@ref) found half of them
-down to V 21.68 frame by frame and V 21.87 with stacking. Between V 22.0 and
-22.5, stacking found 34 of 192 where the frame-by-frame search found 8;
-fainter than V 22.5, they found 3 and 4 of 369. Pan-STARRS's own pipeline reaches
+down to V 21.68 frame by frame and V 21.81 with stacking. Between V 22.0 and
+22.5, stacking found 34 of 214 where the frame-by-frame search found 8;
+fainter than V 22.5, they found 3 and 4 of 402. Pan-STARRS's own pipeline reaches
 about V 22 and IASC's searchers find objects 0.30 mag fainter on average
 (Miller et al. 2024): the pipeline does not yet reach the range where they
 work.
@@ -33,26 +33,28 @@ Declared before running, in `examples/faint_completeness.jl`:
 
 Changed after the first run stopped at `XY72_p11`, before any result was seen:
 a set whose injection fails, or that [`analyze_set`](@ref) marks unreliable,
-is left out. That left out three: `XY14_p10`, the damaged set, marked
-unreliable; `XY72_p11` and `XY73_p00`, where [`inject_movers`](@ref) found no
-photometric zero point in one frame and stopped, though
-[`analyze_set`](@ref) analyses both sets.
+is left out. That first run left out three: `XY14_p10`, the damaged set,
+marked unreliable; `XY72_p11` and `XY73_p00`, where [`inject_movers`](@ref)
+found no photometric zero point in one frame and stopped. Once it injected
+into the other frames instead, those two sets were run again with the same
+seeds: `XY72_p11` is in the results, `XY73_p00` was marked unreliable and
+left out.
 
 ## 3. Results
 
-All 10 sets together, 1,000 injected:
+All 11 sets together, 1,100 injected:
 
 | V | Injected | Frame by frame | With stacking |
 |:--|:--|:--|:--|
-| 21.00–21.25 | 114 | 92 (81%) | 94 (82%) |
-| 21.25–21.50 | 114 | 85 (75%) | 87 (76%) |
-| 21.50–21.75 | 90 | 50 (56%) | 57 (63%) |
-| 21.75–22.00 | 121 | 39 (32%) | 60 (50%) |
-| 22.00–22.25 | 92 | 8 (9%) | 17 (18%) |
-| 22.25–22.50 | 100 | 0 | 17 (17%) |
-| 22.50–22.75 | 96 | 2 (2%) | 3 (3%) |
-| 22.75–23.50 | 273 | 1 | 1 |
-| **50% found at** | | **V 21.68** | **V 21.87** |
+| 21.00–21.25 | 126 | 100 (79%) | 102 (81%) |
+| 21.25–21.50 | 118 | 88 (75%) | 90 (76%) |
+| 21.50–21.75 | 107 | 60 (56%) | 67 (63%) |
+| 21.75–22.00 | 133 | 40 (30%) | 61 (46%) |
+| 22.00–22.25 | 100 | 8 (8%) | 17 (17%) |
+| 22.25–22.50 | 114 | 0 | 17 (15%) |
+| 22.50–22.75 | 105 | 2 (2%) | 3 (3%) |
+| 22.75–23.50 | 297 | 1 | 1 |
+| **50% found at** | | **V 21.68** | **V 21.81** |
 
 Each set, with the 5σ limit [`analyze_set`](@ref) reports for it:
 
@@ -67,6 +69,7 @@ Each set, with the 5σ limit [`analyze_set`](@ref) reports for it:
 | `XY45_p11` | 22.31 | 21.46 | 21.50 | 0 |
 | `XY54_p10` | 22.81 | 21.78 | 21.85 | 0 |
 | `XY72_p01` | 22.64 | 21.76 | 21.79 | 0 |
+| `XY72_p11` | 22.59 | 21.67 | 21.67 | 0 |
 | `XY73_p01` | 22.66 | 21.55 | 21.55 | 0 |
 
 The 6 stacked tracklets not injected are the ones stacking adds on the same
@@ -84,19 +87,19 @@ set reaches 50% at V 22.2, and between V 22.0 and 22.5 the pipeline finds
 about one in six. The direct case is NHU0002, at V≈22.3: found on its set,
 and not in the MPC's Isolated Tracklet File ([Already reported](itf.md)).
 
-**Stacking.** It moves the 50% point by 0.2 mag on all sets together, from 0
-on three sets to 0.47 on `XY45_p10`, and finds all of the 17 recovered at V
+**Stacking.** It moves the 50% point by 0.13 mag on all sets together, from 0
+on four sets to 0.47 on `XY45_p10`, and finds all of the 17 recovered at V
 22.25–22.5. Past V 22.5 it finds almost nothing, though the 5σ limits of
-six sets are fainter than that.
+seven sets are fainter than that.
 
 **The 5σ limit is not the depth.** The 50% point with stacking is 0.46–1.11
-mag brighter than the limit [`analyze_set`](@ref) reports, 0.89 on the
+mag brighter than the limit [`analyze_set`](@ref) reports, 0.92 on the
 median: that limit is a single source's in one frame, and a tracklet
 needs the object in several.
 
 **Against the earlier test.** The injection test on the
 [Pan-STARRS1 sets](pan-starrs1.md#Completeness), with an earlier version,
-found 21% at V 22–22.5 frame by frame; here it is 4% (8 of 192). The
+found 21% at V 22–22.5 frame by frame; here it is 4% (8 of 214). The
 difference was not looked into.
 
 **What it does not cover.** Injected asteroids move in straight lines with a
