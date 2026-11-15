@@ -27,7 +27,9 @@ injected.
 Changed after the first run stopped at XY72_p11 (inject_movers found no
 photometric zero point in one of its frames), before any magnitude bin was
 seen: a set whose injection fails, or that analyze_set marks unreliable
-(XY14_p10 in that run), is reported and left out. Each set's result is
+(XY14_p10 in that run), is reported and left out. Once inject_movers left such a
+frame out instead of stopping, the cache of the two sets it had stopped on
+(XY72_p11, XY73_p00) was removed and they were run again. Each set's result is
 cached in data/real/faint_completeness.
 
 The question it answers: how far past V 22, where Pan-STARRS's own
