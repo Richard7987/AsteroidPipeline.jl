@@ -585,7 +585,10 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
    `itf` (the file [`download_itf`](@ref) keeps, or [`read_itf`](@ref)'s
    observations), against the MPC's Isolated Tracklet File: one there was
    most likely reported already, by Pan-STARRS's own pipeline for an IASC set
-   ([`itf_check`](@ref));
+   ([`itf_check`](@ref)); and, given `digest2` (the path of the MPC's `digest2`
+   program), the likelihood that each is a near-Earth object
+   ([`digest2_score`](@ref)), noting those at 65 or more, the score at which
+   the MPC posts a tracklet to its NEO Confirmation Page;
 7. list the known objects expected in the field
    ([`known_objects_in_field`](@ref)), marking which were detected;
 8. write the report: the unidentified tracklets' observations (for vetting in
@@ -612,11 +615,12 @@ than it or with no magnitude are left out, with a warning), `known`
 [`stack_search`](@ref), which `stack=false` turns off), `unknown_ids`, `nearby`
 (`nearby_known_objects`'s check of each unknown tracklet), `neocp`
 (`neocp_check`'s), `itf` (`itf_check`'s, empty without `itf`),
+`digest2` (tracklet id => `digest2_score`'s row, empty without `digest2`),
 `expected` (from `known_objects_in_field`, each with a `detected` flag),
 `report`, `report_kind` (`:blank`, `:candidates` or `:unreliable`) and
 `warnings`.
 """
-function analyze_set(source; workdir::AbstractString, observatory::AbstractString, mpcorb=nothing, itf=nothing,
+function analyze_set(source; workdir::AbstractString, observatory::AbstractString, mpcorb=nothing, itf=nothing, digest2=nothing,
                      header=(;), name=nothing,
                      extract_to::AbstractString=dirname(abspath(source isa AbstractString ? source : first(source))),
                      config=nothing, reference_stars=nothing, stack::Bool=true,
@@ -706,6 +710,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     nearby = Dict{Int,Any}()
     neocp = Dict{Int,Any}()
     in_itf = Dict{Int,Vector{NamedTuple}}()
+    scores = Dict{Int,NamedTuple}()
     unknown_rows = filter(r -> !haskey(known, r.id), collect(candidates))
     if !isempty(unknown_rows)
         progress(:nearby, 0.8)
@@ -719,6 +724,13 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
             in_itf = itf_check(unknown_rows, itf isa AbstractString ? read_itf(itf, epochs) : itf)
             isempty(in_itf) || push!(warnings, "$(length(in_itf)) of the unidentified tracklets are already in the MPC's Isolated Tracklet File: " *
                                             join(sort(unique(m.trksub for ms in values(in_itf) for m in ms)), ", "))
+        end
+        if digest2 !== nothing
+            for s in digest2_score(unknown_rows, observatory; digest2_path=digest2)
+                scores[s.id] = (rms=s.rms, int_score=s.int_score, neo_score=s.neo_score, n22_score=s.n22_score, n18_score=s.n18_score)
+            end
+            neo = sort([id for (id, s) in scores if s.neo_score >= 65])
+            isempty(neo) || push!(warnings, "tracklets with a digest2 NEO score of 65 or more, the MPC's threshold for its NEO Confirmation Page: " * join(neo, ", "))
         end
     end
 
@@ -743,7 +755,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     return (name=name, paths=paths, epochs=epochs, wcs=wcs, image_size=image_size, ratios=ratios,
             frames_used=used, dropped=dropped, reliable=reliable, candidates=candidates, limiting_mag=limiting_mag,
             known=known, stacked=stacked,
-            unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, itf=in_itf, expected=expected, report=report, report_kind=report_kind,
+            unknown_ids=unknown_ids, nearby=nearby, neocp=neocp, itf=in_itf, digest2=scores, expected=expected, report=report, report_kind=report_kind,
             warnings=warnings)
 end
 

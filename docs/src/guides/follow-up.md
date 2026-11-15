@@ -34,18 +34,25 @@ frame.
 
 ## Orbit class: digest2
 
-[`digest2_score`](@ref) runs the MPC's [digest2](https://github.com/Smithsonian/digest2)
+[`digest2_score`](@ref) runs the MPC's [digest2](https://github.com/Smithsonian/mpc-public/tree/main/digest2)
 on each tracklet: the likelihood that an object with this motion is a
 near-Earth object, a main-belt asteroid, and so on. It is a separate C
-program:
+program, built with a C compiler and libxml2's headers:
 
 ```sh
-git clone https://github.com/Smithsonian/digest2.git && cd digest2/digest2 && make
+git clone https://github.com/Smithsonian/mpc-public.git && make -C mpc-public/digest2/digest2
 ```
 
 ```julia
-digest2_score(candidates, "I41"; digest2_path="digest2/digest2/digest2")
+digest2_score(candidates, "I41"; digest2_path="mpc-public/digest2/digest2/digest2")
 ```
+
+It allows each station the astrometric uncertainty the MPC does (`MPC.config`,
+next to the program), so the scores are the MPC's own. For a whole set,
+`analyze_set(...; digest2="mpc-public/digest2/digest2/digest2")` scores the
+unidentified tracklets (`digest2` in its result) and warns of any at 65 or
+more, the score at which the MPC posts a tracklet to its NEO Confirmation
+Page.
 
 | id | rms | int_score | neo_score | n22_score | n18_score |
 |--:|--:|--:|--:|--:|--:|
