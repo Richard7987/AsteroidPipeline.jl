@@ -5,6 +5,8 @@ from the version picker at the top right.
 
 ## Unreleased
 
+## 1.6.0 — 2026-11-16
+
 **Added**
 
 - [`link_nights`](@ref): links tracklets of different nights by orbit. Pairs whose
