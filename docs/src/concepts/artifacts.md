@@ -34,6 +34,22 @@ ring around the detection, in the raw frame, above the sky:
 real objects that happen to pass close to bright stars: 2 of 180 injected
 asteroids in a completeness test.
 
+## Stars subtracted badly
+
+A moving object is absent from the set's median, so in a frame's difference
+it is only a positive source. A star that a frame's small misalignment or a
+change of seeing subtracts badly leaves a positive lobe and a negative one
+side by side, and on a crowded field the positive lobes of different stars
+line up into tracklets by the dozen.
+
+`max_negative` (6σ, the detection threshold) drops a detection with a pixel
+that far below zero within 4 px in the difference; the stacked search
+applies it to every frame of a track. On 11 Pan-STARRS1 sets with 1,100
+synthetic asteroids added, the tracklets neither synthetic nor catalogued
+went from 89 to 19, all 70 on the three crowded fields; 5 of the 516
+synthetic asteroids found before were lost, on those fields, and none of
+the 25 catalogued ones ([Real or false](../validation/real-bogus.md)).
+
 ## A damaged image set
 
 Some sets aren't worth searching: defective detector cells fill a frame with

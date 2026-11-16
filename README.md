@@ -35,18 +35,23 @@ for `main`. What changed: [release notes](https://richard7987.github.io/Asteroid
   agree with an independent reduction to 0.12–0.17″), magnitudes against
   Gaia's.
 - **The search**: each frame minus the set's median, artifacts removed (hot
-  pixels, bright-star halos, ghosts and diffraction spikes), detections
+  pixels, bright-star halos, ghosts and diffraction spikes, stars subtracted
+  badly), detections
   linked along straight lines at constant rates; damaged frames and sets
   recognised, and candidates fainter than the set's own limit marked. Then
   the frames are added along trial motions, for objects too faint for any
   one frame, with a threshold measured on the set's own noise: on
-  Pan-STARRS1 sets with injected asteroids, 101 recovered instead of 82,
+  Pan-STARRS1 sets with injected asteroids, 94 recovered instead of 77,
   none false.
 - **Is it new?** Known asteroids identified against SkyBoT and the MPC's own
   orbit file (downloaded daily); each candidate compared with every known
   object within 10′ and, for recent images, with the MPC's NEO Confirmation
   Page. While a service is down, the same catalogue is asked elsewhere
   (Gaia at NOIRLab, SIMBAD at Harvard, VSX at AAVSO).
+- **Before reporting** (the library): whether a candidate is already in the
+  MPC's Isolated Tracklet File, reported by someone else and never linked,
+  and its digest2 score, as the MPC computes it for its NEO Confirmation
+  Page.
 - **The report**: MPC 80-column or ADES, under your own designations
   (`NHU0002`) or the NEOCP's; any report checked before it is submitted.
 - **Orbits** (the library): a preliminary orbit from astrometry over several
