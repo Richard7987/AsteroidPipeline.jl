@@ -25,6 +25,14 @@ from the version picker at the top right.
 - [`analyze_set`](@ref)'s `digest2` keyword: the unidentified tracklets scored with
   the MPC's digest2 ([`digest2_score`](@ref)), and a warning for those with a NEO
   score of 65 or more, the MPC's threshold for its NEO Confirmation Page.
+- [`run_pipeline`](@ref)'s `max_negative` keyword: a detection with a pixel that far
+  below zero beside it in the difference image is dropped, the mark of a star
+  subtracted badly; [`stack_search`](@ref) takes it too. [`pipeline_config`](@ref)
+  sets it to 6σ, its detection threshold. [Validation: real or false](validation/real-bogus.md): on 11
+  campaign sets with 1,100 synthetic asteroids added, the tracklets that are
+  neither synthetic nor catalogued went from 89 to 19, 70 of the 89 on the
+  three crowded fields; 511 of the 516 synthetic asteroids found before were
+  still found, and all 25 catalogued ones.
 
 **Changed**
 

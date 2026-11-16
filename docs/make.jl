@@ -80,6 +80,7 @@ makedocs(;
             "Linking across nights" => "validation/linking.md",
             "Already reported: the ITF" => "validation/itf.md",
             "Near-Earth or not: digest2" => "validation/digest2.md",
+            "Real or false: a classifier and the dipole test" => "validation/real-bogus.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",
