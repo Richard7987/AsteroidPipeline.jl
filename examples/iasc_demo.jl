@@ -72,6 +72,7 @@ const MAX_SPEED = 5000.0 * ZTF_ARCSEC_PER_PIXEL / PS1_ARCSEC_PER_PIXEL
 # themselves. Main-belt asteroids move ~20-40"/h, Jupiter Trojans ~10-15"/h;
 # slower solar-system objects (TNOs, ~3"/h) need this lowered.
 const MIN_SPEED = 3.0 / PS1_ARCSEC_PER_PIXEL * 24
+const MAX_NEGATIVE = parse(Float64, get(ENV, "MAX_NEGATIVE", "6.0"))   # Inf: without the dipole test
 
 isdir(DATA_DIR) || error("no $DATA_DIR — place your own IASC practice FITS sets there first " *
                           "(one subdirectory per set, e.g. data/real/iasc/XY25_p10/*.fits)")
@@ -235,7 +236,7 @@ for set_dir in sets
     candidates = run_pipeline(paths; threshold=6.0, match_radius=MATCH_RADIUS, max_speed=MAX_SPEED,
                               mask_fill_values=true, refine_astrometry=true, difference_stack=true,
                               min_sharpness=0.3, min_speed=MIN_SPEED, max_flux_ratio=2.5, max_residual=1.0, min_frames=3,
-                              max_background_excess=1.0, detector_artifact_radius=2.0)
+                              max_background_excess=1.0, detector_artifact_radius=2.0, max_negative=MAX_NEGATIVE)
     known_ids = summarize(basename(set_dir), candidates)
     # A set full of detector defects (a real 2026-10-04 set, XY73_p00, gave 26
     # spurious tracklets) gets no candidate report: say so instead.

@@ -1,6 +1,6 @@
 """
     stack_search(images, wcss, epochs; masks=nothing, max_rate=100.0,
-                 peak_threshold=3.0, min_score=7.0) -> (tracklets, threshold)
+                 peak_threshold=3.0, min_score=7.0, max_negative=Inf) -> (tracklets, threshold)
 
 Find moving objects too faint to be detected in each frame on its own, by
 adding their light along trial motions. `images` are a same-field sequence
@@ -16,7 +16,7 @@ last frame are paired into motions, and each frame is read at the predicted
 position. The score is the faintest frame's value times `√N`: every frame
 must show the object, which keeps one frame's artifact from making a
 detection. On Pan-STARRS1 sets with injected asteroids it raised those
-recovered from 82 to 101, all added at V 21.4-23.0.
+recovered from 77 to 94, all added at V 21.6-23.0.
 
 Several tracks through one spot are dropped, all of them: a point source
 makes one, a patch of extended light many.
@@ -33,6 +33,8 @@ before the search, and a track passing within 3 FWHM of a masked pixel, or
 over a bright star's light ([`_drop_on_bright_background`](@ref)), is left out.
 So is one whose light, within 4 FWHM, is drawn out into a line (axis ratio
 above 1.7 in most frames): a bright star's diffraction spike.
+With `max_negative`, so is one with a pixel that many σ below zero within
+4 px in any frame's difference ([`_drop_dipoles`](@ref)).
 
 Returns the tracklets as [`astrometric_calibrate`](@ref) does (`id`, `frame`,
 `x`, `y`, `ra`, `dec`, `epoch`, positions refined to a fraction of a pixel on
@@ -40,7 +42,7 @@ the filtered images) and the threshold used.
 """
 function stack_search(images::AbstractVector{<:AbstractMatrix{<:Real}}, wcss, epochs::AbstractVector{<:Real};
                       masks=nothing, max_rate::Real=100.0,
-                      peak_threshold::Real=3.0, min_score::Real=7.0)
+                      peak_threshold::Real=3.0, min_score::Real=7.0, max_negative::Real=Inf)
     n = length(images)
     masks === nothing && (masks = [falses(size(img)) for img in images])
     differences, dmasks = stack_difference(images, wcss; masks)
@@ -76,6 +78,7 @@ function stack_search(images::AbstractVector{<:AbstractMatrix{<:Real}}, wcss, ep
     tracks = filter(_pair_search(maps, dmasks, offsets, τ, dmin, dmax, peak_threshold, kept_from)) do c
         c.score >= threshold && clear(c, order) &&
             !any(k -> _on_bright_light(images[k], masks[k], _track_pixel(c, k, offsets, τ)), 1:n) &&
+            !any(k -> _negative_beside(differences[k], dmasks[k], _track_pixel(c, k, offsets, τ)..., max_negative), 1:n) &&
             median(_elongation(maps[k], dmasks[k], _track_pixel(c, k, offsets, τ)..., r) for k in 1:n) <= 1.7
     end
     shared(a, b) = any(k -> hypot((_track_pixel(a, k, offsets, τ) .- _track_pixel(b, k, offsets, τ))...) <= fwhm, 1:n)

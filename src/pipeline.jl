@@ -12,7 +12,7 @@
                  min_speed::Real=0.0, max_flux_ratio::Real=Inf, max_residual::Real=Inf,
                  min_sharpness::Real=-Inf, exptime_key::Union{Nothing,AbstractString}="EXPTIME",
                  subpixel_alignment::Bool=false, max_background_excess::Real=Inf,
-                 detector_artifact_radius::Real=0.0)
+                 detector_artifact_radius::Real=0.0, max_negative::Real=Inf)
 
 Run the local stages of the pipeline — detection, linking, and
 astrometric calibration — on a time-ordered sequence of FITS frames from
@@ -85,6 +85,9 @@ IASC/Pan-STARRS1 sets need:
 - `max_background_excess` (σ; difference path): drop a detection whose
   surroundings in the raw frame sit more than this far above the sky — a
   bright star's halo, ghost or spike (see [`_drop_on_bright_background`](@ref)).
+- `max_negative` (σ; difference path): drop a detection with a pixel this
+  far below zero beside it in the difference — half of what a star leaves
+  when a frame is misaligned or its seeing changes (see [`_drop_dipoles`](@ref)).
 - `min_sharpness`: drop single-pixel spikes — cosmic rays, hot pixels —
   at detection (see [`detect_sources`](@ref)); `0.3` on IASC data.
 
@@ -110,13 +113,13 @@ function run_pipeline(fits_paths::AbstractVector{<:AbstractString};
                        min_speed::Real=0.0, max_flux_ratio::Real=Inf, max_residual::Real=Inf,
                        min_sharpness::Real=-Inf, exptime_key::Union{Nothing,AbstractString}="EXPTIME",
                        subpixel_alignment::Bool=false, max_background_excess::Real=Inf,
-                       detector_artifact_radius::Real=0.0)
+                       detector_artifact_radius::Real=0.0, max_negative::Real=Inf)
     detections_per_frame, wcs_per_frame, timestamps, n_gated, astrometric_rms_px = _detect_all_frames(
         fits_paths; timestamp_key, threshold, box_size, aperture_radius,
         reference, psf_threshold, psf_min_separation, quality_max_std, plate_solve_api_key,
         photometric_outlier_threshold, mask_fill_values, difference_stack,
         refine_astrometry, reference_stars, min_sharpness, exptime_key, subpixel_alignment,
-        max_background_excess, detector_artifact_radius)
+        max_background_excess, detector_artifact_radius, max_negative)
 
     effective_min_frames = min_frames === nothing ? length(fits_paths) - n_gated : min_frames
     tracklets = link_candidates(detections_per_frame, timestamps;
@@ -158,7 +161,7 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
                              min_sharpness::Real=-Inf,
                              exptime_key::Union{Nothing,AbstractString}="EXPTIME",
                              subpixel_alignment::Bool=false, max_background_excess::Real=Inf,
-                             detector_artifact_radius::Real=0.0)
+                             detector_artifact_radius::Real=0.0, max_negative::Real=Inf)
     reference === nothing || !(mask_fill_values || difference_stack || refine_astrometry) ||
         throw(ArgumentError("mask_fill_values, difference_stack and refine_astrometry apply only " *
                             "without `reference` (the ZOGY path has its own registration and masks)"))
@@ -280,6 +283,9 @@ function _detect_all_frames(fits_paths::AbstractVector{<:AbstractString};
         if isfinite(max_background_excess)
             per_frame = [_drop_on_bright_background(d, img, m, max_background_excess)
                          for (d, img, m) in zip(per_frame, stacked_images, stacked_masks)]
+        end
+        if isfinite(max_negative)
+            per_frame = [_drop_dipoles(d, diff, m, max_negative) for (d, diff, m) in zip(per_frame, differences, diff_masks)]
         end
         append!(detections_per_frame, per_frame)
     end
@@ -456,6 +462,26 @@ function _drop_on_bright_background(detections, image, mask, max_excess::Real)
         isempty(ring) || (median(ring) - sky) / σ <= max_excess
     end
     return detections[keep]
+end
+
+"""
+    _drop_dipoles(detections, difference, mask, max_negative) -> table
+
+`detections` minus those with an unmasked pixel below `-max_negative` (σ)
+within 4 px in the normalized `difference`. A moving object is absent from
+the sequence's median, so it leaves only a positive source; a star that a
+frame's misalignment or seeing subtracts badly leaves a positive and a
+negative lobe side by side.
+"""
+function _drop_dipoles(detections, difference, mask, max_negative::Real)
+    keep = map(d -> !_negative_beside(difference, mask, round(Int, d.xcen), round(Int, d.ycen), max_negative), detections)
+    return detections[keep]
+end
+
+function _negative_beside(difference, mask, x::Integer, y::Integer, max_negative::Real)
+    n1, n2 = size(difference)
+    any(i -> !mask[i] && difference[i] < -max_negative,
+        CartesianIndices((max(1, y - 4):min(n1, y + 4), max(1, x - 4):min(n2, x + 4))))
 end
 
 """
