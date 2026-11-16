@@ -157,7 +157,10 @@ merely close.
 catalogued among 566. An uncatalogued real asteroid counts as false, or as
 "other"; the production search found 6 unidentified tracklets on 13 sets,
 so few. The 6σ and 8σ values were compared on the same 11 sets that suggested
-the test, all of one survey; no other telescope was tried. No other survey's images were searched with it.
+the test, all of one survey; no other telescope was tried. On the one other survey tried, [ZTF field 451](ztf.md)
+(5 frames, 1.01″ pixels), [`analyze_set`](@ref) gave the same two catalogued
+asteroids and no other tracklet with the test as without it; no crowded
+field of another survey was tried.
 
 ## 5. Reproduce
 

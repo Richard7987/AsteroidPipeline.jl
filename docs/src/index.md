@@ -53,6 +53,7 @@ print(result.report)      # the MPC report (blank if nothing new was found)
 | measure an asteroid's light curve and rotation period | [Light curves](guides/variable-stars.md) |
 | fit an orbit to observations over several nights | [`fit_orbit`](@ref), and how well it does: [Preliminary orbits](validation/orbits.md) |
 | link the tracklets of several nights into objects | [`link_nights`](@ref), and how well it does: [Linking across nights](validation/linking.md) |
+| check a candidate before reporting it | [Follow-up tools](guides/follow-up.md): already reported ([ITF](validation/itf.md)), near-Earth or not ([digest2](validation/digest2.md)) |
 | understand how it decides what is real | [How it works](concepts/pipeline.md) |
 | know how well it works, and where it doesn't | [Validation](validation/summary.md) |
 | look up a function | the [Reference](reference/sets.md) |

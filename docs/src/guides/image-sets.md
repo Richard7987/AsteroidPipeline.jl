@@ -38,6 +38,7 @@ file is ~130 MB; reading one night of it takes ~11 s.
 | `nearby` | for each candidate, the known objects within 10′ and whether one is probably it — see [Is a candidate new?](../concepts/known-objects.md) |
 | `neocp` | for each candidate, the objects on the MPC's NEO Confirmation Page near it, for images up to 30 days old |
 | `itf` | with `itf=download_itf()`, the candidates already reported to the MPC unlinked, and by whom — see [Already reported](../validation/itf.md) |
+| `digest2` | with `digest2=<the executable>`, each candidate's digest2 scores, as the MPC computes them; 65 or more in `neo_score` is its threshold for the NEO Confirmation Page — see [Near-Earth or not](../validation/digest2.md) |
 | `expected` | every known object predicted on the frames, detected or not |
 | `report`, `report_kind` | the MPC report: `:blank`, `:candidates` or `:unreliable` |
 | `warnings` | services that couldn't be reached, frames that couldn't be calibrated |

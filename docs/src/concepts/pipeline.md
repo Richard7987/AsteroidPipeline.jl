@@ -42,6 +42,7 @@ test that was measured to separate it from real objects
 | pieces of one trailed object | merged into one detection |
 | detector defects (hot pixels, bad columns) | `detector_artifact_radius`: they stay put on the detector, while the sky moves with the telescope's dithers |
 | halos, ghosts and diffraction spikes of bright stars | `max_background_excess`: they sit on extra light |
+| stars subtracted badly (a misaligned frame, a change of seeing) | `max_negative`: they leave a negative lobe beside the positive one |
 
 ## 4. Link
 
@@ -94,6 +95,7 @@ All of the above, as validated on real data, is
 | `min_sharpness` | 0.3 | step 3 |
 | `detector_artifact_radius` | 2 px | step 3 |
 | `max_background_excess` | 1σ | step 3 |
+| `max_negative` | 6σ | step 3 |
 | `match_radius` | 2″ | step 4 |
 | `min_speed`, `max_speed` | 3″/h, ~210″/h | step 4 |
 | `max_residual` | 1 px | step 4 |
