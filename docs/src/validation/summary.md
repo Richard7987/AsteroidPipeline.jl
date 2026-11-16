@@ -19,6 +19,7 @@ images, or synthetic asteroids added to real images.
 | 73 asteroids near opposition, 12 nights of 2025 | MPC astrometry, one station (P07) | 323 tracklets, then 969 false ones added | the objects' designations | [Linking across nights](linking.md) |
 | 19 sets of IASC's October 2026 campaign | Pan-STARRS1 | 4 × 45 s per set | the MPC's Isolated Tracklet File | [Already reported: the ITF](itf.md) |
 | the same sets | Pan-STARRS1 | 4 × 45 s per set | the MPC's orbits of the asteroids identified | [Near-Earth or not: digest2](digest2.md) |
+| 11 sets of IASC campaigns, 100 injected asteroids each | Pan-STARRS1 | 4 × 45 s per set | 1,100 injected asteroids, V 20–23, and the catalogued ones | [Real or false](real-bogus.md) |
 | 8 asteroids, 2022 | ZTF | 21–132 exposures each | published rotation periods, chosen beforehand | [Rotation periods of eight asteroids](ztf-periods.md) |
 | 30 asteroids chosen by a rule, 2018–2024 | ZTF | 32–687 exposures each | published rotation periods; a shuffled control | [Rotation periods of thirty asteroids](period-sample.md) |
 
@@ -28,14 +29,15 @@ images, or synthetic asteroids added to real images.
 |:--|:--|:--|
 | Are the positions right? | within 0.12–0.17″ of an independent reduction | Pan-STARRS1, 4 frames |
 | Are catalogued asteroids found? | 17 of the 30 predicted on the frames; of the 13 missed, 5 are in the one damaged set, 7 are fainter than V≈21, and one crosses a cell gap and a star; with the frames' astrometry fitted together, 28 identified on 20 sets (24 before) | 10, then 20 Pan-STARRS1 sets |
-| How faint? | ~82% found to V≈21.5, 21% at 22–22.5 frame by frame; with stacking, 101 of 320 injected at V 21–24 instead of 82; on 11 campaign sets, half found to V 21.7 frame by frame and V 21.8 with stacking, 16% at 22–22.5 | 180 + 320 + 1,100 injected asteroids |
-| How many false candidates? | 107 tracklets to look at across the 9 good sets (5,548 for 6 at first); 91 not identified across 20 sets (150 before the frames were fitted together) | Pan-STARRS1 |
+| How faint? | ~82% found to V≈21.5, 21% at 22–22.5 frame by frame; with stacking, 94 of 320 injected at V 21–24 instead of 77; on 11 campaign sets, half found to V 21.7 frame by frame and V 21.8 with stacking, 16% at 22–22.5 | 180 + 320 + 1,100 injected asteroids |
+| How many false candidates? | 31 tracklets to look at across the 9 good sets (5,548 for 6 at first, 98 before the dipole test); 12 not identified across 20 sets (150 before the frames were fitted together, 79 before the dipole test) | Pan-STARRS1 |
 | Are damaged sets recognised? | the one damaged set flagged; none of the other nine | Pan-STARRS1 |
 | Variable stars? | all 3 confirmed variables found; 0.6–2% of constant stars flagged | ZTF |
 | Orbits? | semi-major axis within a median 4.8% from 3 nights, 0.03% from 30 days; 39 of 40 predictions 30 days ahead within 2σ | MPC astrometry |
 | Tracklets linked across nights? | every tracklet of the 47 objects seen on 3 nights or more, none wrong, with or without 969 false tracklets; on 2 nights, 168 wrong among false tracklets | MPC astrometry |
 | Were the candidates reported already? | 2 of the 5 unidentified on 19 campaign sets, by Pan-STARRS itself in the same exposures, 0.10–0.21″ from ours | Pan-STARRS1, the MPC's ITF |
 | Near-Earth by digest2? | 25 of 26 catalogued main-belt and Mars-crossing asteroids below 65, the NEO Confirmation Page's threshold; one Mars-crosser at 98 | Pan-STARRS1, 18 campaign sets |
+| False tracklets? | 89 tracklets neither injected nor catalogued on 11 sets, 19 with the dipole test, for 5 of 516 injected asteroids lost; a classifier trained on the tracklets did no better than the filters | Pan-STARRS1, 11 campaign sets |
 | Rotation periods? | 6.92035 ± 0.00008 h for a published 6.920509 h, doubling the fit, on one asteroid; on eight chosen beforehand, two of the six measured within 1%, four not; on thirty chosen by a rule, the period or its half within 1% for 13 of 29, against 3 of 29 with the magnitudes shuffled | ZTF |
 
 ![Tracklets a person has to look at, by configuration](../assets/tracklets-to-vet.png)

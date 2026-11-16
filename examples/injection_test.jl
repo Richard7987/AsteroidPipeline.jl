@@ -24,12 +24,13 @@ const DATA_DIR = joinpath(@__DIR__, "..", "data", "real", "iasc")
 const OUT_DIR = joinpath(@__DIR__, "..", "data", "real", "iasc_injected")
 const PS1 = 0.2563                                   # arcsec/pixel
 const ARCSEC_PER_HOUR = 24 / PS1                     # -> pixels/day, run_pipeline's unit
+const MAX_NEGATIVE = parse(Float64, get(ENV, "MAX_NEGATIVE", "6.0"))   # Inf: without the dipole test
 
 iasc_config(; max_speed_arcsec_h=210.0) = (
     threshold=6.0, match_radius=2.0 / PS1, max_speed=max_speed_arcsec_h * ARCSEC_PER_HOUR,
     mask_fill_values=true, refine_astrometry=true, difference_stack=true,
     min_sharpness=0.3, min_speed=3.0 * ARCSEC_PER_HOUR, max_flux_ratio=2.5, max_residual=1.0, min_frames=3,
-    max_background_excess=1.0, detector_artifact_radius=2.0)
+    max_background_excess=1.0, detector_artifact_radius=2.0, max_negative=MAX_NEGATIVE)
 
 function sweep(paths, label; n, mag_range, speed_range, max_speed_arcsec_h, seed, batches)
     results = []

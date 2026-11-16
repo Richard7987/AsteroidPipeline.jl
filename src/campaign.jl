@@ -11,8 +11,9 @@ pixel scale (arcsec/pixel): the configuration validated against every local
 IASC set (see the IASC validation page of the docs), with its tolerances kept
 in arcseconds and converted to this scale's pixels — a 2" linking radius,
 speeds of 3"/h to ~210"/h. Detection on each frame minus the sequence's
-median at 6σ, fill-value gaps masked, single-pixel spikes, hot pixels and
-bright-star light dropped, each frame's WCS refit to Gaia DR3, tracklets held
+median at 6σ, fill-value gaps masked, single-pixel spikes, hot pixels,
+bright-star light and badly subtracted stars (a negative as deep as the
+detection threshold beside the detection) dropped, each frame's WCS refit to Gaia DR3, tracklets held
 to straight-line, constant-brightness tests. A tracklet needs half of the
 sequence's `n_frames`, and at least 3 (3 for a 4-frame IASC set): in a long
 sequence a real object is in most frames, while a few frames' noise can
@@ -22,7 +23,7 @@ pipeline_config(pixel_scale_arcsec::Real; n_frames::Integer=4) = (
     threshold=6.0, match_radius=2.0 / pixel_scale_arcsec, max_speed=5050.0 / pixel_scale_arcsec,
     mask_fill_values=true, refine_astrometry=true, difference_stack=true, min_sharpness=0.3,
     min_speed=3.0 * 24 / pixel_scale_arcsec, max_flux_ratio=2.5, max_residual=1.0, min_frames=max(3, cld(n_frames, 2)),
-    max_background_excess=1.0, detector_artifact_radius=2.0)
+    max_background_excess=1.0, detector_artifact_radius=2.0, max_negative=6.0)
 
 """
     IASC_PS1_CONFIG
@@ -690,7 +691,8 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
         found = run_pipeline(cleaned[used]; cfg..., reference_stars=stars)
         if stack
             progress(:stack, 0.6)
-            extra = _stacked_tracklets(cleaned[used], wcs[used], epochs[used], found, cfg.match_radius)
+            extra = _stacked_tracklets(cleaned[used], wcs[used], epochs[used], found, cfg.match_radius,
+                                       get(cfg, :max_negative, Inf))
             stacked = Set(extra.id)
             found = vcat(found, extra)
         end
@@ -777,10 +779,10 @@ end
 
 # stack_search's tracklets that the frame-by-frame search didn't find: none
 # with a point within `radius` pixels of one of `found`'s in the same frame.
-function _stacked_tracklets(paths, wcss, epochs, found, radius)
+function _stacked_tracklets(paths, wcss, epochs, found, radius, max_negative)
     images = [FITS(f -> permutedims(Float64.(read(f[1]))), p, "r") for p in paths]
     masks = [fill_value_mask(img) for img in images]
-    new = stack_search(images, wcss, epochs; masks).tracklets
+    new = stack_search(images, wcss, epochs; masks, max_negative).tracklets
     rows = collect(found)
     seen(r) = any(f -> f.frame == r.frame && hypot(f.x - r.x, f.y - r.y) <= radius, rows)
     ids = [id for id in unique(new.id) if !any(seen, filter(r -> r.id == id, collect(new)))]

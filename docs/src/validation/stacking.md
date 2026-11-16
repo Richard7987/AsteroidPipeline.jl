@@ -5,9 +5,9 @@
 [`stack_search`](@ref) adds each frame's light along trial motions, to find
 moving objects too faint to be detected in any one frame. On four
 Pan-STARRS1 fields with 80 injected asteroids each, it raised the recovered
-ones from 82 to 101, all of the 19 added between V 21.4 and 23.0, with no
+ones from 77 to 94, all of the 17 added between V 21.6 and 23.0, with no
 false candidate among them. On the 13 local sets without injections it added
-two catalogued asteroids the frame-by-frame search had missed and four
+two catalogued asteroids the frame-by-frame search had missed and three
 candidates, of which two look like real faint objects and one is a diffuse
 moving patch it can't tell from one. On a field whose noise is far from
 Gaussian, it added nothing.
@@ -51,12 +51,20 @@ Four sets, 80 asteroids injected into each (V 21–24, 5–100″/h, seeds
 |:--|:--|:--|:--|:--|:--|
 | XY54_p10 | 20 | 26 | 22.1–23.0 | 0 | 0.13″ / 0.36″ |
 | XY72_p01 | 22 | 27 | 21.6–22.3 | 0 | 0.31″ / 0.98″ |
-| XY45_p01 | 14 | 22 | 21.4–22.7 | 0 | 0.14″ / 0.41″ |
-| XY26_p01 | 26 | 26 | — | 0 | — |
-| **Total** | **82** | **101** | | **0** | |
+| XY45_p01 | 10 | 16 | 21.9–22.3 | 0 | 0.13″ / 0.29″ |
+| XY26_p01 | 25 | 25 | — | 0 | — |
+| **Total** | **77** | **94** | | **0** | |
 
 One more candidate on the XY45_p01 set is not injected: the one found on the
 same field without injections, below.
+
+These are from a second run, with the dipole test
+([Real or false](real-bogus.md)) in both searches. The first, with an earlier
+version, gave 82 and 101: 14 and 22 on XY45_p01, 26 and 26 on XY26_p01. Run
+again without the dipole test, those two fields gave the same 10 and 16, 25
+and 25 as with it: the difference is from changes made in between, and which
+was not looked into. On XY26_p01 the test took the tracklets found from 38 to
+27, none of them an injected asteroid.
 
 The same fields without injections, and XY42_p11, the set with the most
 detector defects:
@@ -74,10 +82,13 @@ Every local set (IASC, Pan-STARRS1), before and after:
 | Set | Known | Unknown | Added by stacking |
 |:--|:--|:--|:--|
 | XY15_p01 | 0 → 2 | 0 → 1 | the 2 known, and a diffuse patch at 5″/h, V 20.3 |
-| XY25_p10 | 4 → 4 | 48 → 49 | 1: V 23.3, 41″/h, barely visible |
+| XY25_p10 | 4 → 4 | 4 → 4 | 0 |
 | XY45_p01 | 2 → 2 | 0 → 1 | 1: V 21.8, 33″/h, a faint point in each frame |
 | XY45_p10 | 2 → 2 | 0 → 1 | 1: V 21.7, 34″/h, a faint point in each frame |
 | the other 9 | unchanged | unchanged | 0 |
+
+Before the dipole test, XY25_p10 had 48 unknown tracklets and stacking added
+one more, at V 23.3 and barely visible; with it, 4 and none.
 
 No catalogued asteroid was lost, and the damaged set is still flagged.
 Before the round-light test, three diffraction spikes on XY72_p11 and
@@ -89,7 +100,7 @@ with the catalogue services' own variation in it.
 ## 3. Discussion
 
 **Where it gains.** On fields with Gaussian noise: the asteroids it adds are
-at V 21.4–23.0, around and past the sets' own limits (V 22.4–23.0), where the
+at V 21.6–23.0, around and past the sets' own limits (V 22.4–23.0), where the
 frame-by-frame search finds few.
 
 **What it still lets through.** The diffuse patch on XY15_p01 moves with the

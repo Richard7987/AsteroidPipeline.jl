@@ -4,9 +4,9 @@
 
 On ten real Pan-STARRS1 image sets, the pipeline's positions agree with an
 independent reduction to 0.12–0.17″; it recovers 17 of the 30 catalogued
-asteroids predicted on the frames (every miss explained) and an uncatalogued
-one confirmed by hand, finds 82% of injected asteroids down to V≈21.5, and
-leaves 107 tracklets to check across the nine good sets. In a
+asteroids predicted on the frames (every miss explained; 19 since) and an
+uncatalogued one confirmed by hand, finds 82% of injected asteroids down to
+V≈21.5, and leaves 31 tracklets to check across the nine good sets. In a
 blind test on four sets, it missed no real object, and each of its false
 candidates led to a filter that now removes that kind.
 
@@ -85,6 +85,13 @@ differed by 0.1–0.9 mag, at signal-to-noise 4–8 per frame.
 | difference images, refitted astrometry | 6 | 157 | 6 of 6 |
 | + artifact filters | 10 | 125 | 14 catalogued + 1 uncatalogued |
 | + line test scaled to the astrometry ([`pipeline_config`](@ref)) | 9 good + 1 damaged | 107 + 84 | 17 catalogued + 1 uncatalogued |
+| the same, with the changes since | 9 good + 1 damaged | 98 + 36 | 19 catalogued + 1 uncatalogued |
+| + dipole test ([Real or false](real-bogus.md)) | 9 good + 1 damaged | 31 + 22 | 19 catalogued + 1 uncatalogued |
+
+The last two rows are a later run of `examples/iasc_demo.jl`, without and
+with the dipole test: the two more catalogued asteroids are 4311 T-1 and
+2019 UA185, both below; the test removed 67 tracklets on the three crowded
+fields (`XY25_p10`, `XY26_p01`, `XY42_p11`) and none elsewhere.
 
 The six objects of the first two rows are the detectable ones in those sets:
 2009 SG135, 2015 XJ232, 2019 PK5, 2019 NB9 (a Jupiter Trojan), 2018 LT and
@@ -153,12 +160,19 @@ tracklet is identified as it:
 |:--|--:|--:|--:|
 | before (0.2.2) | 176 | 150 | 24 |
 | fitted together, flux test per point | 119 | 91 | 28 |
+| the same, with the changes since, no stacking | 107 | 79 | 28 |
+| + dipole test | 40 | 12 | 28 |
+
+The last two rows are a later run, the frame-by-frame search alone: the 67
+tracklets the dipole test removed are all on the three crowded fields, and
+none is an identified asteroid.
 
 Found now and not before: 4311 T-1, 2013 AK16, 2008 SV214, 2007 KS7 and
 2026 SE8. Lost: 2020 HW140 (V 21.9), detected in three frames at 4–6σ
 before and in two now — its fourth position borders a masked cell gap. The
 injection test below, repeated, recovers more: 113 of 180 main-belt objects
-(from 108) and 27 of 80 fast ones (from 22).
+(from 108) and 27 of 80 fast ones (from 22). With the dipole test it recovers
+the same 113 and 27, bin by bin.
 
 ### Completeness
 

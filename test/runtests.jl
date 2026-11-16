@@ -252,6 +252,12 @@ end
             @test hypot(t.x[k] - faint[k][1] - dithers[k][1], t.y[k] - faint[k][2] - dithers[k][2]) < 1.5
         end
 
+        # a deep negative beside it in one frame: a star subtracted badly, not a mover
+        @test length(unique(stack_search(images, wcss, epochs; max_negative=6.0).tracklets.id)) == 1
+        dipole = copy.(images)
+        dipole[2][144, 85] -= 40.0
+        @test isempty(stack_search(dipole, wcss, epochs; max_negative=6.0).tracklets)
+
         # noise alone: nothing
         quiet = [100.0 .+ randn(rng, ny, nx) for _ in 1:4]
         @test isempty(stack_search(quiet, wcss, epochs).tracklets)
@@ -1609,6 +1615,14 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         d = det([30.0, 85.0], [30.0, 85.0])               # clean sky; inside the halo
         @test [x for x in P._drop_on_bright_background(d, img, nothing, 1.0).xcen] == [30.0]
         @test length(P._drop_on_bright_background(d, img, nothing, Inf)) == 2
+
+        diff = randn(120, 120)
+        diff[32, 33] = -12.0                              # the negative lobe of a badly subtracted star
+        diff[20, 85] = -12.0                              # too far from either detection
+        gap = falses(120, 120)
+        @test [x for x in P._drop_dipoles(d, diff, gap, 8.0).xcen] == [85.0]
+        gap[32, 33] = true
+        @test length(P._drop_dipoles(d, diff, gap, 8.0)) == 2
 
         @test P._check_frame_quality("ok.fits", 900, 170) < 30
         @test (@test_logs (:warn,) P._check_frame_quality("bad.fits", 160_000, 170)) > 30
