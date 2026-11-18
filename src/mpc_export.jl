@@ -126,14 +126,16 @@ per tracklet) — this is the granularity ADES observation records use;
 the Minor Planet Center correlates same-`trkSub` rows into a tracklet on
 its own end. `station` is the observer's MPC-assigned station/observatory
 code (3 characters, e.g. ZTF's is `"I41"`) and must be supplied — there
-is no way to derive it from pixel data. `astCat`/`photCat`/`band` are
-the astrometric reference catalog, photometric reference catalog, and
-photometric band used, respectively; all `nothing` (omitted from the
-output) by default, since this pipeline does not itself calibrate a
-photometric zeropoint or track which catalog `load_wcs`'s astrometric
-solution was fit against — real gaps, not filled in with a guessed
-value. A submitted ADES file without magnitudes is valid; MPC accepts
-astrometry-only submissions.
+is no way to derive it from pixel data.
+
+With a `pos_err` column (a position's 1σ per axis, arcsec, as
+[`analyze_set`](@ref) gives) each row gets `rmsRA` and `rmsDec`; with `mag`,
+`mag`, and with `mag_err`, `rmsMag`. A `NaN` leaves that row's field empty.
+`astCat`/`photCat`/`band` are the astrometric reference catalog, photometric
+reference catalog and photometric band; `band` defaults to `"G"` when there are
+magnitudes, the others are omitted unless given. [`analyze_set`](@ref) fits
+both astrometry and zero points to Gaia DR3, ADES code `"Gaia3"`: pass
+`astCat="Gaia3", photCat="Gaia3"` for its candidates.
 
 Returns the PSV content as a `String`; write it to a `.psv` file
 yourself (e.g. `write("submission.psv", ades_psv(candidates, "I41"))`).
@@ -148,13 +150,24 @@ function ades_psv(candidates, station::AbstractString; mode::AbstractString="CCD
                    band::Union{Nothing,AbstractString}=nothing, designations=nothing)
     length(station) == 3 || throw(ArgumentError("station must be a 3-character MPC observatory code"))
 
+    rows = collect(candidates)
+    has(c) = !isempty(rows) && hasproperty(first(rows), c)
+    with_rms = has(:pos_err)
+    with_mag = has(:mag)
+    with_rms_mag = with_mag && has(:mag_err)
+    with_mag && band === nothing && (band = "G")
+    field(v, fmt) = isfinite(v) ? Printf.format(fmt, v) : ""
+
     columns = ["trkSub", "mode", "stn", "obsTime", "ra", "dec"]
+    with_rms && append!(columns, ["rmsRA", "rmsDec"])
     astCat !== nothing && push!(columns, "astCat")
+    with_mag && push!(columns, "mag")
+    with_rms_mag && push!(columns, "rmsMag")
     band !== nothing && push!(columns, "band")
     photCat !== nothing && push!(columns, "photCat")
 
     lines = [join(columns, "|")]
-    for row in candidates
+    for row in rows
         trksub = designations === nothing ? trksub_prefix * uppercase(string(row.id; base=36)) :
                  String(designations[row.id])
         occursin(r"^[A-Za-z0-9]+$", trksub) || throw(ArgumentError(
@@ -164,7 +177,10 @@ function ades_psv(candidates, station::AbstractString; mode::AbstractString="CCD
 
         fields = [trksub, mode, station, julian_date_to_iso8601(row.epoch),
                   @sprintf("%.7f", row.ra), @sprintf("%.7f", row.dec)]
+        with_rms && append!(fields, [field(row.pos_err, Printf.Format("%.3f")), field(row.pos_err, Printf.Format("%.3f"))])
         astCat !== nothing && push!(fields, astCat)
+        with_mag && push!(fields, field(row.mag, Printf.Format("%.2f")))
+        with_rms_mag && push!(fields, field(row.mag_err, Printf.Format("%.2f")))
         band !== nothing && push!(fields, band)
         photCat !== nothing && push!(fields, photCat)
         push!(lines, join(fields, "|"))

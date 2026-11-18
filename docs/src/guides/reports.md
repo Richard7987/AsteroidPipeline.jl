@@ -65,11 +65,15 @@ Known objects are reported by their packed designation:
 ## ADES
 
 ```julia
-ades_psv(candidates, "F51")
+ades_psv(result.candidates, "F51"; astCat="Gaia3", photCat="Gaia3")
 ```
 
 gives a pipe-separated table, one row per observation, ready to write to a
-`.psv` file; rows of one tracklet share its `trkSub`.
+`.psv` file; rows of one tracklet share its `trkSub`. With [`analyze_set`](@ref)'s
+candidates it carries each point's uncertainties, `rmsRA`, `rmsDec` and
+`rmsMag` ([Validation: uncertainties](../validation/uncertainties.md)), and
+its magnitude in `band` G; `astCat` and `photCat` name the catalogue the
+astrometry and photometry are on, Gaia DR3 for [`analyze_set`](@ref).
 
 ## Check a report before submitting it
 

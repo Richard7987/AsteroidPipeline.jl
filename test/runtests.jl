@@ -1510,6 +1510,11 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                 rows = filter(c -> c.id == r.tracklet, collect(candidates))
                 mags = candidate_magnitudes(injected, Table(rows); reference_stars=catalog)
                 @test median(filter(isfinite, mags)) ≈ r.mag atol=0.15
+                m = AsteroidPipeline._measure_candidates(injected, Table(rows); reference_stars=catalog)
+                ok = isfinite.(m.mags)
+                @test all(isfinite, m.mag_errs[ok]) && all(m.mag_errs[ok] .> 0)
+                # bright: well under a pixel (0.257″) without the astrometric fit's share
+                @test all(0 .< m.pos_errs[ok] .< 0.1)
             end
             # a run that finds nothing recovers nothing
             @test !any(injection_recovery(candidates[candidates.id .== -1], truth).recovered)
@@ -2505,6 +2510,13 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         # trkSub length limit: a prefix long enough to push a real id
         # over 8 characters must error rather than silently truncate
         @test_throws ArgumentError ades_psv(candidates, "I41"; trksub_prefix="TOOLONGPREFIX")
+
+        # uncertainties and magnitudes, from analyze_set's columns; NaN left empty
+        measured = Table(candidates; mag=[20.123, NaN, 21.3], mag_err=[0.051, NaN, 0.2], pos_err=[0.1234, NaN, 0.3])
+        lines = split(strip(ades_psv(measured, "F51"; astCat="Gaia3", photCat="Gaia3")), "\n")
+         lines[1] == "trkSub|mode|stn|obsTime|ra|dec|rmsRA|rmsDec|astCat|mag|rmsMag|band|photCat"
+         split(lines[2], "|")[7:end] == ["0.123", "0.123", "Gaia3", "20.12", "0.05", "G", "Gaia3"]
+         split(lines[3], "|")[7:end] == ["", "", "Gaia3", "", "", "G", "Gaia3"]
     end
 
     @testset "mpc80_report" begin

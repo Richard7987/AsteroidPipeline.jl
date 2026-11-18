@@ -20,6 +20,7 @@ images, or synthetic asteroids added to real images.
 | 19 sets of IASC's October 2026 campaign | Pan-STARRS1 | 4 × 45 s per set | the MPC's Isolated Tracklet File | [Already reported: the ITF](itf.md) |
 | the same sets | Pan-STARRS1 | 4 × 45 s per set | the MPC's orbits of the asteroids identified | [Near-Earth or not: digest2](digest2.md) |
 | 11 sets of IASC campaigns, 100 injected asteroids each | Pan-STARRS1 | 4 × 45 s per set | 1,100 injected asteroids, V 20–23, and the catalogued ones | [Real or false](real-bogus.md) |
+| 11 sets of IASC campaigns, as they are and with 60 injected asteroids each | Pan-STARRS1 | 4 × 45 s per set | JPL's ephemerides of 25 catalogued asteroids; 660 injected asteroids | [Uncertainties](uncertainties.md) |
 | 8 asteroids, 2022 | ZTF | 21–132 exposures each | published rotation periods, chosen beforehand | [Rotation periods of eight asteroids](ztf-periods.md) |
 | 30 asteroids chosen by a rule, 2018–2024 | ZTF | 32–687 exposures each | published rotation periods; a shuffled control | [Rotation periods of thirty asteroids](period-sample.md) |
 
@@ -38,6 +39,7 @@ images, or synthetic asteroids added to real images.
 | Were the candidates reported already? | 2 of the 5 unidentified on 19 campaign sets, by Pan-STARRS itself in the same exposures, 0.10–0.21″ from ours | Pan-STARRS1, the MPC's ITF |
 | Near-Earth by digest2? | 25 of 26 catalogued main-belt and Mars-crossing asteroids below 65, the NEO Confirmation Page's threshold; one Mars-crosser at 98 | Pan-STARRS1, 18 campaign sets |
 | False tracklets? | 89 tracklets neither injected nor catalogued on 11 sets, 19 with the dipole test, for 5 of 516 injected asteroids lost; a classifier trained on the tracklets did no better than the filters | Pan-STARRS1, 11 campaign sets |
+| Are the uncertainties right? | positions: for 12 numbered asteroids, errors over uncertainties with deviation 1.19 (robustly 1.01), 91% within 2, no offset (−0.007″, −0.019″); 1.5 times too small on injected asteroids; magnitudes about right (robustly 1.2) | Pan-STARRS1, 11 campaign sets |
 | Rotation periods? | 6.92035 ± 0.00008 h for a published 6.920509 h, doubling the fit, on one asteroid; on eight chosen beforehand, two of the six measured within 1%, four not; on thirty chosen by a rule, the period or its half within 1% for 13 of 29, against 3 of 29 with the magnitudes shuffled | ZTF |
 
 ![Tracklets a person has to look at, by configuration](../assets/tracklets-to-vet.png)
