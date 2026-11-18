@@ -607,8 +607,11 @@ replaces the Gaia DR3 query for the astrometry and photometry: a catalogue of
 one's own, or work without the network. Returns a named tuple: `name`, `paths` (the original
 frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 `frames_used`, `dropped`, `reliable`, `candidates` (an
-[`astrometric_calibrate`](@ref) table with `frame` indexing `paths`, and a
-`mag` column), `limiting_mag` (the magnitude of a source 5σ above the frames'
+[`astrometric_calibrate`](@ref) table with `frame` indexing `paths`, and
+`mag`, its 1σ `mag_err`, and `pos_err`, a position's 1σ per axis in arcsec:
+the Cramér–Rao bound for the frame's point spread and noise with the error of
+its astrometric fit, which [`ades_psv`](@ref) writes as `rmsRA` and `rmsDec`),
+`limiting_mag` (the magnitude of a source 5σ above the frames'
 sky noise in an aperture of their FWHM, `NaN` with no candidates: see
 [`below_limit`](@ref); when only 3 frames are searched, candidates fainter
 than it or with no magnitude are left out, with a warning), `known`
@@ -681,7 +684,7 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     _warn_dropped_frames!(warnings, dropped, used)
 
     candidates = Table(id=Int[], frame=Int[], x=Int[], y=Int[], ra=Float64[], dec=Float64[], epoch=Float64[],
-                       mag=Float64[])
+                       mag=Float64[], mag_err=Float64[], pos_err=Float64[])
     known = Dict{Int,String}()
     stacked = Set{Int}()
     limiting_mag = NaN
@@ -697,11 +700,14 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
             found = vcat(found, extra)
         end
         if !isempty(found)
-            measured = _measure_candidates(cleaned[used], found; reference_stars=stars, wcs=wcs[used])
+            # per axis, the scatter of a star about the fit; unknown where only an offset was fitted
+            fit_err = [r.refined ? r.rms_arcsec / sqrt(2) : NaN for r in refined[used]]
+            measured = _measure_candidates(cleaned[used], found; reference_stars=stars, wcs=wcs[used], wcs_err=fit_err)
             mags = measured.mags
             limiting_mag = measured.limit
             candidates = Table(id=collect(found.id), frame=used[found.frame], x=collect(found.x), y=collect(found.y),
-                               ra=collect(found.ra), dec=collect(found.dec), epoch=collect(found.epoch), mag=mags)
+                               ra=collect(found.ra), dec=collect(found.dec), epoch=collect(found.epoch), mag=mags,
+                               mag_err=measured.mag_errs, pos_err=measured.pos_errs)
             length(used) == 3 && (candidates = _without_faint(candidates, limiting_mag, warnings))
             progress(:identify, 0.75)
             known = _identify_tracklets(candidates, mpcorb, observatory, min(3, length(used)), warnings)

@@ -113,22 +113,36 @@ fails where a header is further off than [`refine_wcs`](@ref) searches:
 Each frame gets its own zero point, so a frame taken through thin cloud
 doesn't make an object look fainter. `examples/iasc_demo.jl` compares the
 result with Astrometrica's.
+
+Each row's uncertainties come with the magnitudes from the internal
+`_measure_candidates`, which [`analyze_set`](@ref) uses: see its `mag_err` and
+`pos_err`.
 """
 candidate_magnitudes(fits_paths::AbstractVector{<:AbstractString}, candidates; kw...) =
     _measure_candidates(fits_paths, candidates; kw...).mags
 
-# The candidates' magnitudes and the limit of the frames they are measured on
+# The candidates' magnitudes, their 1σ uncertainties and the limit of the frames
+# they are measured on. A magnitude's uncertainty is its aperture's noise (sky
+# and the source's own photons, through the header's GAIN, else 1) with the
+# zero point's (its stars' scatter over their square root). A position's, per
+# axis, is the Cramér–Rao bound for a Gaussian of the frame's FWHM on that
+# noise, combined with the frame's astrometric fit (`wcs_err`, arcsec per axis, one
+# per frame): the scatter of its stars about the fit, which an affine fit leaves
+# the field's distortion in, so a target's position carries it as theirs do.
 function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothing,AbstractString}=nothing,
-                             reference_stars=nothing, aperture_radius::Real=5.0, wcs=nothing)
+                             reference_stars=nothing, aperture_radius::Real=5.0, wcs=nothing, wcs_err=nothing)
     rows = collect(candidates)
     mags = fill(NaN, length(rows))
+    mag_errs = fill(NaN, length(rows))
+    pos_errs = fill(NaN, length(rows))
     limits = Float64[]
     for (k, path) in enumerate(fits_paths)
         idx = [i for (i, r) in enumerate(rows) if r.frame == k]
         isempty(idx) && continue
-        image, header, epoch = FITS(path, "r") do f
-            permutedims(Float64.(read(f[1]))), read_header(f[1], String),
-            frame_epoch(read_header(f[1]); timestamp_key)
+        image, header, epoch, gain = FITS(path, "r") do f
+            hdr = read_header(f[1])
+            permutedims(Float64.(read(f[1]))), read_header(f[1], String), frame_epoch(hdr; timestamp_key),
+            haskey(hdr, "GAIN") ? Float64(hdr["GAIN"]) : 1.0
         end
         mask = fill_value_mask(image)
         frame_wcs = wcs === nothing ? load_wcs(header) : wcs[k]
@@ -140,15 +154,26 @@ function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothin
         end
         zp = photometric_zeropoint(image, frame_wcs, reference_stars; mask, aperture_radius)
         isnan(zp.zeropoint) && continue
-        push!(limits, _limiting_magnitude(image, mask, zp.zeropoint, _source_radius(image, mask, aperture_radius)))
+        fwhm = _source_radius(image, mask, aperture_radius)
+        push!(limits, _limiting_magnitude(image, mask, zp.zeropoint, fwhm))
+        sky = _sky_sigma(image, mask)
+        σpsf = fwhm / (2 * sqrt(2 * log(2)))
+        scale = _pixel_scale_arcsec(frame_wcs, size(image))
+        zp_err = zp.scatter / sqrt(zp.n_stars)
+        fit_err = wcs_err === nothing ? 0.0 : wcs_err[k]
         for i in idx
             x, y = world_to_pix(frame_wcs, Float64[rows[i].ra, rows[i].dec])
             flux = aperture_flux(image, x, y; aperture_radius, mask)
-            flux > 0 && (mags[i] = zp.zeropoint - 2.5 * log10(flux))
+            flux > 0 || continue
+            mags[i] = zp.zeropoint - 2.5 * log10(flux)
+            snr = flux / sqrt(pi * aperture_radius^2 * sky^2 + flux / gain)
+            mag_errs[i] = hypot(2.5 / log(10) / snr, zp_err)
+            centroid = sqrt(σpsf^2 / (flux * gain) + 8pi * σpsf^4 * sky^2 / flux^2)
+            pos_errs[i] = hypot(centroid * scale, fit_err)
         end
     end
     finite = filter(isfinite, limits)
-    return (mags=mags, limit=isempty(finite) ? NaN : median(finite))
+    return (mags=mags, mag_errs=mag_errs, pos_errs=pos_errs, limit=isempty(finite) ? NaN : median(finite))
 end
 
 # An aperture of one FWHM holds most of a point source's light and little sky,
@@ -161,12 +186,17 @@ function _source_radius(image, mask, fallback)
     end
 end
 
+# The sky's noise per pixel: the robust spread of the unmasked pixels (NaN if none)
+function _sky_sigma(image, mask)
+    sky = image[.!mask]
+    isempty(sky) && return NaN
+    return 1.4826 * median(abs.(sky .- median(sky)))
+end
+
 # The magnitude of a source 5σ above the sky's noise in an aperture of
 # `aperture_radius`: what this frame can show, from its own noise and zero point.
 function _limiting_magnitude(image, mask, zeropoint, aperture_radius)
-    sky = image[.!mask]
-    isempty(sky) && return NaN
-    sigma = 1.4826 * median(abs.(sky .- median(sky)))
+    sigma = _sky_sigma(image, mask)
     sigma > 0 || return NaN
     return zeropoint - 2.5 * log10(5 * sigma * sqrt(pi) * aperture_radius)
 end
