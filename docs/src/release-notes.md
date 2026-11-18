@@ -5,6 +5,16 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Added**
+
+- Uncertainties: [`analyze_set`](@ref)'s `candidates` gain `pos_err` (arcsec per
+  axis: the centroid's Cramér–Rao bound with the scatter of the frame's Gaia
+  stars about its astrometric fit) and `mag_err` (the aperture's noise with the
+  zero point's), and [`ades_psv`](@ref) writes them as `rmsRA`, `rmsDec` and
+  `rmsMag`, with `mag` and `band`. [Validation: uncertainties](validation/uncertainties.md):
+  against JPL's ephemerides of 12 numbered asteroids on 11 Pan-STARRS1 sets,
+  errors over uncertainties with deviation 1.19, 91% within 2, no offset.
+
 ## 1.6.0 — 2026-11-16
 
 **Added**
