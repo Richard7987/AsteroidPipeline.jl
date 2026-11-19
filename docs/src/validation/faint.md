@@ -4,7 +4,8 @@
 
 On 11 Pan-STARRS1 sets of IASC campaigns, with 100 synthetic asteroids
 injected into each (V 21.0–23.5), [`analyze_set`](@ref) found half of them
-down to V 21.67 frame by frame and V 21.79 with stacking. Between V 22.0 and
+down to V 21.67 frame by frame and V 21.79 with stacking (95% intervals
+V 21.49–21.85 and 21.59–21.95, resampling whole sets). Between V 22.0 and
 22.5, stacking found 34 of 214 where the frame-by-frame search found 8;
 fainter than V 22.5, they found 3 and 4 of 402. Pan-STARRS's own pipeline reaches
 about V 22 and IASC's searchers find objects 0.30 mag fainter on average
@@ -55,6 +56,7 @@ All 11 sets together, 1,100 injected:
 | 22.50–22.75 | 105 | 2 (2%) | 3 (3%) |
 | 22.75–23.50 | 297 | 1 | 1 |
 | **50% found at** | | **V 21.67** | **V 21.79** |
+| 95% interval, sets resampled | | V 21.49–21.85 | V 21.59–21.95 |
 
 Each set, with the 5σ limit [`analyze_set`](@ref) reports for it:
 

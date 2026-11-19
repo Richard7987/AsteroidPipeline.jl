@@ -46,6 +46,36 @@ images, or synthetic asteroids added to real images.
 
 ![Tracklets a person has to look at, by configuration](../assets/tracklets-to-vet.png)
 
+## How sure
+
+Most results are counts from a few dozen objects. Their 95% intervals
+(Wilson's; `examples/validation_stats.jl`):
+
+| Measured | Count | 95% interval |
+|:--|:--|:--|
+| catalogued asteroids predicted on the frames, found ([Pan-STARRS1](pan-starrs1.md)) | 17 of 30 | 39–73% |
+| synthetic asteroids V 18–21.5 found ([Pan-STARRS1](pan-starrs1.md)) | 96 of 117 | 74–88% |
+| synthetic asteroids V 21–24 found, frame by frame and with stacking ([Stacking](stacking.md)) | 77 and 94 of 320 | 20–29% and 25–35% |
+| synthetic asteroids V 22.0–22.5 found, frame by frame and with stacking ([How faint](faint.md)) | 8 and 34 of 214 | 2–7% and 12–21% |
+| half the synthetic asteroids found, frame by frame and with stacking ([How faint](faint.md)) | V 21.67 and 21.79 | V 21.49–21.85 and 21.59–21.95 (sets resampled) |
+| confirmed variable stars found ([A variable star](variable-star.md)) | 3 of 3 | 44–100% |
+| predictions 30 days ahead within 2σ ([Orbits](orbits.md)) | 39 of 40 | 87–100% |
+| objects on 3 nights or more linked whole, none wrong ([Linking](linking.md)) | 47 of 47 | 92–100% |
+| unidentified tracklets already in the ITF ([ITF](itf.md)) | 2 of 5 | 12–77% |
+| catalogued asteroids, not near-Earth, below digest2's 65 ([digest2](digest2.md)) | 25 of 26 | 81–99% |
+| synthetic asteroids still found with the dipole test ([Real or false](real-bogus.md)) | 511 of 516 | 98–100% |
+| other tracklets left by the dipole test ([Real or false](real-bogus.md)) | 19 of 89 | 14–31% |
+| points of numbered asteroids within 2 uncertainties ([Uncertainties](uncertainties.md)) | 41 of 45 | 79–96%, too narrow: 12 asteroids, not 45 independent points |
+| catalogued asteroids of the archive's frames found in raw frames reduced here ([Raw frames](calibration.md)) | 14 of 18 | 55–91% |
+| rotation periods within 1%, of those measured ([Eight asteroids](ztf-periods.md)) | 2 of 6 | 10–70% |
+| period or its half within 1%; magnitudes shuffled ([Thirty asteroids](period-sample.md)) | 13 of 29; 3 of 29 | 28–62%; 4–26% |
+
+Synthetic asteroids added to the same few fields share those fields' stars
+and seeing, so these intervals are narrower than a new field would show;
+where sets were resampled whole, they are not. Every setting was chosen on
+the same 11 Pan-STARRS1 sets; [Sets kept aside](holdout.md) measures again on
+others.
+
 ## How the tests are run
 
 - **Catalogued asteroids** count as recovered only if one tracklet follows

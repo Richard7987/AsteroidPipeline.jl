@@ -52,7 +52,31 @@ end
 pct(x) = @sprintf("%.0f", 100x)
 interval(k, n) = ((lo, hi) = wilson(k, n); "$k of $n, $(pct(k / n))% ($(pct(lo))–$(pct(hi))%)")
 
+const PUBLISHED = [
+    ("pan-starrs1", "catalogued asteroids predicted on the frames, found", 17, 30),
+    ("pan-starrs1", "synthetic asteroids V 18–21.5 found", 96, 117),
+    ("stacking", "synthetic asteroids V 21–24 found frame by frame", 77, 320),
+    ("stacking", "the same, with stacking", 94, 320),
+    ("faint", "synthetic asteroids V 22.0–22.5 found frame by frame", 8, 214),
+    ("faint", "the same, with stacking", 34, 214),
+    ("variable-star", "confirmed variable stars found", 3, 3),
+    ("orbits", "predictions 30 days ahead within 2σ", 39, 40),
+    ("linking", "objects on 3 nights or more linked whole, none wrong", 47, 47),
+    ("itf", "unidentified tracklets already in the ITF", 2, 5),
+    ("digest2", "catalogued non-NEOs below 65", 25, 26),
+    ("real-bogus", "synthetic asteroids found with the dipole test, over without", 511, 516),
+    ("real-bogus", "other tracklets left by the dipole test", 19, 89),
+    ("uncertainties", "points of numbered asteroids within 2 uncertainties", 41, 45),
+    ("calibration", "catalogued asteroids of BANZAI's frames found here", 14, 18),
+    ("ztf-periods", "periods within 1%, of those measured", 2, 6),
+    ("period-sample", "period or its half within 1%", 13, 29),
+    ("period-sample", "the same, magnitudes shuffled", 3, 29),
+]
+
 if abspath(PROGRAM_FILE) == @__FILE__
+    for (page, what, k, n) in PUBLISHED
+        @printf("%-14s %-62s %s\n", page, what, interval(k, n))
+    end
     faint = joinpath(@__DIR__, "..", "data", "real", "faint_completeness")
     sets = filter(r -> !haskey(r, :failed) && r.reliable,
                   [deserialize(joinpath(faint, f)) for f in sort(readdir(faint)) if endswith(f, ".jls")])
