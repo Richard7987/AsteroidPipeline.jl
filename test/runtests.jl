@@ -12,6 +12,7 @@ using Reproject
 using Distributed
 using Dates: Dates, DateTime, datetime2julian
 using CodecZlib
+using Printf
 
 # Loads .env (gitignored) for local runs, e.g. ASTROMETRY_API_KEY for the live
 # plate_solve test; variables already set in the environment win.
@@ -1388,6 +1389,31 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test AsteroidPipeline._task_root(wrapped) isa SkyBoTServiceError
         @test_throws ArgumentError crossmatch_catalog([c], :vsx; radius=5.0, observatory="F51")
         @test_throws ArgumentError crossmatch_catalog([c], :skybot; radius=5.0, observatory="Palomar")
+
+        # answers are kept, and answered from offline; a failed one is not kept
+        withenv("XDG_CACHE_HOME" => mktempdir()) do
+            A = AsteroidPipeline
+            asked = Ref(0)
+            A._ANSWER_RESPONSES[] = (service, key) -> (asked[] += 1; found)
+            try
+                @test only(A._skybot_matches(c, 150 / 3600)).name == "2018 LT"
+                @test asked[] == 1 && length(readdir(joinpath(answers_dir(), "skybot"))) == 1
+                Base.ScopedValues.with(A._OFFLINE => true) do
+                    @test only(A._skybot_matches(c, 150 / 3600)).name == "2018 LT"
+                    @test_throws OfflineAnswerMissing A._skybot_matches((id=1, ra=4.0, dec=-10.0, epoch=c.epoch), 0.12)
+                end
+                @test asked[] == 1
+                A._ANSWER_RESPONSES[] = (service, key) -> crashed
+                other = (id=1, ra=5.0, dec=-10.0, epoch=c.epoch)
+                @test_throws SkyBoTServiceError A._skybot_matches(other, 0.12; backoff_seconds=0)
+                Base.ScopedValues.with(A._OFFLINE => true) do
+                    @test_throws OfflineAnswerMissing A._skybot_matches(other, 0.12)
+                    @test A._is_unavailable(OfflineAnswerMissing("SkyBoT"))
+                end
+            finally
+                A._ANSWER_RESPONSES[] = nothing
+            end
+        end
     end
 
     @testset "JPL Small-Body Identification, while SkyBoT is unavailable" begin
@@ -1861,6 +1887,39 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         end
         @test count(l -> length(l) == 80 && endswith(l, "F51"), split(r.report, "\n")) == length(r.candidates)   # one 80-column line each
         @test isempty(r.dropped)
+
+        # analyzed again offline: the same known objects, from the answers kept, and nothing asked
+        withenv("XDG_CACHE_HOME" => mktempdir()) do
+            A = AsteroidPipeline
+            # SkyBoT placing "2020 AB" at the centre of every cone asked
+            function at_centre(service, key)
+                ra = parse(Float64, match(r"-ra=([^&]+)", key)[1]); dec = parse(Float64, match(r"-dec=([^&]+)", key)[1])
+                h = ra / 15; s = abs(dec)
+                hms = @sprintf("%02d %02d %07.4f", floor(h), floor(60 * (h % 1)), 3600 * (h % 1) - 60 * floor(60 * (h % 1)))
+                dms = @sprintf("%s%02d %02d %06.3f", dec < 0 ? "-" : "+", floor(s), floor(60 * (s % 1)), 3600 * (s % 1) - 60 * floor(60 * (s % 1)))
+                "# Flag: 1\n# Ticket: 1\n# Num | Name | RA(h) | DE(deg) | Class | Mv | Err(arcsec) | d(arcsec) \n" *
+                " - | 2020 AB | $hms | $dms | MB>Inner | 18.0 | 0.1 | 0.0 \n"
+            end
+            A._ANSWER_RESPONSES[] = at_centre
+            online = try
+                analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars)
+            finally
+                A._ANSWER_RESPONSES[] = (service, key) -> error("asked $service offline")
+            end
+            @test collect(values(online.known)) == ["2020 AB"]
+            again = try
+                analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars, offline=true)
+            finally
+                A._ANSWER_RESPONSES[] = nothing
+            end
+            @test again.known == online.known && isequal(again.candidates, online.candidates)
+            @test again.expected == online.expected
+            # never analyzed online: no known objects, said so, and no error
+            rm(answers_dir(); recursive=true)
+            blind = analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars, offline=true)
+            @test isempty(blind.known) && isequal(blind.candidates, online.candidates)
+            @test any(w -> occursin("OfflineAnswerMissing", w), blind.warnings)
+        end
 
         # a frame all of one value, as a failed readout writes it: left out, not fatal
         header = FITSHeader(["CTYPE1", "CTYPE2", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2",

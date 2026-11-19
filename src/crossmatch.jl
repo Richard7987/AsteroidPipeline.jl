@@ -314,8 +314,9 @@ missed a known asteroid 0.94″ from the centre in two of four ZTF frames.
 """
 function _skybot_matches(c, radius_deg::Real;
                          observatory::Union{Nothing,AbstractString}=nothing,
-                         fetch=query -> _skybot_text(HTTP.get(_SKYBOT_URL; query=query,
-                                                             read_idle_timeout=_CATALOG_IDLE_TIMEOUT)),
+                         fetch=query -> _kept_answer(() -> _skybot_text(HTTP.get(_SKYBOT_URL; query=query,
+                                                                                 read_idle_timeout=_CATALOG_IDLE_TIMEOUT)),
+                                                     "skybot", _answer_key(_SKYBOT_URL, query); keep=_skybot_answered),
                          backoff_seconds::Real=1.0)
     query = Dict(
         "-ra" => string(c.ra), "-dec" => string(c.dec), "-rd" => string(max(radius_deg, _SKYBOT_MIN_CONE)),
@@ -336,6 +337,10 @@ function _skybot_matches(c, radius_deg::Real;
     end
 end
 
+# Whether SkyBoT answered (objects, none, or no comets at that epoch), not failed
+_skybot_answered(text) = occursin(r"comet.*not available"i, text) ||
+                         (try _parse_skybot(text); true catch e; e isa SkyBoTServiceError || rethrow(); false end)
+
 # The smallest cone _skybot_matches asks for, in degrees (see its docstring).
 const _SKYBOT_MIN_CONE = 2 / 60
 
@@ -350,18 +355,20 @@ asked again for `_SKYBOT_RETRY_AFTER` seconds, so a list of candidates doesn't
 wait out its retries one by one. Throws only if both services fail.
 """
 function _known_objects_near(c, radius_deg::Real; observatory::Union{Nothing,AbstractString}=nothing)
-    if time() >= _SKYBOT_DOWN_UNTIL[]
+    if _OFFLINE[] || time() >= _SKYBOT_DOWN_UNTIL[]
         try
             return [merge(m, (source="SkyBoT",)) for m in _skybot_matches(c, radius_deg; observatory)]
         catch e
             _is_unavailable(e) || rethrow()
             # concurrent searches can fail together; one log line is enough
-            time() >= _SKYBOT_DOWN_UNTIL[] && @warn "SkyBoT unavailable; known objects from JPL" exception = e
-            _SKYBOT_DOWN_UNTIL[] = time() + _SKYBOT_RETRY_AFTER
+            if !(e isa OfflineAnswerMissing)
+                time() >= _SKYBOT_DOWN_UNTIL[] && @warn "SkyBoT unavailable; known objects from JPL" exception = e
+                _SKYBOT_DOWN_UNTIL[] = time() + _SKYBOT_RETRY_AFTER
+            end
         end
     end
-    _KNOWN_FROM_JPL[] = true
     field = _jpl_field(c, radius_deg, something(observatory, "500"))
+    _KNOWN_FROM_JPL[] = true
     hours = (c.epoch - field.epoch) * 24
     matches = NamedTuple[]
     for o in field.objects
@@ -403,7 +410,7 @@ function _jpl_field(c, radius_deg::Real, observatory::AbstractString)
             (Δra + radius_deg <= f.half_width && abs(c.dec - f.dec) + radius_deg <= f.half_width) && return f
         end
         # once it fails, the candidates waiting here fail at once rather than in turn
-        time() < _JPL_DOWN_UNTIL[] && throw(_JPL_LAST_ERROR[])
+        !_OFFLINE[] && time() < _JPL_DOWN_UNTIL[] && throw(_JPL_LAST_ERROR[])
         half_width = max(_JPL_HALF_WIDTH, 1.2 * radius_deg)
         query = Dict("mpc-code" => observatory, "obs-time" => @sprintf("%.6f", c.epoch),
                      "fov-ra-center" => _jpl_sexagesimal(c.ra / 15, "-"),
@@ -411,11 +418,13 @@ function _jpl_field(c, radius_deg::Real, observatory::AbstractString)
                      "fov-ra-hwidth" => string(half_width), "fov-dec-hwidth" => string(half_width),
                      "two-pass" => "true", "suppress-first-pass" => "true")
         body = try
-            _with_retries(_TAP_ATTEMPTS) do
-                String(HTTP.get(_JPL_SBIDENT_URL; query, read_idle_timeout=_JPL_TIMEOUT).body)
+            _kept_answer("jpl-sbident", _answer_key(_JPL_SBIDENT_URL, query)) do
+                _with_retries(_TAP_ATTEMPTS) do
+                    String(HTTP.get(_JPL_SBIDENT_URL; query, read_idle_timeout=_JPL_TIMEOUT).body)
+                end
             end
         catch e
-            _is_unavailable(e) && (_JPL_DOWN_UNTIL[] = time() + _SKYBOT_RETRY_AFTER; _JPL_LAST_ERROR[] = e)
+            _is_unavailable(e) && !(e isa OfflineAnswerMissing) && (_JPL_DOWN_UNTIL[] = time() + _SKYBOT_RETRY_AFTER; _JPL_LAST_ERROR[] = e)
             rethrow()
         end
         field = (ra=Float64(c.ra), dec=Float64(c.dec), half_width=half_width, epoch=Float64(c.epoch),
@@ -479,7 +488,7 @@ function _jpl_name(s::AbstractString)
 end
 
 # A request to an online service that failed: callers leave a warning instead.
-_is_unavailable(e) = e isa HTTP.HTTPError || e isa Base.IOError || e isa SkyBoTServiceError
+_is_unavailable(e) = e isa HTTP.HTTPError || e isa Base.IOError || e isa SkyBoTServiceError || e isa OfflineAnswerMissing
 
 # The exception at the root of a failed @sync/@async block.
 _task_root(e) = e isa CompositeException && !isempty(e.exceptions) ? _task_root(first(e.exceptions)) :

@@ -68,6 +68,23 @@ XY45_p11                 no new objects                  0      1       4
 
 and writes each set's report next to it as `<set>_MPCReport.txt`.
 
+## Without the network, and the same again
+
+Every answer of Gaia DR3, SkyBoT and JPL's Small-Body Identification service
+is kept on disk ([`gaia_cache_dir`](@ref), [`answers_dir`](@ref)). A set
+analyzed once with the network can be analyzed again without it:
+
+```julia
+orbits = read_mpcorb(default_mpcorb_path())  # the copy download_mpcorb kept, not a new download
+r = analyze_set("XY45_p01.zip"; workdir="work", observatory="F51", mpcorb=orbits, offline=true)
+```
+
+No service is asked, and the result is the one the answers kept give, even if
+a service has since changed its answers or is down. A query never answered
+before leaves a warning (known objects) or an error (Gaia DR3, which the
+astrometry needs); the NEO Confirmation Page, which lists only what is being
+observed now, is not checked.
+
 ## Lower level
 
 [`analyze_set`](@ref) is built on [`run_pipeline`](@ref), which takes FITS

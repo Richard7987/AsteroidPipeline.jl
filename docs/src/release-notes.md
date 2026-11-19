@@ -25,6 +25,12 @@ from the version picker at the top right.
   `LATITUDE` and `HEIGHT`. [Validation: raw frames](validation/calibration.md):
   on 13 Las Cumbres Observatory sets, the same astrometry, zero points and
   limiting magnitudes as the archive's own reduction.
+- Offline: the answers of SkyBoT and JPL's Small-Body Identification service
+  are kept on disk ([`answers_dir`](@ref)) as Gaia DR3's were, and
+  `analyze_set(...; offline=true)` answers from them alone, asking no service:
+  a set analyzed again gives the same result whether the services are down or
+  have changed. A query never answered throws [`OfflineAnswerMissing`](@ref)
+  (Gaia DR3) or leaves a warning (known objects).
 
 **Changed**
 

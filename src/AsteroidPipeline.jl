@@ -29,6 +29,7 @@ include("linking_multinight.jl")
 include("variables.jl")
 include("astrometry.jl")
 include("platesolve.jl")
+include("answers.jl")
 include("crossmatch.jl")
 include("astrometric_refinement.jl")
 include("calibrated_photometry.jl")
@@ -53,7 +54,7 @@ include("mpc_export.jl")
 include("digest2.jl")
 
 export detect_sources, fill_value_mask, link_candidates, load_wcs, pix_to_sky,
-       astrometric_calibrate, crossmatch_catalog, SkyBoTServiceError, run_pipeline,
+       astrometric_calibrate, crossmatch_catalog, SkyBoTServiceError, answers_dir, OfflineAnswerMissing, run_pipeline,
        build_reference, load_frame, estimate_psf, fit_moffat_psf, zogy_subtract, light_curve, moving_light_curve,
        recover_rotation_period, fourier_period, fit_orbit, orbit_ephemeris, object_geometry, reduced_magnitudes, plate_solve, solve_wcs, frame_pointing,
        search_field, find_variable_sources, gaia_cache_dir,

@@ -4,5 +4,5 @@ Cross-matching against SkyBoT (or JPL while it is down), the MPC's orbit file, V
 
 ```@autodocs
 Modules = [AsteroidPipeline]
-Pages = ["crossmatch.jl", "mpcorb.jl"]
+Pages = ["crossmatch.jl", "answers.jl", "mpcorb.jl"]
 ```

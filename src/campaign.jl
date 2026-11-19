@@ -554,7 +554,7 @@ end
 """
     analyze_set(source; workdir, observatory, mpcorb=nothing, header=(;), name=nothing,
                 extract_to=dirname(source), config=nothing, reference_stars=nothing,
-                extension=nothing, progress=(stage, fraction) -> nothing) -> NamedTuple
+                extension=nothing, offline=false, progress=(stage, fraction) -> nothing) -> NamedTuple
 
 Everything [`run_pipeline`](@ref) and the checks around it do for one image
 set — a same-field sequence of at least 3 frames — `source` being its `.zip`,
@@ -608,7 +608,12 @@ MPC code of the site that took them (`"F51"` for Pan-STARRS1).
 folder's name). `reference_stars` (a table with `ra`, `dec` and, for
 magnitudes, `gmag`, as [`gaia_reference_stars`](@ref) returns)
 replaces the Gaia DR3 query for the astrometry and photometry: a catalogue of
-one's own, or work without the network. Returns a named tuple: `name`, `paths` (the original
+one's own, or work without the network. With `offline=true` no service is asked:
+Gaia DR3, SkyBoT and JPL answer as they answered before ([`answers_dir`](@ref)),
+a query never answered throwing (Gaia) or leaving a warning (the known
+objects), and the NEO Confirmation Page is not checked; with the frames,
+`mpcorb` and `itf` as files, the same analysis then gives the same result
+whether the services are down or have changed. Returns a named tuple: `name`, `paths` (the original
 frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 `frames_used`, `dropped`, `reliable`, `candidates` (an
 [`astrometric_calibrate`](@ref) table with `frame` indexing `paths`, and
@@ -628,7 +633,10 @@ than it or with no magnitude are left out, with a warning), `known`
 `report`, `report_kind` (`:blank`, `:candidates` or `:unreliable`) and
 `warnings`.
 """
-function analyze_set(source; workdir::AbstractString, observatory::AbstractString, mpcorb=nothing, itf=nothing, digest2=nothing,
+analyze_set(source; offline::Bool=false, kwargs...) =
+    Base.ScopedValues.with(() -> _analyze_set(source; kwargs...), _OFFLINE => offline)
+
+function _analyze_set(source; workdir::AbstractString, observatory::AbstractString, mpcorb=nothing, itf=nothing, digest2=nothing,
                      header=(;), name=nothing,
                      extract_to::AbstractString=dirname(abspath(source isa AbstractString ? source : first(source))),
                      config=nothing, reference_stars=nothing, stack::Bool=true, extension=nothing,

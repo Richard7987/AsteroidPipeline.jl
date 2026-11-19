@@ -14,7 +14,8 @@ the next 15 minutes.
 Gaia DR3 doesn't change, so each answer is kept in `cache` (a directory;
 `nothing` to keep none) and the same query is answered from it after,
 without the network: a field analyzed again, or observed again, costs no
-query.
+query. Offline ([`analyze_set`](@ref)`(...; offline=true)`), a query not
+kept throws [`OfflineAnswerMissing`](@ref).
 
 Positions are propagated by proper motion from Gaia DR3's own epoch
 (J2016.0) to `epoch_jd` (a Julian Date, normally the frame's own); stars
@@ -52,6 +53,7 @@ function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
     cached = cache === nothing ? nothing : joinpath(cache, string(hash(esa); base=16) * ".csv")
     text = cached !== nothing && isfile(cached) ? read(cached, String) : nothing
     if text === nothing
+        _OFFLINE[] && throw(OfflineAnswerMissing("Gaia DR3"))
         text = _first_answer(services)
         if cached !== nothing
             mkpath(cache)
