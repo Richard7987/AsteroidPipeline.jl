@@ -60,9 +60,10 @@ end
 # Site keywords seen in real headers, and their conventions. Longitudes are
 # turned east-positive degrees.
 const _LON_KEYS = (("OBSLON", :east), ("LONG-OBS", :east), ("OBS-LONG", :east), ("SITELONG", :east),
-                   ("FPA.LONGITUDE", :west_hours))   # Pan-STARRS: west longitude, in hours
-const _LAT_KEYS = ("OBSLAT", "LAT-OBS", "OBS-LAT", "SITELAT", "FPA.LATITUDE")
-const _ELEV_KEYS = ("OBSALT", "ALT-OBS", "OBS-ELEV", "SITEELEV", "FPA.ELEVATION")
+                   ("FPA.LONGITUDE", :west_hours),   # Pan-STARRS: west longitude, in hours
+                   ("LONGITUD", :comment))           # east or west as its comment says, else not read
+const _LAT_KEYS = ("OBSLAT", "LAT-OBS", "OBS-LAT", "SITELAT", "FPA.LATITUDE", "LATITUDE")
+const _ELEV_KEYS = ("OBSALT", "ALT-OBS", "OBS-ELEV", "SITEELEV", "FPA.ELEVATION", "HEIGHT")
 
 # A number, or a sexagesimal "-116 51 36" / "-116:51:36" string, in its own unit.
 function _header_angle(v)
@@ -85,7 +86,8 @@ What a frame's header says about where it was taken: `telescope`
 (`OBSERVAT`), and the site's east longitude `lon` and latitude `lat`
 (degrees) and elevation `elev` (metres) — `nothing` for any of the three the
 header doesn't give. Reads the usual keywords (`OBSLON`/`OBSLAT`/`OBSALT` as
-ZTF writes them, `SITELONG`/`SITELAT`, `LONG-OBS`...) and Pan-STARRS's
+ZTF writes them, `SITELONG`/`SITELAT`, `LONG-OBS`..., `LONGITUD`/`LATITUDE`/`HEIGHT`
+as Las Cumbres does, `LONGITUD` only where its comment says east or west) and Pan-STARRS's
 `FPA.LONGITUDE` (west, in hours) / `FPA.LATITUDE` / `FPA.ELEVATION`.
 """
 function frame_site(h::FITSHeader)
@@ -94,6 +96,12 @@ function frame_site(h::FITSHeader)
         haskey(h, key) || continue
         v = _header_angle(h[key])
         v === nothing && continue
+        if convention === :comment
+            c = lowercase(get_comment(h, key))
+            east, west = occursin(r"\beast\b|\be\b", c), occursin(r"\bwest\b|\bw\b", c)
+            east == west && continue
+            v = west ? -v : v
+        end
         lon = convention === :west_hours ? -15v : v
         break
     end

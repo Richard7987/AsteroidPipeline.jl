@@ -40,7 +40,7 @@ function _pixel_scale_arcsec(wcs, image_size)
     return _angular_distance_arcsec(a..., b...)
 end
 
-const _FITS_EXTENSIONS = (".fits", ".fit", ".fts")
+const _FITS_EXTENSIONS = (".fits", ".fit", ".fts", ".fz")
 
 """
     extract_set(zip_path, dest_dir) -> (name, paths)
@@ -554,18 +554,22 @@ end
 """
     analyze_set(source; workdir, observatory, mpcorb=nothing, header=(;), name=nothing,
                 extract_to=dirname(source), config=nothing, reference_stars=nothing,
-                progress=(stage, fraction) -> nothing) -> NamedTuple
+                extension=nothing, progress=(stage, fraction) -> nothing) -> NamedTuple
 
 Everything [`run_pipeline`](@ref) and the checks around it do for one image
 set — a same-field sequence of at least 3 frames — `source` being its `.zip`,
-its directory of FITS frames, or a vector of FITS paths. `observatory` is the
+its directory of FITS frames, or a vector of FITS paths; a frame may be
+tile-compressed (`.fz`) or one image of a multi-extension file, `extension`
+(an HDU number or `EXTNAME`) choosing which for a mosaic camera's
+([`image_extensions`](@ref)). `observatory` is the
 MPC code of the site that took them (`"F51"` for Pan-STARRS1).
 
 1. unpack a `.zip` ([`extract_set`](@ref)) into `extract_to`, next to it by
    default, where Astrometrica can open it too; frames are taken in time
    order, whatever order they were given in;
-2. clean `BLANK` pixels ([`clean_blank_pixels`](@ref), copies under
-   `workdir`);
+2. copy every frame that is not a plain FITS image into one
+   ([`plain_frame`](@ref)) and clean `BLANK` pixels
+   ([`clean_blank_pixels`](@ref)), copies under `workdir`;
 3. refine every frame's WCS against Gaia DR3, the frames together
    ([`refine_wcs_set`](@ref)), and
    measure its quality — sources at 10σ per reference star, as
@@ -627,7 +631,7 @@ than it or with no magnitude are left out, with a warning), `known`
 function analyze_set(source; workdir::AbstractString, observatory::AbstractString, mpcorb=nothing, itf=nothing, digest2=nothing,
                      header=(;), name=nothing,
                      extract_to::AbstractString=dirname(abspath(source isa AbstractString ? source : first(source))),
-                     config=nothing, reference_stars=nothing, stack::Bool=true,
+                     config=nothing, reference_stars=nothing, stack::Bool=true, extension=nothing,
                      progress=(stage, fraction) -> nothing)
     warnings = String[]
     _KNOWN_FROM_JPL[] = false
@@ -641,11 +645,12 @@ function analyze_set(source; workdir::AbstractString, observatory::AbstractStrin
     end
     name = something(name, set_name)
     length(paths) >= 3 || throw(ArgumentError("$name: $(length(paths)) frame(s); a set needs at least 3"))
-    paths = paths[sortperm([FITS(p -> frame_epoch(read_header(p[1])), q, "r") for q in paths])]
 
     progress(:clean, 0.05)
     cleaned_dir = _cleaned_dir(workdir, name, paths)
-    cleaned = [clean_blank_pixels(p; outdir=cleaned_dir) for p in paths]
+    cleaned = [plain_frame(p; outdir=cleaned_dir, extension) for p in paths]
+    order = sortperm([FITS(f -> frame_epoch(read_header(f[1])), p, "r") for p in cleaned])
+    paths, cleaned = paths[order], cleaned[order]
 
     header_wcs = WCSTransform[]; epochs = Float64[]; image_size = (0, 0)
     images = Matrix{Float64}[]; masks = BitMatrix[]

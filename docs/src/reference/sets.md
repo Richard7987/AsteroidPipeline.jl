@@ -4,5 +4,5 @@ Whole image sets, from a `.zip`, folder or file list to an MPC report ([Analyze 
 
 ```@autodocs
 Modules = [AsteroidPipeline]
-Pages = ["campaign.jl", "known_nearby.jl", "neocp.jl", "itf.jl", "observatories.jl"]
+Pages = ["campaign.jl", "frames.jl", "reduction.jl", "known_nearby.jl", "neocp.jl", "itf.jl", "observatories.jl"]
 ```

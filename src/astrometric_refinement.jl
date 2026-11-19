@@ -182,19 +182,27 @@ can disagree by several pixels, which makes every star seem to move. The
 headers' *relative* alignment is reliable even when their absolute
 position is 30″ off, so each frame's matches are carried to every other
 frame's pixels through the headers, and each frame is fitted to all of
-them. The joint solutions are kept if the headers bear that out: fitted
-again with an offset of their own, no frame's stars may need one larger
-than 3 standard errors plus 0.25 px, and the RMS may not exceed `max_rms`
-arcseconds.
+them. The joint solutions are kept if the headers bear that out: every frame
+has 3 or more stars of its own, which fitted again with an offset of their
+own may not need one larger than 3 standard errors plus 0.25 px, and the RMS
+may not exceed `max_rms` arcseconds.
 
 Each frame is first matched as [`refine_wcs`](@ref) does (`kwargs` are
 passed on); one that fails is retried searching `wide_offset_arcsec`, as
-some headers are further off than `refine_wcs`'s default search. Then the
-stars are matched again from the fitted solution (within `rematch_arcsec`),
-up to `iterations` times while more of them match: the header's error
-isn't one offset across a whole chip, so the first match finds only part
-of the stars. If the joint fit is rejected, a frame whose own fit failed
-but with 4 or more stars agreeing on the header's offset gets that offset
+some headers are further off than `refine_wcs`'s default search, and also
+solved from its stars ([`solve_wcs`](@ref), near the header's centre and
+scale), the solution matching more stars kept: a raw frame's header may hold
+only the telescope's pointing, a minute of arc off and turned and scaled
+enough (half a degree, half a percent) that one offset matches only the
+stars near the centre. Then the stars are matched again from the fitted
+solution (within `rematch_arcsec`), up to `iterations` times while more of
+them match: the header's error isn't one offset across a whole chip, so the
+first match finds only part of the stars. A frame left with under 60% of the
+best frame's stars starts again from the best one's solution, carried over
+through the headers and searched for an offset, as raw headers' relative
+pointing can be several arcseconds off. If the joint fit is rejected, a
+frame whose own fit failed but with 4 or more stars agreeing on the
+header's offset gets that offset
 corrected (`shift_only`), which keeps it aligned with the others.
 """
 function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
@@ -228,6 +236,13 @@ function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
             wide = refine_wcs(images[k], wcss[k], stars; mask=masks[k], clip_sigma, min_matches, kwargs...,
                               max_offset=wide_px[k])
             (wide.refined || wide.n_matches > r.n_matches) && (r = wide)
+            if hasproperty(stars, :gmag)
+                n1, n2 = size(images[k])
+                ra, dec = pix_to_world(wcss[k], [(n2 + 1) / 2, (n1 + 1) / 2])
+                solved = solve_wcs(images[k], ra, dec, stars; mask=masks[k], min_matches,
+                                   scale_range=(scale[k] / 1.2, scale[k] * 1.2))
+                solved.refined && solved.n_matches > r.n_matches && (r = Base.structdiff(solved, NamedTuple{(:scale,)}))
+            end
         end
         _rematched(r, k)
     end
@@ -240,6 +255,8 @@ function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
             guess = _carried_wcs(wcss[k], wcss[best], single[best].wcs, size(images[k]))
             r = refine_wcs(images[k], guess, stars; mask=masks[k], clip_sigma, min_matches, kwargs...,
                            max_offset=rematch_px[k], min_significance=0)
+            # raw headers' relative pointing can be several arcseconds off, so an offset is searched
+            r.refined || (r = refine_wcs(images[k], guess, stars; mask=masks[k], clip_sigma, min_matches, kwargs...))
             r.refined || continue
             r = _rematched(merge(r, (offset_px=single[k].offset_px,)), k)
             r.n_matches > single[k].n_matches && (single[k] = r)
@@ -255,6 +272,8 @@ function refine_wcs_set(images::AbstractVector, wcss::AbstractVector, stars;
                 push!(pooled, (p[1], p[2], ra, dec)); push!(source, k)
             end
             length(pooled) < min_matches && return nothing
+            # a frame without stars of its own can't show whether its header agrees
+            count(==(j), source) < 3 && return nothing
             f = _fit_tan(pooled, (wcss[j].crval[1], wcss[j].crval[2]), clip_sigma)
             (f.n >= min_matches && f.rms_arcsec <= max_rms && _frames_agree(pooled, source, (wcss[j].crval[1], wcss[j].crval[2]))) ? f : nothing
         end
