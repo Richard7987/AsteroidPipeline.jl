@@ -23,6 +23,7 @@ images, or synthetic asteroids added to real images.
 | 11 sets of IASC campaigns, as they are and with 60 injected asteroids each | Pan-STARRS1 | 4 × 45 s per set | JPL's ephemerides of 25 catalogued asteroids; 660 injected asteroids | [Uncertainties](uncertainties.md) |
 | 8 asteroids, 2022 | ZTF | 21–132 exposures each | published rotation periods, chosen beforehand | [Rotation periods of eight asteroids](ztf-periods.md) |
 | 30 asteroids chosen by a rule, 2018–2024 | ZTF | 32–687 exposures each | published rotation periods; a shuffled control | [Rotation periods of thirty asteroids](period-sample.md) |
+| 24 sets of minor planets (of 33 tried), raw and as the archive reduced them, 2024 | Las Cumbres Observatory (0.4 m, 1 m, 2 m MuSCAT) | 5 per set | the archive's own reduction (BANZAI); JPL's ephemerides | [Raw frames, reduced here](calibration.md) |
 
 ## Results at a glance
 
@@ -40,6 +41,7 @@ images, or synthetic asteroids added to real images.
 | Near-Earth by digest2? | 25 of 26 catalogued main-belt and Mars-crossing asteroids below 65, the NEO Confirmation Page's threshold; one Mars-crosser at 98 | Pan-STARRS1, 18 campaign sets |
 | False tracklets? | 89 tracklets neither injected nor catalogued on 11 sets, 19 with the dipole test, for 5 of 516 injected asteroids lost; a classifier trained on the tracklets did no better than the filters | Pan-STARRS1, 11 campaign sets |
 | Are the uncertainties right? | positions: for 12 numbered asteroids, errors over uncertainties with deviation 1.19 (robustly 1.01), 91% within 2, no offset (−0.007″, −0.019″); 1.5 times too small on injected asteroids; magnitudes about right (robustly 1.2) | Pan-STARRS1, 11 campaign sets |
+| Raw frames reduced here as well as the observatory's? | on 13 sets: the same astrometric fits as its pixels' from the same headers, zero points as uniform (a median 0.000 mag apart), limiting magnitudes within 0.1, positions against JPL as close (0.070″ against 0.102″); 14 of its 18 catalogued asteroids, the 4 missed 2 at the threshold, 1 with a frame since fixed, 1 identified only on a second search | Las Cumbres Observatory, 3 cameras |
 | Rotation periods? | 6.92035 ± 0.00008 h for a published 6.920509 h, doubling the fit, on one asteroid; on eight chosen beforehand, two of the six measured within 1%, four not; on thirty chosen by a rule, the period or its half within 1% for 13 of 29, against 3 of 29 with the magnitudes shuffled | ZTF |
 
 ![Tracklets a person has to look at, by configuration](../assets/tracklets-to-vet.png)

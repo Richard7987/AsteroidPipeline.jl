@@ -48,3 +48,23 @@ run_pipeline(paths; pipeline_config(1.01)...)    # ZTF: 1.01"/pixel
 Check the time keywords first: a header whose `MJD-OBS` is in TAI rather than
 UTC (Pan-STARRS1's is) puts every position 37 s out — ~0.4″ for a typical
 main-belt asteroid.
+
+## 4. Raw frames
+
+[`analyze_set`](@ref) reads each file through [`plain_frame`](@ref): a
+tile-compressed `.fz` file, the first extension holding an image (or the one
+`extension` names), or a camera's amplifiers assembled by `DATASEC` and
+`DETSEC`, each with its overscan (`BIASSEC`) subtracted and its `GAIN`
+applied. Frames not yet calibrated are calibrated first:
+
+```julia
+frames = calibrate_frames(raw; outdir="calibrated", bias=bias_files, dark=dark_files, flat=flat_files)
+r = analyze_set(frames; observatory="W85")
+```
+
+The calibration frames must be read out as the frames are (same binning and
+subarray). A raw header's WCS is often only the telescope's pointing, a
+minute of arc off and turned by part of a degree; the astrometric fit then
+solves the frame from its stars. Frames tracked on a moving target, whose
+stars are trails, give an ambiguous astrometric fit ([Raw frames, reduced
+here](../validation/calibration.md)).

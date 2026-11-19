@@ -14,6 +14,28 @@ from the version picker at the top right.
   `rmsMag`, with `mag` and `band`. [Validation: uncertainties](validation/uncertainties.md):
   against JPL's ephemerides of 12 numbered asteroids on 11 Pan-STARRS1 sets,
   errors over uncertainties with deviation 1.19, 91% within 2, no offset.
+- Raw frames: [`plain_frame`](@ref) reads a camera's file as one plain image
+  (tile-compressed `.fz`, the first extension with an image, or amplifiers
+  assembled by `DATASEC` and `DETSEC` with their overscan subtracted and gain
+  applied, binned and subarray readouts included), and [`image_extensions`](@ref)
+  lists a file's images. [`calibrate_frames`](@ref) subtracts master bias and
+  dark and divides by a master flat, refusing calibration frames read out in
+  another mode. [`analyze_set`](@ref) reads `.fz` files and takes an
+  `extension` keyword. The observatory's site is also read from `LONGITUD`,
+  `LATITUDE` and `HEIGHT`. [Validation: raw frames](validation/calibration.md):
+  on 13 Las Cumbres Observatory sets, the same astrometry, zero points and
+  limiting magnitudes as the archive's own reduction.
+
+**Changed**
+
+- [`refine_wcs_set`](@ref): a frame whose header only holds the telescope's
+  pointing (turned and scaled enough that one offset matches only the
+  centre) is also solved from its stars with [`solve_wcs`](@ref); a frame
+  started again from the best frame's solution is searched for an offset
+  when its headers' pointing disagrees; and the joint fit needs 3 stars of
+  each frame's own, where a frame without any was given the others' through
+  the headers unchecked. Unchanged on the Pan-STARRS1 sets of the other
+  validations.
 
 ## 1.6.0 — 2026-11-16
 
