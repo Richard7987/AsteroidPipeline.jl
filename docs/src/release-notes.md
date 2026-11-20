@@ -43,6 +43,14 @@ from the version picker at the top right.
   the headers unchecked. Unchanged on the Pan-STARRS1 sets of the other
   validations.
 
+**Fixed**
+
+- [`inject_movers`](@ref) fitted each frame's WCS on its own, where
+  [`analyze_set`](@ref) fits the frames together: with a header a few
+  arcseconds off, that fit matched few stars and landed about 1″ from the
+  search's, or failed, and synthetic asteroids were placed up to 1″ from
+  where the search measures them. It now fits them together.
+
 ## 1.6.0 — 2026-11-16
 
 **Added**

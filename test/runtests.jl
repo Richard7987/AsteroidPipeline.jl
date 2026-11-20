@@ -1737,6 +1737,21 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test length(partial_truth) == 4 * 2
             @test FITS(f -> read(f[1]), partial[2]) == FITS(f -> read(f[1]), starless)
             @test_throws ErrorException inject_movers([starless], joinpath(dir, "none"); reference_stars=catalog)
+            # headers 25″ off, past one frame's search: the frames are fitted together,
+            # and the objects land where they are on the sky
+            off = map(enumerate(paths)) do (k, p)
+                raw, header = FITS(f -> (read(f[1]), read_header(f[1])), p)
+                header["CRVAL2"] = -10.74 + 25 / 3600
+                path = joinpath(dir, "off$k.fits")
+                FITS(f -> write(f, raw; header=header), path, "w")
+                path
+            end
+            image = permutedims(FITS(f -> Float64.(read(f[1])), off[1]))
+            @test !refine_wcs(image, load_wcs(FITS(f -> read_header(f[1], String), off[1])), catalog).refined
+            _, shifted = inject_movers(off, joinpath(dir, "off"); n=4, rng=Xoshiro(3), reference_stars=catalog, margin=60)
+            @test length(shifted) == 4 * 3
+            @test maximum(AsteroidPipeline._angular_distance_arcsec(r.ra, r.dec, pix_to_world(truth_wcs, [r.x, r.y])...)
+                          for r in shifted) < 0.3
         end
     end
 
