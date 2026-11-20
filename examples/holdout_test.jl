@@ -2,7 +2,7 @@
 The dipole test and the depth of the search, measured again on sets kept
 aside, which no setting was chosen on:
 
-    julia --project=. examples/holdout_test.jl
+    julia --project=. examples/holdout_test.jl [run: 1 or 2]
 
 Declared before running, with the list in docs/src/validation/holdout.md:
 
@@ -42,6 +42,19 @@ examples/validation_stats.jl):
    Met if each is inside this run's bootstrap interval (sets resampled).
 
 Each set's counts are cached in data/real/holdout_test.
+
+Second run, declared after the first was seen (docs/src/validation/holdout.md).
+The first found inject_movers fitting each frame's WCS on its own: on 6 of
+these sets the headers are 4-33" off, its fits failed (no zero point on
+XY04_p11 and XY05_p00) or landed about 1" from the frames' joint fit, and
+synthetic asteroids were placed where the search does not measure them. It
+now fits the frames together, as analyze_set does; the pipeline is
+unchanged. The same measurements, seeds and criteria, with the expected
+values taken from the 11 sets measured again with the same injector
+(dipole_test.jl and faint_completeness.jl, their second runs, read from
+their caches). Cache data/real/holdout_test2. Not a clean test of sets kept
+aside: their first run was seen, and the injector was fixed on what it
+showed.
 =#
 using AsteroidPipeline, FITSIO, Printf, Random, Serialization
 include("validation_stats.jl")
@@ -49,7 +62,9 @@ include("validation_stats.jl")
 const SETS = ["XY02_p00", "XY04_p01", "XY04_p10", "XY04_p11", "XY05_p00", "XY05_p01",
               "XY55_p00", "XY55_p01", "XY55_p10", "XY55_p11", "XY75_p01", "XY75_p10"]
 const DATA = joinpath(@__DIR__, "..", "data", "real", "holdout")
-const CACHE = joinpath(@__DIR__, "..", "data", "real", "holdout_test")
+const RUN = parse(Int, get(ARGS, 1, "2"))
+const CACHE = joinpath(@__DIR__, "..", "data", "real", RUN == 1 ? "holdout_test" : "holdout_test2")
+const TRAINING = joinpath(@__DIR__, "..", "data", "real")
 const PROGRESS = joinpath(homedir(), ".claude", "progress", "a4-holdout")
 
 orbits = read_mpcorb(download_mpcorb())
@@ -83,7 +98,7 @@ end
 
 mkpath(CACHE)
 measured = map(enumerate(SETS)) do (k, name)
-    write(PROGRESS, "$(k - 1) $(length(SETS)) holdout\n")
+    write(PROGRESS, "$(k - 1) $(length(SETS)) holdout$RUN\n")
     cache = joinpath(CACHE, name * ".jls")
     isfile(cache) && return deserialize(cache)
     paths = sort(filter(f -> endswith(lowercase(f), ".fits"), readdir(joinpath(DATA, name); join=true)))
@@ -97,7 +112,7 @@ measured = map(enumerate(SETS)) do (k, name)
     rm(work; recursive=true, force=true)
     result
 end
-write(PROGRESS, "$(length(SETS)) $(length(SETS)) holdout\n")
+write(PROGRESS, "$(length(SETS)) $(length(SETS)) holdout$RUN\n")
 
 for r in measured
     haskey(r, :failed) && println(r.name, ": left out, ", r.failed)
@@ -123,16 +138,31 @@ same_known = all(r -> r.dipole[1].known == r.dipole[2].known, results)
 n_known = sum(length(r.dipole[1].known) for r in results)
 inside(x, (lo, hi)) = lo <= x <= hi ? "met" : "not met"
 
+cached(dir) = [deserialize(joinpath(TRAINING, dir, f)) for f in sort(readdir(joinpath(TRAINING, dir))) if endswith(f, ".jls")]
+if RUN == 1
+    base = (found_off=516, found_on=511, other_off=89, other_on=19, v50_frame=21.67, v50_stacked=21.79)
+else
+    dip = cached("dipole_test2")
+    faint = filter(r -> !haskey(r, :failed) && r.reliable, cached("faint_completeness2"))
+    pooled(field) = v50(reduce(vcat, [r.mag for r in faint]), reduce(vcat, [getfield(r, field) for r in faint]))
+    base = (found_off=sum(c[Inf][1] for c in dip), found_on=sum(c[6.0][1] for c in dip),
+            other_off=sum(c[Inf][3] for c in dip), other_on=sum(c[6.0][3] for c in dip),
+            v50_frame=pooled(:frame), v50_stacked=pooled(:stacked))
+    @printf("\nexpected, from %d and %d sets measured with the same injector: %d of %d; %d of %d; V %.2f and %.2f\n",
+            length(dip), length(faint), base.found_on, base.found_off, base.other_on, base.other_off,
+            base.v50_frame, base.v50_stacked)
+end
+
 println("\n", length(results), " sets")
 w = wilson(found_on, found_off)
-@printf("1. injected found with the test, over without: %s; 99.0%% %s\n", interval(found_on, found_off),
-        inside(0.990, w))
+@printf("1. injected found with the test, over without: %s; %.1f%% %s\n", interval(found_on, found_off),
+        100base.found_on / base.found_off, inside(base.found_on / base.found_off, w))
 @printf("   of the %d found without it, %d also with it\n", found_off, both)
 if other_off < 10
     @printf("2. other tracklets: %d without the test, %d with it; not measurable\n", other_off, other_on)
 else
-    @printf("2. other tracklets left by the test: %s; 21%% %s\n", interval(other_on, other_off),
-            inside(19 / 89, wilson(other_on, other_off)))
+    @printf("2. other tracklets left by the test: %s; %.0f%% %s\n", interval(other_on, other_off),
+            100base.other_on / base.other_off, inside(base.other_on / base.other_off, wilson(other_on, other_off)))
 end
 @printf("3. catalogued: %d without the test; the same with it: %s\n", n_known, same_known)
 
@@ -145,7 +175,7 @@ for lo in V50_EDGES[1:end-1]
     k2 = count(inbin .& reduce(vcat, [r.depth.stacked for r in results]))
     @printf("%.2f-%.2f   %8d  %7d (%3.0f%%)  %7d (%3.0f%%)\n", lo, lo + 0.25, n, k1, 100k1 / n, k2, 100k2 / n)
 end
-for (label, field, before) in (("frame by frame", :frame, 21.67), ("with stacking", :stacked, 21.79))
+for (label, field, before) in (("frame by frame", :frame, base.v50_frame), ("with stacking", :stacked, base.v50_stacked))
     per = [(r.depth.mag, getfield(r.depth, field)) for r in results]
     lo, hi, kept = bootstrap_v50(per)
     @printf("4. half found %s at V %.2f (%.2f–%.2f, %d of 2000 resamplings cross 50%%); V %.2f %s\n", label,

@@ -37,13 +37,23 @@ of its mean, rms over sqrt(n); an affine fit leaves the field's distortion in
 its residuals, which a target's position carries as a star's does, so it is
 now the stars' scatter about the fit, per axis. Checked on new seeds
 (5000+k, cache data/real/uncertainty_test2), the first run kept as it was.
+
+Run again after inject_movers came to fit the frames together, as analyze_set
+does (2026-11-19). On the sets kept aside (docs/src/validation/holdout.md) its
+frame-by-frame fits were found up to 33" off, and on these sets 0.8-1.05"
+from the joint fit on 5 frames and missing on 1 (XY72_p11): synthetic
+asteroids were placed there up to 1" from where the search measures them.
+Same sets, seeds and settings; nothing else changed. Expected if that was
+the cause: on synthetic asteroids the position errors over uncertainties
+closer to a deviation of 1 than the 1.5 measured, and the mean offset of
+0.05" smaller. Cache data/real/uncertainty_test3.
 =#
 using AsteroidPipeline, Printf, Random, Serialization, Statistics
 
 const SETS = ["XY14_p10", "XY15_p01", "XY25_p10", "XY26_p01", "XY42_p11", "XY45_p01", "XY45_p10",
               "XY45_p11", "XY54_p10", "XY72_p01", "XY72_p11", "XY73_p00", "XY73_p01"]
 const DATA = joinpath(@__DIR__, "..", "data", "real", "iasc")
-const CACHE = joinpath(@__DIR__, "..", "data", "real", "uncertainty_test2")
+const CACHE = joinpath(@__DIR__, "..", "data", "real", "uncertainty_test3")
 const PROGRESS = joinpath(homedir(), ".claude", "progress", "a1-uncertainty")
 
 orbits = read_mpcorb(download_mpcorb())
