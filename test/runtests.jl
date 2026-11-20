@@ -12,6 +12,7 @@ using Reproject
 using Distributed
 using Dates: Dates, DateTime, datetime2julian
 using CodecZlib
+using Printf
 
 # Loads .env (gitignored) for local runs, e.g. ASTROMETRY_API_KEY for the live
 # plate_solve test; variables already set in the environment win.
@@ -445,6 +446,61 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test !any(x -> x.joint, r)
         @test all(x -> !x.refined && x.shift_only, r)
         @test all(k -> error_arcsec(r[k].wcs, k) < 0.3, 1:3)
+
+        # a raw frame's pointing header: 60″ off, turned 3° and 1% out in
+        # scale, so one offset matches only the centre; solved from its stars instead
+        Random.seed!(19)
+        nx, ny, scale = 500, 480, 0.4
+        truth = WCSTransform(2; crpix=[250.0, 240.0], crval=[150.0, 10.0], cdelt=[1.0, 1.0],
+                             pc=[-1.0 0.0; 0.0 1.0] .* (scale / 3600), ctype=["RA---TAN", "DEC--TAN"])
+        n = 700
+        field = Table(ra=150.0 .+ 0.06 .* (2 .* rand(n) .- 1) ./ cosd(10.0), dec=10.0 .+ 0.06 .* (2 .* rand(n) .- 1),
+                      gmag=12.0 .+ 7.0 .* rand(n))
+        image = 100.0 .+ 5.0 .* randn(ny, nx)
+        for k in 1:n
+            x, y = world_to_pix(truth, [field.ra[k], field.dec[k]])
+            1 <= x <= nx && 1 <= y <= ny || continue
+            for j in max(1, floor(Int, x) - 8):min(nx, ceil(Int, x) + 8), i in max(1, floor(Int, y) - 8):min(ny, ceil(Int, y) + 8)
+                image[i, j] += 10^(-0.4 * (field.gmag[k] - 22)) * exp(-((j - x)^2 + (i - y)^2) / (2 * 1.5^2))
+            end
+        end
+        turned = [cosd(3) -sind(3); sind(3) cosd(3)] * truth.pc .* 1.01
+        pointing = WCSTransform(2; crpix=truth.crpix, crval=[150.0 + (60 / 3600) / cosd(10.0), 10.0], cdelt=[1.0, 1.0],
+                                pc=turned, ctype=truth.ctype)
+        @test refine_wcs(image, pointing, field; max_offset=77 / scale).n_matches < 10   # the centre's only
+        r = only(refine_wcs_set([image], [pointing], field))
+        @test r.refined && r.n_matches > 100
+        for (x, y) in ((1.0, 1.0), (Float64(nx), Float64(ny)), (1.0, Float64(ny)))
+            a, b = pix_to_world(r.wcs, [x, y]), pix_to_world(truth, [x, y])
+            @test hypot((a[1] - b[1]) * cosd(b[2]), a[2] - b[2]) * 3600 < 0.1
+        end
+
+        # a second exposure, too noisy to be solved alone, its pointing 15″ from
+        # the first's: started from the first's solution, carried over by the headers
+        function shallow(noise)
+            img = 100.0 .+ noise .* randn(ny, nx)
+            for k in 1:n
+                x, y = world_to_pix(truth, [field.ra[k], field.dec[k]])
+                1 <= x <= nx && 1 <= y <= ny || continue
+                for j in max(1, floor(Int, x) - 8):min(nx, ceil(Int, x) + 8), i in max(1, floor(Int, y) - 8):min(ny, ceil(Int, y) + 8)
+                    img[i, j] += 10^(-0.4 * (field.gmag[k] - 22)) * exp(-((j - x)^2 + (i - y)^2) / (2 * 1.5^2))
+                end
+            end
+            img
+        end
+        Random.seed!(23)
+        second = shallow(600.0)
+        later = WCSTransform(2; crpix=truth.crpix, crval=[150.0 + (75 / 3600) / cosd(10.0), 10.0], cdelt=[1.0, 1.0],
+                             pc=turned, ctype=truth.ctype)
+        @test !only(refine_wcs_set([second], [later], field)).refined
+        r = refine_wcs_set([image, second], [pointing, later], field)
+        @test r[2].refined && !r[2].joint
+        a, b = pix_to_world(r[2].wcs, [1.0, 1.0]), pix_to_world(truth, [1.0, 1.0])
+        @test hypot((a[1] - b[1]) * cosd(b[2]), a[2] - b[2]) * 3600 < 0.3
+        # with no stars of its own, the first's carried over by the 15″-off headers would be
+        # 15″ off: not passed off as a fit
+        r = refine_wcs_set([image, shallow(3000.0)], [pointing, later], field)
+        @test r[1].refined && !r[2].refined && !r[2].joint
     end
 
     @testset "_filter_tracklets" begin
@@ -1333,6 +1389,31 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test AsteroidPipeline._task_root(wrapped) isa SkyBoTServiceError
         @test_throws ArgumentError crossmatch_catalog([c], :vsx; radius=5.0, observatory="F51")
         @test_throws ArgumentError crossmatch_catalog([c], :skybot; radius=5.0, observatory="Palomar")
+
+        # answers are kept, and answered from offline; a failed one is not kept
+        withenv("XDG_CACHE_HOME" => mktempdir()) do
+            A = AsteroidPipeline
+            asked = Ref(0)
+            A._ANSWER_RESPONSES[] = (service, key) -> (asked[] += 1; found)
+            try
+                @test only(A._skybot_matches(c, 150 / 3600)).name == "2018 LT"
+                @test asked[] == 1 && length(readdir(joinpath(answers_dir(), "skybot"))) == 1
+                Base.ScopedValues.with(A._OFFLINE => true) do
+                    @test only(A._skybot_matches(c, 150 / 3600)).name == "2018 LT"
+                    @test_throws OfflineAnswerMissing A._skybot_matches((id=1, ra=4.0, dec=-10.0, epoch=c.epoch), 0.12)
+                end
+                @test asked[] == 1
+                A._ANSWER_RESPONSES[] = (service, key) -> crashed
+                other = (id=1, ra=5.0, dec=-10.0, epoch=c.epoch)
+                @test_throws SkyBoTServiceError A._skybot_matches(other, 0.12; backoff_seconds=0)
+                Base.ScopedValues.with(A._OFFLINE => true) do
+                    @test_throws OfflineAnswerMissing A._skybot_matches(other, 0.12)
+                    @test A._is_unavailable(OfflineAnswerMissing("SkyBoT"))
+                end
+            finally
+                A._ANSWER_RESPONSES[] = nothing
+            end
+        end
     end
 
     @testset "JPL Small-Body Identification, while SkyBoT is unavailable" begin
@@ -1453,6 +1534,121 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         @test frame_epoch(FITSHeader(["DATE-OBS", "UT"], Any["2020-01-01", "06:00:00.5"], fill("", 2))) ≈
               2458849.75 + 0.5 / 86400 atol=1e-8
         @test_throws ArgumentError frame_epoch(FITSHeader(["EXPTIME"], Any[30.0], [""]))
+    end
+
+    @testset "plain_frame / image_extensions / calibrate_frames" begin
+        mktempdir() do dir
+            img = Float32.(reshape(1:48 * 64, 48, 64))
+            head = FITSHeader(["DATE-OBS", "EXPTIME", "CRVAL1"], Any["2026-01-01T00:00:00", 30.0, 12.5], fill("", 3))
+            plain = joinpath(dir, "plain.fits")
+            FITS(f -> write(f, img; header=head), plain, "w")
+            @test plain_frame(plain; outdir=joinpath(dir, "out")) == plain
+            @test image_extensions(plain) == [1]
+
+            # tile-compressed: the image's own header, NAXIS1… not the table's
+            fz = joinpath(dir, "packed.fits.fz")
+            FITS(f -> write(f, img; header=head), fz * "[compress]", "w")
+            @test image_extensions(fz) == [2]
+            out = plain_frame(fz; outdir=joinpath(dir, "out"))
+            @test basename(out) == "packed.fits"
+            FITS(out) do f
+                @test read(f[1]) == img
+                h = read_header(f[1])
+                @test h["NAXIS1"] == 48 && h["CRVAL1"] == 12.5 && !haskey(h, "ZCMPTYPE") && !haskey(h, "TFIELDS")
+                @test frame_epoch(h) ≈ frame_epoch(head)
+            end
+
+            # a mosaic camera's: the time in the primary header, one image per detector
+            mef = joinpath(dir, "mosaic.fits")
+            FITS(mef, "w") do f
+                C = FITSIO.CFITSIO                    # a primary HDU with a header only
+                C.fits_create_img(f.fitsfile, Int16, Int[])
+                C.fits_update_key(f.fitsfile, "DATE-OBS", "2026-01-01T00:00:00", "")
+                C.fits_update_key(f.fitsfile, "EXPTIME", 30.0, "")
+                write(f, img; header=FITSHeader(["CRVAL1"], Any[1.0], [""]), name="CCD1")
+                write(f, 2 .* img; header=FITSHeader(["CRVAL1"], Any[2.0], [""]), name="CCD2")
+            end
+            @test image_extensions(mef) == [2, 3]
+            second = plain_frame(mef; outdir=joinpath(dir, "out"), extension="CCD2")
+            @test basename(second) == "mosaic-CCD2.fits"
+            FITS(second) do f
+                @test read(f[1]) == 2 .* img
+                h = read_header(f[1])
+                @test h["CRVAL1"] == 2.0 && h["EXPTIME"] == 30.0 && h["DATE-OBS"] == "2026-01-01T00:00:00"
+            end
+            @test FITS(f -> read(f[1]), plain_frame(mef; outdir=joinpath(dir, "out"))) == img
+
+            # one detector through two amplifiers, the second read out mirrored
+            truth = Float64.(reshape(1:20 * 8, 20, 8)) .* 10
+            amps = joinpath(dir, "amps.fits")
+            FITS(amps, "w") do f
+                C = FITSIO.CFITSIO
+                C.fits_create_img(f.fitsfile, Int16, Int[])
+                C.fits_update_key(f.fitsfile, "DATE-OBS", "2026-01-01T00:00:00", "")
+                for (k, (det, cols, gain, level)) in enumerate((("[1:10,1:8]", 1:10, 2.0, 500.0),
+                                                                ("[20:11,1:8]", 20:-1:11, 4.0, 900.0)))
+                    data = vcat(truth[cols, :] ./ gain .+ level, fill(level, 3, 8))
+                    write(f, Float32.(data); name="AMP$k",
+                          header=FITSHeader(["DATASEC", "DETSEC", "BIASSEC", "GAIN"],
+                                            Any["[1:10,1:8]", det, "[11:13,1:8]", gain], fill("", 4)))
+                end
+            end
+            detector = plain_frame(amps; outdir=joinpath(dir, "out"))
+            FITS(detector) do f
+                @test read(f[1]) ≈ truth
+                h = read_header(f[1])
+                @test h["GAIN"] == 1.0 && h["DATE-OBS"] == "2026-01-01T00:00:00" && !haskey(h, "DETSEC")
+            end
+            @test FITS(f -> size(read(f[1])), plain_frame(amps; outdir=joinpath(dir, "out"), extension="AMP2")) == (13, 8)
+            # the same read out 2x2 binned from a subarray: DETSEC in the detector's unbinned pixels
+            binned = joinpath(dir, "binned.fits")
+            FITS(binned, "w") do f
+                C = FITSIO.CFITSIO
+                C.fits_create_img(f.fitsfile, Int16, Int[])
+                C.fits_update_key(f.fitsfile, "CCDSUM", "2 2", "")
+                for (k, (det, cols)) in enumerate((("[101:120,201:216]", 1:10), ("[140:121,201:216]", 20:-1:11)))
+                    data = vcat(truth[cols, :] .+ 500, fill(500.0, 3, 8))
+                    write(f, Float32.(data); name="AMP$k",
+                          header=FITSHeader(["DATASEC", "DETSEC", "BIASSEC"], Any["[1:10,1:8]", det, "[11:13,1:8]"], fill("", 3)))
+                end
+            end
+            @test FITS(f -> read(f[1]), plain_frame(binned; outdir=joinpath(dir, "out"))) ≈ truth
+
+
+            # raw = sky · flat + bias + dark rate · t: calibrated back to the sky
+            n1, n2 = 40, 30
+            sky = 100 .+ 50 .* rand(MersenneTwister(1), n1, n2)
+            bias_level = 300 .+ 10 .* rand(MersenneTwister(2), n1, n2)
+            rate = 0.5 .* rand(MersenneTwister(3), n1, n2)
+            response = 0.8 .+ 0.4 .* rand(MersenneTwister(4), n1, n2)
+            response[1, 1] = 0.01                                 # a dead pixel
+            function frame(name, data, t)
+                p = joinpath(dir, name)
+                FITS(f -> write(f, Float32.(data); header=FITSHeader(["EXPTIME"], Any[t], [""])), p, "w")
+                p
+            end
+            bias = [frame("bias$k.fits", bias_level, 0.0) for k in 1:3]
+            dark = [frame("dark$k.fits", bias_level .+ rate .* 100, 100.0) for k in 1:3]
+            flat = [frame("flat$k.fits", 1000k .* response .+ bias_level .+ rate .* 5, 5.0) for k in 1:3]
+            raw = [frame("raw$k.fits", sky .* response .+ bias_level .+ rate .* 60, 60.0) for k in 1:2]
+            done = calibrate_frames(raw; outdir=joinpath(dir, "cal"), bias, dark, flat)
+            out = FITS(f -> Float64.(read(f[1])), done[1])
+            # the flat is normalized: sky comes back times the response's median
+            scale = median(response)
+            ok = trues(n1, n2); ok[1, 1] = false
+            @test maximum(abs.(out[ok] ./ scale .- sky[ok]) ./ sky[ok]) < 1e-4
+            @test isnan(out[1, 1])
+            @test occursin("calibrate_frames: 3 bias, 3 dark, 3 flat",
+                           join(FITS(f -> read_header(f[1], String), done[1])))
+            @test FITS(f -> read_header(f[1])["EXPTIME"], done[2]) == 60.0
+            # darks of the frames' own exposure, without bias frames
+            same = [frame("dark60_$k.fits", bias_level .+ rate .* 60, 60.0) for k in 1:3]
+            plain_cal = FITS(f -> Float64.(read(f[1])), only(calibrate_frames(raw[1:1]; outdir=joinpath(dir, "cal2"), dark=same)))
+            @test maximum(abs.(plain_cal .- sky .* response)) < 1e-2
+            # a flat read out in another mode
+            full = [frame("fullflat$k.fits", ones(2n1, 2n2), 5.0) for k in 1:3]
+            @test_throws DimensionMismatch calibrate_frames(raw; outdir=joinpath(dir, "cal3"), flat=full)
+        end
     end
 
     @testset "calibrated photometry / inject_movers / injection_recovery" begin
@@ -1691,6 +1887,39 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         end
         @test count(l -> length(l) == 80 && endswith(l, "F51"), split(r.report, "\n")) == length(r.candidates)   # one 80-column line each
         @test isempty(r.dropped)
+
+        # analyzed again offline: the same known objects, from the answers kept, and nothing asked
+        withenv("XDG_CACHE_HOME" => mktempdir()) do
+            A = AsteroidPipeline
+            # SkyBoT placing "2020 AB" at the centre of every cone asked
+            function at_centre(service, key)
+                ra = parse(Float64, match(r"-ra=([^&]+)", key)[1]); dec = parse(Float64, match(r"-dec=([^&]+)", key)[1])
+                h = ra / 15; s = abs(dec)
+                hms = @sprintf("%02d %02d %07.4f", floor(h), floor(60 * (h % 1)), 3600 * (h % 1) - 60 * floor(60 * (h % 1)))
+                dms = @sprintf("%s%02d %02d %06.3f", dec < 0 ? "-" : "+", floor(s), floor(60 * (s % 1)), 3600 * (s % 1) - 60 * floor(60 * (s % 1)))
+                "# Flag: 1\n# Ticket: 1\n# Num | Name | RA(h) | DE(deg) | Class | Mv | Err(arcsec) | d(arcsec) \n" *
+                " - | 2020 AB | $hms | $dms | MB>Inner | 18.0 | 0.1 | 0.0 \n"
+            end
+            A._ANSWER_RESPONSES[] = at_centre
+            online = try
+                analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars)
+            finally
+                A._ANSWER_RESPONSES[] = (service, key) -> error("asked $service offline")
+            end
+            @test collect(values(online.known)) == ["2020 AB"]
+            again = try
+                analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars, offline=true)
+            finally
+                A._ANSWER_RESPONSES[] = nothing
+            end
+            @test again.known == online.known && isequal(again.candidates, online.candidates)
+            @test again.expected == online.expected
+            # never analyzed online: no known objects, said so, and no error
+            rm(answers_dir(); recursive=true)
+            blind = analyze_set(dir; workdir=mktempdir(), observatory="F51", reference_stars=stars, offline=true)
+            @test isempty(blind.known) && isequal(blind.candidates, online.candidates)
+            @test any(w -> occursin("OfflineAnswerMissing", w), blind.warnings)
+        end
 
         # a frame all of one value, as a failed readout writes it: left out, not fatal
         header = FITSHeader(["CTYPE1", "CTYPE2", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CDELT1", "CDELT2",
@@ -2161,6 +2390,13 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             nosite = frame_site(FITSHeader(["TELESCOP"], Any["PS1"], [""]))
             @test nosite.lon === nothing && observatory_candidates(nosite, codes)[1].code == "F51"
             @test isempty(observatory_candidates(frame_site(FITSHeader(["X"], Any[1], [""])), codes))
+            # Las Cumbres's: LONGITUD read only as its comment says
+            lco = FITSHeader(["LONGITUD", "LATITUDE", "HEIGHT"], Any[20.8100389, -32.3473417, 1760.0],
+                             ["[deg East] Telescope Longitude", "[deg North] Telescope Latitude", "[m] Altitude"])
+            s = frame_site(lco)
+            @test s.lon ≈ 20.8100389 && s.lat ≈ -32.3473417 && s.elev == 1760.0
+            @test frame_site(FITSHeader(["LONGITUD"], Any[111.6], ["degrees west"])).lon ≈ -111.6
+            @test frame_site(FITSHeader(["LONGITUD"], Any[111.6], [""])).lon === nothing
         end
     end
 

@@ -29,10 +29,13 @@ include("linking_multinight.jl")
 include("variables.jl")
 include("astrometry.jl")
 include("platesolve.jl")
+include("answers.jl")
 include("crossmatch.jl")
 include("astrometric_refinement.jl")
 include("calibrated_photometry.jl")
 include("mpcorb.jl")
+include("frames.jl")
+include("reduction.jl")
 include("campaign.jl")
 include("observatories.jl")
 include("known_nearby.jl")
@@ -51,7 +54,7 @@ include("mpc_export.jl")
 include("digest2.jl")
 
 export detect_sources, fill_value_mask, link_candidates, load_wcs, pix_to_sky,
-       astrometric_calibrate, crossmatch_catalog, SkyBoTServiceError, run_pipeline,
+       astrometric_calibrate, crossmatch_catalog, SkyBoTServiceError, answers_dir, OfflineAnswerMissing, run_pipeline,
        build_reference, load_frame, estimate_psf, fit_moffat_psf, zogy_subtract, light_curve, moving_light_curve,
        recover_rotation_period, fourier_period, fit_orbit, orbit_ephemeris, object_geometry, reduced_magnitudes, plate_solve, solve_wcs, frame_pointing,
        search_field, find_variable_sources, gaia_cache_dir,
@@ -59,7 +62,7 @@ export detect_sources, fill_value_mask, link_candidates, load_wcs, pix_to_sky,
        digest2_score, link_across_nights, link_nights, gaia_reference_stars, refine_wcs, refine_wcs_set, stack_difference, stack_search,
        aperture_flux, photometric_zeropoint, candidate_magnitudes, below_limit, frame_epoch,
        inject_movers, injection_recovery, read_mpcorb, set_quality,
-       extract_set, clean_blank_pixels, download_mpcorb, default_mpcorb_path, astrometrica_settings,
+       extract_set, clean_blank_pixels, plain_frame, image_extensions, calibrate_frames, download_mpcorb, default_mpcorb_path, astrometrica_settings,
        mpc_report_header, blank_mpc_report, mpc_report, pack_designation, check_mpc_report,
        known_objects_in_field, frame_footprint, analyze_set, pipeline_config, IASC_PS1_CONFIG,
        read_obscodes, download_obscodes, frame_site, observatory_candidates, tracklet_motion,

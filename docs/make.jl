@@ -82,6 +82,7 @@ makedocs(;
             "Near-Earth or not: digest2" => "validation/digest2.md",
             "Real or false: a classifier and the dipole test" => "validation/real-bogus.md",
             "Uncertainties of positions and magnitudes" => "validation/uncertainties.md",
+            "Raw frames, reduced here" => "validation/calibration.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",

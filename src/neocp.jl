@@ -110,6 +110,10 @@ function neocp_check(candidates; observatory::AbstractString, radius_arcmin::Rea
                       Tuple{String,Float64,Float64,Float64,Float64,Bool,Symbol}}
     checks = Dict{Int,Any}()
     isempty(rows) && return (checks=checks, warnings=warnings)
+    if _OFFLINE[]
+        push!(warnings, "NEO Confirmation Page not checked: offline, and it lists only objects being observed now")
+        return (checks=checks, warnings=warnings)
+    end
     epochs = [r.epoch for r in rows]
     age = now_jd - maximum(epochs)
     if age > max_age_days
