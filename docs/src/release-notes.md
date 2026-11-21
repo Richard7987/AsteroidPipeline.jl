@@ -5,6 +5,8 @@ from the version picker at the top right.
 
 ## Unreleased
 
+## 1.7.0 — 2026-11-21
+
 **Added**
 
 - Uncertainties: [`analyze_set`](@ref)'s `candidates` gain `pos_err` (arcsec per
