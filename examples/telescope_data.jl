@@ -14,6 +14,9 @@ crowded field). Three sequences drawn from each with Xoshiro(11), and for
 each a quadrant (CCD 1-16, quadrant 1-4) drawn with the same generator. Of
 that quadrant's exposures in the sequence, 5 by number (first, last, three
 evenly between) or all if fewer. Full quadrant images (sciimg) from IRSA.
+Added once the first download met it, before any set was searched: an
+exposure IRSA lists but does not serve (404) is left out, and a set left
+with fewer than 4 is left out.
 
 Las Cumbres Observatory (0.4 m telescopes, QHY600 cameras, 0.74"/pixel; 1 m
 telescopes, Sinistro cameras, 0.39"/pixel). The public archive's frames
@@ -104,8 +107,18 @@ function ztf()
                 out = joinpath(setdir, file)
                 isfile(out) && continue
                 url = "$IRSA/data/ztf/products/sci/$(ffd[1:4])/$(ffd[5:8])/$(ffd[9:end])/$file"
-                write(out * ".part", HTTP.get(url; retry=true, retries=6, readtimeout=600).body)
-                mv(out * ".part", out)
+                try
+                    write(out * ".part", HTTP.get(url; retry=true, retries=6, readtimeout=600).body)
+                    mv(out * ".part", out)
+                catch e
+                    e isa HTTP.StatusError && e.status == 404 || rethrow()
+                    println(io, "  not served: ", file)
+                end
+            end
+            if count(endswith(".fits"), readdir(setdir)) < 4
+                rm(setdir; recursive=true)
+                println(io, "  left out: fewer than 4 exposures served")
+                continue
             end
             println(name, ": ", length(exposures), " exposures")
         end
@@ -118,15 +131,18 @@ lco_json(url) = JSON.parse(String(HTTP.get(url; retry=true, retries=8, read_idle
 function lco()
     dir = mkpath(joinpath(ROOT, "lco"))
     frames = Any[]
-    for day in Date(2024, 12, 1):Day(1):Date(2024, 12, 14)
+    days = string.(Date(2024, 12, 1):Day(1):Date(2024, 12, 14))
+    # the archive pages no further than 10,000 results: an hour at a time
+    for hour in DateTime(2024, 11, 30, 12):Hour(1):DateTime(2024, 12, 15, 12)
         url = LCO * "?" * HTTP.URIs.escapeuri(Dict("public" => "true", "reduction_level" => "91",
-              "configuration_type" => "EXPOSE", "start" => string(day), "end" => string(day + Day(1)), "limit" => "100"))
+              "configuration_type" => "EXPOSE", "start" => string(hour), "end" => string(hour + Hour(1)), "limit" => "100"))
         while url !== nothing
             page = lco_json(url)
-            append!(frames, filter(r -> r["exposure_time"] >= 15 && r["observation_day"] == string(day), page["results"]))
+            append!(frames, filter(r -> r["exposure_time"] >= 15 && r["observation_day"] in days, page["results"]))
             url = page["next"]
         end
     end
+    frames = collect(values(Dict(r["id"] => r for r in frames)))
     t(r) = DateTime(first(r["observation_date"], 19))
     groups = Dict{Tuple,Vector{Any}}()
     for r in frames

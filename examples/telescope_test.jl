@@ -49,6 +49,12 @@ Predicted V and the zero point's magnitudes differ by an asteroid's colour
 (a few tenths), which the bins of 2 carry.
 
 Each set's result is cached in data/real/telescope_test/<instrument>/.
+
+Changed after the first DECam set, before any result of the test was seen:
+inject_movers read a frame's first extension only, where DECam's and Las
+Cumbres' files hold the image in the second (tile-compressed), and failed on
+it; it now reads such a file as analyze_set does. That set's cache was
+removed.
 =#
 using AsteroidPipeline, FITSIO, Printf, Random, Serialization, Statistics
 const P = AsteroidPipeline
