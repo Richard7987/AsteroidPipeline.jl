@@ -4,13 +4,16 @@
 
 On 11 Pan-STARRS1 sets of IASC campaigns, with 100 synthetic asteroids
 injected into each (V 21.0–23.5), [`analyze_set`](@ref) found half of them
-down to V 21.67 frame by frame and V 21.79 with stacking (95% intervals
-V 21.49–21.85 and 21.59–21.95, resampling whole sets). Between V 22.0 and
-22.5, stacking found 34 of 214 where the frame-by-frame search found 8;
-fainter than V 22.5, they found 3 and 4 of 402. Pan-STARRS's own pipeline reaches
+down to V 21.72 frame by frame and V 21.84 with stacking (95% intervals
+V 21.60–21.80 and 21.71–22.04, resampling whole sets). Between V 22.0 and
+22.5, stacking found 53 of 231 where the frame-by-frame search found 26;
+fainter than V 22.5, 18 and 6 of 446. Pan-STARRS's own pipeline reaches
 about V 22 and IASC's searchers find objects 0.30 mag fainter on average
-(Miller et al. 2024): the pipeline does not yet reach the range where they
-work.
+(Miller et al. 2024): the pipeline reaches the start of the range where they
+work. These are from a third run, after the synthetic asteroids were found
+placed up to 1″ from where the search measures them on some frames
+([Sets kept aside](holdout.md)); the first two runs found half to V 21.67
+and 21.79.
 
 ## 1. Method
 
@@ -85,30 +88,70 @@ were V 21.68 and 21.81, 4 more asteroids were found between V 21.25 and 22.0
 (3 on `XY26_p01`, whose 50% point was 21.98, and 1 on `XY25_p10`), and stacking added a sixth
 tracklet, barely visible, on `XY25_p10`; nothing changed fainter than V 22.0.
 
+### Third run: the injection fixed
+
+[`inject_movers`](@ref) had fitted each frame's astrometry on its own, and on
+5 frames of these sets that fit was 0.8–1.05″ from the frames' joint fit
+the search uses (and failed on one frame of `XY72_p11`), so asteroids were
+placed up to 1″ from where they are measured, against a recovery radius of
+1.5″. It now fits them together. Run again with the same seeds and
+settings, declared before running; the asteroids drawn differ, as each
+one's noise depends on its frame's zero point.
+
+| V | Injected | Frame by frame | With stacking |
+|:--|:--|:--|:--|
+| 21.00–21.25 | 113 | 97 (86%) | 97 (86%) |
+| 21.25–21.50 | 112 | 95 (85%) | 100 (89%) |
+| 21.50–21.75 | 101 | 68 (67%) | 74 (73%) |
+| 21.75–22.00 | 97 | 22 (23%) | 45 (46%) |
+| 22.00–22.25 | 109 | 17 (16%) | 37 (34%) |
+| 22.25–22.50 | 122 | 9 (7%) | 16 (13%) |
+| 22.50–22.75 | 116 | 3 (3%) | 13 (11%) |
+| 22.75–23.50 | 330 | 3 | 5 |
+| **50% found at** | | **V 21.72** | **V 21.84** |
+| 95% interval, sets resampled | | V 21.60–21.80 | V 21.71–22.04 |
+
+| Set | 5σ limit | 50% frame by frame | 50% with stacking | Stacked, not injected |
+|:--|:--|:--|:--|:--|
+| `XY15_p01` | 22.23 | 21.22 | 21.55 | 3 |
+| `XY25_p10` | 23.12 | 22.23 | 22.23 | 0 |
+| `XY26_p01` | 23.00 | 22.24 | 22.24 | 0 |
+| `XY42_p11` | 22.82 | 21.83 | 21.93 | 0 |
+| `XY45_p01` | 22.43 | 21.62 | 21.62 | 1 |
+| `XY45_p10` | 22.39 | 21.52 | 21.52 | 1 |
+| `XY45_p11` | 22.31 | 21.49 | 21.53 | 0 |
+| `XY54_p10` | 22.81 | 21.90 | 21.99 | 0 |
+| `XY72_p01` | 22.64 | 21.73 | 21.80 | 0 |
+| `XY72_p11` | 22.60 | 21.66 | 21.97 | 0 |
+| `XY73_p01` | 22.66 | 21.78 | 21.88 | 0 |
+
+The tables above it are the first two runs, with the injection as it was.
+
 ## 4. Discussion
 
 **Against IASC.** Miller et al. (2024) give Pan-STARRS's pipeline a limit of
 about V 22, from 3 detections in 4 exposures, and find the objects IASC's
 searchers report 0.30 ± 0.07 mag fainter on average than those it reports.
 Neither is a measured completeness, so the comparison is loose; but here no
-set reaches 50% at V 22.2, and between V 22.0 and 22.5 the pipeline finds
-about one in six. The direct case is NHU0002, at V≈22.3: found on its set,
+set but two reaches 50% at V 22.2, and between V 22.0 and 22.5 the pipeline
+finds about one in four with stacking. The direct case is NHU0002, at V≈22.3: found on its set,
 and not in the MPC's Isolated Tracklet File ([Already reported](itf.md)).
 
 **Stacking.** It moves the 50% point by 0.12 mag on all sets together, from 0
-on four sets to 0.47 on `XY45_p10`, and finds all of the 17 recovered at V
-22.25–22.5. Past V 22.5 it finds almost nothing, though the 5σ limits of
-seven sets are fainter than that.
+on four sets to 0.33 on `XY15_p01`, and finds 16 at V 22.25–22.5 where the
+frame-by-frame search finds 9. Past V 22.5 it finds 18 of 446, though the
+5σ limits of seven sets are fainter than that.
 
-**The 5σ limit is not the depth.** The 50% point with stacking is 0.46–1.16
-mag brighter than the limit [`analyze_set`](@ref) reports, 0.92 on the
+**The 5σ limit is not the depth.** The 50% point with stacking is 0.63–0.90
+mag brighter than the limit [`analyze_set`](@ref) reports, 0.81 on the
 median: that limit is a single source's in one frame, and a tracklet
 needs the object in several.
 
 **Against the earlier test.** The injection test on the
 [Pan-STARRS1 sets](pan-starrs1.md#Completeness), with an earlier version,
-found 21% at V 22–22.5 frame by frame; here it is 4% (8 of 214). The
-difference was not looked into.
+found 21% at V 22–22.5 frame by frame; here it was 4% (8 of 214), and 11%
+(26 of 231) with the injection fixed. The rest of the difference was not
+looked into.
 
 **What it does not cover.** Injected asteroids move in straight lines with a
 constant brightness; real ones may not. Only Pan-STARRS1, only
@@ -121,7 +164,7 @@ julia --project=. examples/faint_completeness.jl
 ```
 
 It reads the sets from `data/real/iasc` and keeps each set's result in
-`data/real/faint_completeness`; a second run only prints the tables.
+`data/real/faint_completeness2` (the first runs' in `data/real/faint_completeness`); a second run only prints the tables.
 
 ## References
 

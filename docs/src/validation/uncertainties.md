@@ -10,10 +10,11 @@ Pan-STARRS1 campaign sets (45 points), the position errors divided by the
 uncertainties have a standard deviation of 1.19 (robustly 1.01), 64% of them
 within 1 and 91% within 2, and no offset: −0.007″ in RA, −0.019″ in Dec. On
 synthetic asteroids the magnitude uncertainties are about right (robust
-deviation 1.2), the position ones 1.5 times too small with a mean offset of
-0.05″ that the catalogued asteroids do not show. A first model of the
-position uncertainty was 4 times too small and was changed; both runs are
-reported below.
+deviation 1.2); the position ones first came out 1.5 times too small with a
+mean offset of 0.05″, which were the test's: placed through the same fit as
+the search's, the errors are smaller than the uncertainties and the offset
+is gone. A first model of the position uncertainty was 4 times too small and
+was changed; every run is reported below.
 
 ## 1. What is given
 
@@ -70,6 +71,29 @@ while `analyze_set` measures through the frames' fit made together, so the
 offset could be the test's or the pipeline's. The deviations well above the
 robust ones come from a few points far off, likely ones blended with stars.
 
+**Third run**, after [`inject_movers`](@ref) came to fit the frames together
+as `analyze_set` does (found on [the sets kept aside](holdout.md): its own
+fits were up to 1″ from the joint one on 5 frames of these sets). Declared
+before it: if the two fits' disagreement was the cause, a deviation closer to
+1 than 1.5 and a smaller offset. Same seeds; the asteroids drawn differ, as
+each one's noise depends on its frame's zero point.
+
+| | Points | Error, median | Uncertainty, median | Deviation (robust) | Within 1 / 2 |
+|:--|--:|--:|--:|--:|--:|
+| Position, all | 1,968 | 0.026″ | 0.072″ | 0.95 (0.53) | 87% / 98% |
+| V 19.5–20.5 | 829 | 0.019″ | 0.070″ | 0.84 (0.39) | 94% / 99% |
+| V 20.5–21.5 | 827 | 0.032″ | 0.073″ | 0.97 (0.64) | 85% / 98% |
+| V 21.5–22.0 | 312 | 0.047″ | 0.079″ | 1.12 (0.86) | 73% / 95% |
+| stacked tracklets | 104 | 0.055″ | 0.098″ | 0.89 (0.79) | 81% / 97% |
+| Magnitude, all | 1,968 | 0.044 | 0.051 | 2.35 (1.24) | 53% / 84% |
+
+The mean error is −0.002″ in RA and +0.001″ in Dec. The offset and the
+excess were the test's. The position uncertainties are now larger than the
+errors on synthetic asteroids, as they should be: a synthetic asteroid is
+placed through the same fit it is measured through, so it carries none of
+the fit's error, which the uncertainty includes and a real asteroid carries
+(section 3).
+
 ## 3. Catalogued asteroids
 
 **Design**, declared before running (`examples/known_astrometry_test.jl`):
@@ -100,8 +124,7 @@ On catalogued numbered asteroids, where the truth is independent of the
 pipeline, the positions have no offset at this level and their
 uncertainties are the right size: the reported `rmsRA` and `rmsDec` can be
 taken as they are. The sample is small, 45 points of 12 asteroids on one
-telescope. The offset and the larger errors on synthetic asteroids are
-therefore most likely the test's, the two fits disagreeing, but that is not
-shown. The magnitude uncertainties are about right for most points and too
+telescope. The offset and the larger errors first measured on synthetic asteroids were
+the test's: with the frames fitted together for both, they are gone. The magnitude uncertainties are about right for most points and too
 small for a few: a magnitude off by more than 3 of its uncertainties is
 more likely a blend than noise.
