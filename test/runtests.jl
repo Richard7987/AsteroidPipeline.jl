@@ -1737,6 +1737,18 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test length(partial_truth) == 4 * 2
             @test FITS(f -> read(f[1]), partial[2]) == FITS(f -> read(f[1]), starless)
             @test_throws ErrorException inject_movers([starless], joinpath(dir, "none"); reference_stars=catalog)
+            # tile-compressed, the image in the second extension: read as analyze_set reads it
+            packed = map(enumerate(paths)) do (k, p)
+                raw, header = FITS(f -> (Float32.(read(f[1])), read_header(f[1])), p)
+                path = joinpath(dir, "packed$k.fits.fz")
+                FITS(f -> write(f, raw; header=header), path * "[compress]", "w")
+                path
+            end
+            unpacked, packed_truth = inject_movers(packed, joinpath(dir, "packed"); n=4, rng=Xoshiro(3),
+                                                   reference_stars=catalog, margin=60)
+            @test length(packed_truth) == 4 * 3
+            @test basename.(unpacked) == ["packed$k.fits" for k in 1:3]
+            @test FITS(f -> ndims(f[1]) == 2 && frame_epoch(read_header(f[1])) ≈ truth.epoch[truth.frame .== 1][1], unpacked[1])
             # headers 25″ off, past one frame's search: the frames are fitted together,
             # and the objects land where they are on the sky
             off = map(enumerate(paths)) do (k, p)
