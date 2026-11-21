@@ -31,6 +31,16 @@ from the version picker at the top right.
   a set analyzed again gives the same result whether the services are down or
   have changed. A query never answered throws [`OfflineAnswerMissing`](@ref)
   (Gaia DR3) or leaves a warning (known objects).
+- [Validation: sets kept aside](validation/holdout.md): 12 Pan-STARRS1 sets
+  of IASC's October 2026 campaign kept out of every measurement of a
+  setting, the measurements to repeat on them declared beforehand. The first
+  run failed through `inject_movers` (below); run again, the dipole test kept
+  532 of 533 synthetic asteroids, and half were found at V 21.57 frame by
+  frame against 21.72 on the 11 sets (not met) and at V 21.67 with stacking
+  against 21.84 (met), on sets 0.1 mag shallower.
+- 95% intervals on the validation pages ([summary](validation/summary.md)):
+  Wilson's for fractions, resampling whole sets for the magnitude at which
+  half are found (`examples/validation_stats.jl`).
 
 **Changed**
 
@@ -42,6 +52,21 @@ from the version picker at the top right.
   each frame's own, where a frame without any was given the others' through
   the headers unchecked. Unchanged on the Pan-STARRS1 sets of the other
   validations.
+
+**Fixed**
+
+- [`inject_movers`](@ref) fitted each frame's WCS on its own, where
+  [`analyze_set`](@ref) fits the frames together: with a header a few
+  arcseconds off, that fit matched few stars and landed about 1″ from the
+  search's, or failed, and synthetic asteroids were placed up to 1″ from
+  where the search measures them. It now fits them together.
+  The validations that inject asteroids were run again with it:
+  [How faint](validation/faint.md), half found at V 21.72 frame by frame and
+  21.84 with stacking (21.67 and 21.79 before); [Real or false](validation/real-bogus.md),
+  the dipole test leaves 12 of 80 other tracklets (19 of 89) and keeps 583 of
+  589 synthetic asteroids (511 of 516); [Uncertainties](validation/uncertainties.md),
+  on synthetic asteroids the position errors are now smaller than the
+  uncertainties and the 0.05″ offset is gone.
 
 ## 1.6.0 — 2026-11-16
 

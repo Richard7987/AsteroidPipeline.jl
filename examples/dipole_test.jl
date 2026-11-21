@@ -14,7 +14,15 @@ source). Counted each time: injected asteroids recovered
 (injection_recovery), catalogued asteroids identified, and the other
 tracklets, which are false but for the few uncatalogued asteroids.
 
-Each set's counts are cached in data/real/dipole_test.
+Each set's counts are cached in data/real/dipole_test2, the first run's in
+data/real/dipole_test.
+
+Run again after inject_movers came to fit the frames together, as analyze_set
+does (2026-11-19). On the sets kept aside (docs/src/validation/holdout.md) its
+frame-by-frame fits were found up to 33" off, and on these sets 0.8-1.05"
+from the joint fit on 5 frames and missing on 1 (XY72_p11): synthetic
+asteroids were placed there up to 1" from where the search measures them.
+Same sets, seeds and settings; nothing else changed.
 
 The counts on the validation page are from a run made before pipeline_config
 set max_negative, when the first search was analyze_set with its defaults.
@@ -28,7 +36,7 @@ const SETS = ["XY14_p10", "XY15_p01", "XY25_p10", "XY26_p01", "XY42_p11", "XY45_
 const LEFT_OUT = ("XY14_p10", "XY73_p00")
 const LIMITS = (Inf, 8.0, 6.0)
 const DATA = joinpath(@__DIR__, "..", "data", "real", "iasc")
-const CACHE = joinpath(@__DIR__, "..", "data", "real", "dipole_test")
+const CACHE = joinpath(@__DIR__, "..", "data", "real", "dipole_test2")
 
 orbits = read_mpcorb(download_mpcorb())
 mkpath(CACHE)

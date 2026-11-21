@@ -12,9 +12,9 @@ how completeness falls off with magnitude).
 Each synthetic object moves in a straight line at constant speed, uniform
 in `speed_range` (arcsec/hour) in a uniformly random direction, from a
 uniformly random start inside the first frame (`margin` pixels from its
-edges); its magnitude is uniform in `mag_range`. Each frame is calibrated
-on its own — WCS refined ([`refine_wcs`](@ref)) and zero point fitted
-([`photometric_zeropoint`](@ref)) against Gaia DR3 (`reference_stars`, or
+edges); its magnitude is uniform in `mag_range`. Each frame is calibrated —
+WCS refined with the others ([`refine_wcs_set`](@ref), as [`analyze_set`](@ref)
+refines them) and its own zero point fitted ([`photometric_zeropoint`](@ref)) against Gaia DR3 (`reference_stars`, or
 fetched once — a live request) — so the object lands at its true sky
 position and with its true brightness *in that frame*, transparency
 changes included. It is drawn as a Gaussian of the frame's own measured
@@ -46,14 +46,15 @@ function inject_movers(fits_paths::AbstractVector{<:AbstractString}, out_dir::Ab
         end
     end
     epochs = [fr.epoch for fr in frames]
+    masks = [fill_value_mask(fr.image) for fr in frames]
+    headers = [load_wcs(fr.header_str) for fr in frames]
+    reference_stars === nothing && (reference_stars = _field_reference_stars(frames[1].image, headers[1], epochs[1]))
+    # fitted together, as analyze_set fits them: a header off by more than one frame's search reaches
+    refined = refine_wcs_set([fr.image for fr in frames], headers, reference_stars; masks)
 
     calib = map(enumerate(frames)) do (k, fr)
-        mask = fill_value_mask(fr.image)
-        wcs = load_wcs(fr.header_str)
-        reference_stars === nothing &&
-            (reference_stars = _field_reference_stars(fr.image, wcs, epochs[1]))
-        refined = refine_wcs(fr.image, wcs, reference_stars; mask)
-        refined.refined && (wcs = refined.wcs)
+        mask = masks[k]
+        wcs = refined[k].refined ? refined[k].wcs : headers[k]
         zp = photometric_zeropoint(fr.image, wcs, reference_stars; mask)
         isnan(zp.zeropoint) && return (wcs=wcs, zeropoint=NaN, fwhm=NaN)
         (wcs=wcs, zeropoint=zp.zeropoint, fwhm=_measure_fwhm(fr.image, mask))

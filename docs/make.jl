@@ -83,6 +83,7 @@ makedocs(;
             "Real or false: a classifier and the dipole test" => "validation/real-bogus.md",
             "Uncertainties of positions and magnitudes" => "validation/uncertainties.md",
             "Raw frames, reduced here" => "validation/calibration.md",
+            "Sets kept aside" => "validation/holdout.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",

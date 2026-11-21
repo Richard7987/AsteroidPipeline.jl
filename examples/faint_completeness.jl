@@ -32,6 +32,14 @@ frame out instead of stopping, the cache of the two sets it had stopped on
 (XY72_p11, XY73_p00) was removed and they were run again. Each set's result is
 cached in data/real/faint_completeness.
 
+Run again after inject_movers came to fit the frames together, as analyze_set
+does (2026-11-19). On the sets kept aside (docs/src/validation/holdout.md) its
+frame-by-frame fits were found up to 33" off, and on these sets 0.8-1.05"
+from the joint fit on 5 frames and missing on 1 (XY72_p11): synthetic
+asteroids were placed there up to 1" from where the search measures them.
+Same sets, seeds and settings; nothing else changed. The second run's
+results are cached in data/real/faint_completeness2.
+
 The question it answers: how far past V 22, where Pan-STARRS's own
 pipeline stops and IASC's searchers find their objects (Miller et al.
 2024, PASP 136, 024502: 0.30 mag fainter on average), this pipeline finds
@@ -44,7 +52,7 @@ const SETS = ["XY14_p10", "XY15_p01", "XY25_p10", "XY26_p01", "XY42_p11", "XY45_
 const DATA = joinpath(@__DIR__, "..", "data", "real", "iasc")
 const EDGES = 21.0:0.25:23.5
 
-const CACHE = joinpath(@__DIR__, "..", "data", "real", "faint_completeness")
+const CACHE = joinpath(@__DIR__, "..", "data", "real", "faint_completeness2")
 
 orbits = read_mpcorb(download_mpcorb())
 function measure(k, name)

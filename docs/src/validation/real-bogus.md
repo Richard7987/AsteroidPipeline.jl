@@ -10,7 +10,10 @@ against 540 and 89. Its weights pointed at one measurement the filters did
 not use, a negative beside the detection in the difference image. Added as a
 test at the detection threshold, it took the tracklets that are neither
 synthetic nor catalogued from 89 to 19; 511 of the 516 synthetic asteroids
-found before were still found, and all 25 catalogued ones.
+found before were still found, and all 25 catalogued ones. Run again once
+the synthetic asteroids were placed through the search's own astrometric
+fit (some had been up to 1″ off): from 80 to 12, with 583 of 589 still found
+and 24 catalogued in each search. On [12 sets kept aside](holdout.md), 532 of 533.
 
 ## 1. Method
 
@@ -113,6 +116,34 @@ catalogued asteroids were identified in all three searches. The eight
 uncrowded fields did not change: 8 other tracklets in each search.
 [`pipeline_config`](@ref) now sets the test at 6σ.
 
+**Run again, the injection fixed.** [`inject_movers`](@ref) had fitted each
+frame's astrometry on its own, up to 1″ from the search's joint fit on 5
+frames of these sets, so some synthetic asteroids were placed where the
+search does not measure them, to be missed and counted as other tracklets
+([Sets kept aside](holdout.md)). Run again with the same seeds, declared
+before running; the asteroids drawn differ, as each one's noise depends on
+its frame's zero point:
+
+| Set | Without: synthetic | other | At 8σ: synthetic | other | At 6σ: synthetic | other |
+|:--|--:|--:|--:|--:|--:|--:|
+| `XY15_p01` | 40 | 0 | 40 | 0 | 40 | 0 |
+| `XY25_p10` | 70 | 46 | 68 | 21 | 66 | 3 |
+| `XY26_p01` | 77 | 11 | 77 | 4 | 75 | 2 |
+| `XY42_p11` | 63 | 20 | 63 | 15 | 63 | 5 |
+| `XY45_p01` | 34 | 0 | 34 | 0 | 34 | 0 |
+| `XY45_p10` | 46 | 0 | 46 | 0 | 46 | 0 |
+| `XY45_p11` | 49 | 0 | 49 | 0 | 49 | 0 |
+| `XY54_p10` | 52 | 2 | 52 | 2 | 52 | 2 |
+| `XY72_p01` | 58 | 0 | 58 | 0 | 58 | 0 |
+| `XY72_p11` | 52 | 1 | 52 | 0 | 52 | 0 |
+| `XY73_p01` | 48 | 0 | 48 | 0 | 48 | 0 |
+| All | 589 | 80 | 587 | 42 | 583 | 12 |
+
+The 24 catalogued asteroids were identified in all three searches. On the
+eight uncrowded fields, 3 other tracklets without the test and 2 with it,
+against 8 before, 6 of which were on the four of them with a frame placed
+off. The 6 synthetic asteroids fewer at 6σ are on `XY25_p10` and `XY26_p01`.
+
 ### With stacking, and the other validations
 
 [`stack_search`](@ref) takes the same `max_negative`, for a track with such a
@@ -148,7 +179,7 @@ fewer real ones overall. Its use here was to show which measurement the
 filters lacked.
 
 **The cost of the test.** The 5 synthetic asteroids lost at 6σ, 1% of
-those found, were all on the crowded fields, where a real object is more
+those found (6 of 589 in the second run), were all on the crowded fields, where a real object is more
 often within 4 px of a star's residual. An asteroid passing a star is lost
 in that frame with or without the test; with it, also when the star is
 merely close.
