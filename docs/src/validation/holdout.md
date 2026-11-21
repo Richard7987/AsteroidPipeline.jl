@@ -6,8 +6,16 @@ Every setting of the search was chosen, or checked, on the same 11
 Pan-STARRS1 sets of IASC campaigns. Twelve other sets, of IASC's October
 2026 campaign, were kept aside on 2026-11-19, before they were used for any
 measurement of a setting, and the measurements to repeat on them were
-declared then, with what counts as agreeing. This page holds that
-declaration and the results.
+declared then, with what counts as agreeing. The first run failed through
+the measuring tool: [`inject_movers`](@ref) placed synthetic asteroids up to
+1″ off where the headers were a few arcseconds off, on these sets and, less,
+on the 11. Fixed, and run again (no longer a clean test, as the first had been
+seen): the dipole test kept 532 of 533 synthetic asteroids and every
+catalogued one, as on the 11 sets; half were found at V 21.57 frame by
+frame (21.49–21.67), against 21.72 there, not met, and at V 21.67 with
+stacking (21.53–21.86), against 21.84, met. These sets are shallower than
+the 11, by a median 0.1 mag at their 5σ limit. The next campaign's sets are
+the clean test.
 
 ## 1. The sets
 
@@ -110,3 +118,59 @@ the 11 sets are run again with the same seeds ([How faint](faint.md),
 injector. That second run is not a clean test of sets kept aside: the first
 was seen, and the tool was fixed on what it showed. The clean test is the
 next campaign's sets.
+
+## 6. Second run: the injection fixed
+
+Run on 2026-11-20, all 12 sets: with the frames fitted together, every frame
+of `XY04_p11` and `XY05_p00` had a zero point. Expected are the values the
+11 sets give with the same injector ([Real or false](real-bogus.md),
+[How faint](faint.md)), with the same rules for agreeing:
+
+| | Expected | Measured on 12 sets | |
+|:--|:--|:--|:--|
+| synthetic asteroids found with the dipole test, over without | 583 of 589, 99.0% | 532 of 533, 100% (99–100%) | met |
+| other tracklets the test leaves | 12 of 80, 15% | 3 of 3 | not measurable |
+| catalogued asteroids identified | the same | the same 10 | met |
+| half found, frame by frame | V 21.72 | V 21.57 (21.49–21.67) | not met |
+| half found, with stacking | V 21.84 | V 21.67 (21.53–21.86) | met |
+
+| Set | Synthetic found, of 100 (V 20–23) | Other tracklets | 5σ limit | Half found, frame by frame | with stacking |
+|:--|--:|--:|:--|:--|:--|
+| `XY02_p00` | 42 | 0 | 22.40 | V 21.48 | V 21.48 |
+| `XY04_p01` | 45 | 0 | 22.53 | V 21.56 | V 21.56 |
+| `XY04_p10` | 38 | 0 | 22.46 | V 21.43 | V 21.46 |
+| `XY04_p11` | 36 | 0 | 22.43 | V 21.21 | V 21.21 |
+| `XY05_p00` | 44 | 0 | 22.57 | V 21.67 | V 21.81 |
+| `XY05_p01` | 47 | 0 | 22.55 | V 21.71 | V 21.76 |
+| `XY55_p00` | 49 | 1 | 22.63 | V 21.68 | V 21.70 |
+| `XY55_p01` | 51 | 0 | 22.60 | V 21.68 | V 21.88 |
+| `XY55_p10` | 57 | 1 | 22.59 | V 21.70 | V 22.05 |
+| `XY55_p11` | 41 | 0 | 22.60 | V 21.55 | V 21.59 |
+| `XY75_p01` | 42 | 1 | 22.48 | V 21.72 | V 21.90 |
+| `XY75_p10` | 41 | 0 | 22.49 | V 21.43 | V 22.02 |
+
+"Synthetic found" and "other" are without the dipole test; the last three
+columns are of the second search (V 21–23.5, the defaults).
+
+| V | Injected | Frame by frame | With stacking |
+|:--|:--|:--|:--|
+| 21.00–21.25 | 117 | 91 (78%) | 91 (78%) |
+| 21.25–21.50 | 124 | 87 (70%) | 87 (70%) |
+| 21.50–21.75 | 109 | 49 (45%) | 57 (52%) |
+| 21.75–22.00 | 123 | 20 (16%) | 50 (41%) |
+| 22.00–22.25 | 114 | 2 (2%) | 30 (26%) |
+| 22.25–22.50 | 129 | 0 (0%) | 24 (19%) |
+| 22.50–22.75 | 119 | 0 (0%) | 6 (5%) |
+| 22.75–23.50 | 365 | 0 | 0 |
+
+The six sets that had shown the fault found 38–47 synthetic asteroids, and
+1 other tracklet between them: those of the first run were the injector's.
+Frame by frame, half were found 0.15 mag brighter than on the 11 sets.
+These 12 sets are shallower: their 5σ limits are V 22.40–22.63 (median
+22.54), those of the 11 V 22.23–23.12 (median 22.64), and none is as deep as
+the four crowded fields (V 22.81–23.12), which have the faintest
+half-found magnitudes of the 11. Half were found a median 0.94 mag brighter
+than a set's limit here, 0.89 there. Frame by frame, no asteroid fainter than
+V 22.25 was found here (0 of 613), against 15 of 568 on the 11 sets. What
+makes the difference was not measured; nothing is changed on it, by the
+rules.

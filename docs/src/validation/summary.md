@@ -31,7 +31,7 @@ images, or synthetic asteroids added to real images.
 |:--|:--|:--|
 | Are the positions right? | within 0.12–0.17″ of an independent reduction | Pan-STARRS1, 4 frames |
 | Are catalogued asteroids found? | 17 of the 30 predicted on the frames; of the 13 missed, 5 are in the one damaged set, 7 are fainter than V≈21, and one crosses a cell gap and a star; with the frames' astrometry fitted together, 28 identified on 20 sets (24 before) | 10, then 20 Pan-STARRS1 sets |
-| How faint? | ~82% found to V≈21.5, 21% at 22–22.5 frame by frame; with stacking, 94 of 320 injected at V 21–24 instead of 77; on 11 campaign sets, half found to V 21.7 frame by frame and V 21.8 with stacking, 16% at 22–22.5 | 180 + 320 + 1,100 injected asteroids |
+| How faint? | ~82% found to V≈21.5, 21% at 22–22.5 frame by frame; with stacking, 94 of 320 injected at V 21–24 instead of 77; on 11 campaign sets, half found to V 21.7 frame by frame and V 21.8 with stacking, 23% at 22–22.5 with stacking | 180 + 320 + 1,100 injected asteroids |
 | How many false candidates? | 31 tracklets to look at across the 9 good sets (5,548 for 6 at first, 98 before the dipole test); 12 not identified across 20 sets (150 before the frames were fitted together, 79 before the dipole test) | Pan-STARRS1 |
 | Are damaged sets recognised? | the one damaged set flagged; none of the other nine | Pan-STARRS1 |
 | Variable stars? | all 3 confirmed variables found; 0.6–2% of constant stars flagged | ZTF |
@@ -39,8 +39,8 @@ images, or synthetic asteroids added to real images.
 | Tracklets linked across nights? | every tracklet of the 47 objects seen on 3 nights or more, none wrong, with or without 969 false tracklets; on 2 nights, 168 wrong among false tracklets | MPC astrometry |
 | Were the candidates reported already? | 2 of the 5 unidentified on 19 campaign sets, by Pan-STARRS itself in the same exposures, 0.10–0.21″ from ours | Pan-STARRS1, the MPC's ITF |
 | Near-Earth by digest2? | 25 of 26 catalogued main-belt and Mars-crossing asteroids below 65, the NEO Confirmation Page's threshold; one Mars-crosser at 98 | Pan-STARRS1, 18 campaign sets |
-| False tracklets? | 89 tracklets neither injected nor catalogued on 11 sets, 19 with the dipole test, for 5 of 516 injected asteroids lost; a classifier trained on the tracklets did no better than the filters | Pan-STARRS1, 11 campaign sets |
-| Are the uncertainties right? | positions: for 12 numbered asteroids, errors over uncertainties with deviation 1.19 (robustly 1.01), 91% within 2, no offset (−0.007″, −0.019″); 1.5 times too small on injected asteroids; magnitudes about right (robustly 1.2) | Pan-STARRS1, 11 campaign sets |
+| False tracklets? | 80 tracklets neither injected nor catalogued on 11 sets, 12 with the dipole test, for 6 of 589 injected asteroids lost (89, 19 and 5 of 516 before the injection was fixed); on 12 sets kept aside, 532 of 533 kept; a classifier trained on the tracklets did no better than the filters | Pan-STARRS1, 11 campaign sets |
+| Are the uncertainties right? | positions: for 12 numbered asteroids, errors over uncertainties with deviation 1.19 (robustly 1.01), 91% within 2, no offset (−0.007″, −0.019″); on injected asteroids larger than the errors, which carry no error of the astrometric fit (1.5 times too small before the injection was fixed); magnitudes about right (robustly 1.2) | Pan-STARRS1, 11 campaign sets |
 | Raw frames reduced here as well as the observatory's? | on 13 sets: the same astrometric fits as its pixels' from the same headers, zero points as uniform (a median 0.000 mag apart), limiting magnitudes within 0.1, positions against JPL as close (0.070″ against 0.102″); 14 of its 18 catalogued asteroids, the 4 missed 2 at the threshold, 1 with a frame since fixed, 1 identified only on a second search | Las Cumbres Observatory, 3 cameras |
 | Rotation periods? | 6.92035 ± 0.00008 h for a published 6.920509 h, doubling the fit, on one asteroid; on eight chosen beforehand, two of the six measured within 1%, four not; on thirty chosen by a rule, the period or its half within 1% for 13 of 29, against 3 of 29 with the magnitudes shuffled | ZTF |
 
@@ -56,15 +56,17 @@ Most results are counts from a few dozen objects. Their 95% intervals
 | catalogued asteroids predicted on the frames, found ([Pan-STARRS1](pan-starrs1.md)) | 17 of 30 | 39–73% |
 | synthetic asteroids V 18–21.5 found ([Pan-STARRS1](pan-starrs1.md)) | 96 of 117 | 74–88% |
 | synthetic asteroids V 21–24 found, frame by frame and with stacking ([Stacking](stacking.md)) | 77 and 94 of 320 | 20–29% and 25–35% |
-| synthetic asteroids V 22.0–22.5 found, frame by frame and with stacking ([How faint](faint.md)) | 8 and 34 of 214 | 2–7% and 12–21% |
-| half the synthetic asteroids found, frame by frame and with stacking ([How faint](faint.md)) | V 21.67 and 21.79 | V 21.49–21.85 and 21.59–21.95 (sets resampled) |
+| synthetic asteroids V 22.0–22.5 found, frame by frame and with stacking ([How faint](faint.md)) | 26 and 53 of 231 | 8–16% and 18–29% |
+| half the synthetic asteroids found, frame by frame and with stacking ([How faint](faint.md)) | V 21.72 and 21.84 | V 21.60–21.80 and 21.71–22.04 (sets resampled) |
 | confirmed variable stars found ([A variable star](variable-star.md)) | 3 of 3 | 44–100% |
 | predictions 30 days ahead within 2σ ([Orbits](orbits.md)) | 39 of 40 | 87–100% |
 | objects on 3 nights or more linked whole, none wrong ([Linking](linking.md)) | 47 of 47 | 92–100% |
 | unidentified tracklets already in the ITF ([ITF](itf.md)) | 2 of 5 | 12–77% |
 | catalogued asteroids, not near-Earth, below digest2's 65 ([digest2](digest2.md)) | 25 of 26 | 81–99% |
-| synthetic asteroids still found with the dipole test ([Real or false](real-bogus.md)) | 511 of 516 | 98–100% |
-| other tracklets left by the dipole test ([Real or false](real-bogus.md)) | 19 of 89 | 14–31% |
+| synthetic asteroids still found with the dipole test ([Real or false](real-bogus.md)) | 583 of 589 | 98–100% |
+| the same, on 12 sets kept aside ([Sets kept aside](holdout.md)) | 532 of 533 | 99–100% |
+| other tracklets left by the dipole test ([Real or false](real-bogus.md)) | 12 of 80 | 9–24% |
+| half the synthetic asteroids found on 12 sets kept aside, frame by frame and with stacking ([Sets kept aside](holdout.md)) | V 21.57 and 21.67 | V 21.49–21.67 and 21.53–21.86 (sets resampled) |
 | points of numbered asteroids within 2 uncertainties ([Uncertainties](uncertainties.md)) | 41 of 45 | 79–96%, too narrow: 12 asteroids, not 45 independent points |
 | catalogued asteroids of the archive's frames found in raw frames reduced here ([Raw frames](calibration.md)) | 14 of 18 | 55–91% |
 | rotation periods within 1%, of those measured ([Eight asteroids](ztf-periods.md)) | 2 of 6 | 10–70% |
