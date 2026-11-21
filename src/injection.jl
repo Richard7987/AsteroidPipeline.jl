@@ -179,12 +179,12 @@ function injection_recovery(candidates, truth; radius::Real=1.5, min_frames::Int
     out_mag = Float64[]; out_speed = Float64[]; recovered = Bool[]; tracklet = Int[]
     for obj in objects
         t = filter(r -> r.object == obj, collect(truth))
-        pos = Dict(r.frame => (r.ra, r.dec) for r in t)
         hits = Dict{Int,Int}()
         for r in rows
-            haskey(pos, r.frame) || continue
-            p = pos[r.frame]
-            _angular_distance_arcsec(r.ra, r.dec, p[1], p[2]) <= radius &&
+            # by epoch: the frames may be numbered in another order than the truth's
+            k = findfirst(p -> abs(p.epoch - r.epoch) < 1e-5, t)
+            k === nothing && continue
+            _angular_distance_arcsec(r.ra, r.dec, t[k].ra, t[k].dec) <= radius &&
                 (hits[r.id] = get(hits, r.id, 0) + 1)
         end
         best = isempty(hits) ? (0, 0) : findmax(hits)

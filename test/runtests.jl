@@ -1697,6 +1697,8 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                                       refine_astrometry=true, reference_stars=catalog, difference_stack=true,
                                       min_sharpness=0.3)
             rec = injection_recovery(candidates, truth; radius=1.0)
+            # matched by epoch, whatever order the frames were numbered in
+            @test injection_recovery(candidates, Table(truth; frame=4 .- truth.frame); radius=1.0).recovered == rec.recovered
             # bright and clear of the field edges, but placed at random: one
             # can still land on a star or another synthetic object and be
             # masked out — a real loss, which is what this machinery measures
