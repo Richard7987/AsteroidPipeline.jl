@@ -55,6 +55,13 @@ inject_movers read a frame's first extension only, where DECam's and Las
 Cumbres' files hold the image in the second (tile-compressed), and failed on
 it; it now reads such a file as analyze_set does. That set's cache was
 removed.
+
+Changed after the first DECam set's result: 0 of 100 injected asteroids
+recovered, the search's tracklets 0.07-0.46" from them. injection_recovery
+matched points by frame number, inject_movers numbering the frames in the
+order given and analyze_set in time order; DECam's files, named by their
+checksum, do not sort by time. It now matches by epoch. The DECam cache was
+removed; the frames of the other instruments sort by name in time order.
 =#
 using AsteroidPipeline, FITSIO, Printf, Random, Serialization, Statistics
 const P = AsteroidPipeline
