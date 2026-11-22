@@ -1387,6 +1387,11 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         end
         @test wrapped isa CompositeException
         @test AsteroidPipeline._task_root(wrapped) isa SkyBoTServiceError
+        # a request that never answers ends at the deadline as a timeout, which is retried
+        @test_throws HTTP.TimeoutError AsteroidPipeline._with_deadline(() -> sleep(30), 0.5)
+        @test AsteroidPipeline._is_service_failure(HTTP.TimeoutError("request", 1))
+        @test AsteroidPipeline._with_deadline(() -> 7, 5) == 7
+        @test_throws SkyBoTServiceError AsteroidPipeline._with_deadline(() -> throw(SkyBoTServiceError("down")), 5)
         @test_throws ArgumentError crossmatch_catalog([c], :vsx; radius=5.0, observatory="F51")
         @test_throws ArgumentError crossmatch_catalog([c], :skybot; radius=5.0, observatory="Palomar")
 

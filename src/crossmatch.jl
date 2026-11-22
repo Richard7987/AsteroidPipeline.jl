@@ -148,6 +148,17 @@ function _with_retries(f, attempts::Integer; retryable=_is_service_failure, back
     end
 end
 
+# `f()` given at most `seconds`, else an HTTP.TimeoutError, which is retried.
+# HTTP.jl's read_idle_timeout did not end a TLS read that SkyBoT left
+# waiting for hours; this deadline does. The stalled task is left behind.
+function _with_deadline(f, seconds::Real)
+    t = @async f()
+    timedwait(() -> istaskdone(t), seconds; pollint=0.5) === :ok ||
+        throw(HTTP.TimeoutError("request", round(Int64, seconds * 1e9)))
+    istaskfailed(t) && throw(_task_root(TaskFailedException(t)))
+    return fetch(t)
+end
+
 const _TAP_ATTEMPTS = 3
 
 """
@@ -314,8 +325,9 @@ missed a known asteroid 0.94″ from the centre in two of four ZTF frames.
 """
 function _skybot_matches(c, radius_deg::Real;
                          observatory::Union{Nothing,AbstractString}=nothing,
-                         fetch=query -> _kept_answer(() -> _skybot_text(HTTP.get(_SKYBOT_URL; query=query,
-                                                                                 read_idle_timeout=_CATALOG_IDLE_TIMEOUT)),
+                         fetch=query -> _kept_answer(() -> _skybot_text(_with_deadline(_SKYBOT_DEADLINE) do
+                                                         HTTP.get(_SKYBOT_URL; query=query, read_idle_timeout=_CATALOG_IDLE_TIMEOUT)
+                                                     end),
                                                      "skybot", _answer_key(_SKYBOT_URL, query); keep=_skybot_answered),
                          backoff_seconds::Real=1.0)
     query = Dict(
@@ -420,7 +432,7 @@ function _jpl_field(c, radius_deg::Real, observatory::AbstractString)
         body = try
             _kept_answer("jpl-sbident", _answer_key(_JPL_SBIDENT_URL, query)) do
                 _with_retries(_TAP_ATTEMPTS) do
-                    String(HTTP.get(_JPL_SBIDENT_URL; query, read_idle_timeout=_JPL_TIMEOUT).body)
+                    String(_with_deadline(() -> HTTP.get(_JPL_SBIDENT_URL; query, read_idle_timeout=_JPL_TIMEOUT), 2_JPL_TIMEOUT).body)
                 end
             end
         catch e
@@ -497,6 +509,7 @@ _task_root(e) = e isa CompositeException && !isempty(e.exceptions) ? _task_root(
 # Tries per candidate in _skybot_matches (1/2/4 s backoff): enough for a short
 # burst of server errors, without stalling long on a real outage.
 const _SKYBOT_ATTEMPTS = 4
+const _SKYBOT_DEADLINE = 5_CATALOG_IDLE_TIMEOUT   # seconds for a whole SkyBoT request
 
 """
     SkyBoTServiceError(message)
