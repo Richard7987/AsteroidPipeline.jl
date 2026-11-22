@@ -62,6 +62,11 @@ matched points by frame number, inject_movers numbering the frames in the
 order given and analyze_set in time order; DECam's files, named by their
 checksum, do not sort by time. It now matches by epoch. The DECam cache was
 removed; the frames of the other instruments sort by name in time order.
+
+Changed during the second DECam set, with no result of it: a SkyBoT request
+waited 3 h for an answer that never came, HTTP.jl's 60 s idle timeout not
+ending the TLS read. SkyBoT and JPL requests now end at a deadline of their
+own and are retried. Set 1's result, measured before, is kept.
 =#
 using AsteroidPipeline, FITSIO, Printf, Random, Serialization, Statistics
 const P = AsteroidPipeline
