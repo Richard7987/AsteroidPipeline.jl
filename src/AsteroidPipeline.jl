@@ -21,7 +21,7 @@ import Dates
 import Unicode
 using CodecZlib: GzipDecompressorStream
 import p7zip_jll
-using Random: AbstractRNG, default_rng
+using Random: AbstractRNG, Xoshiro, default_rng
 
 include("detection.jl")
 include("linking.jl")
