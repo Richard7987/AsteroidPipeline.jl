@@ -2,7 +2,10 @@
 Whether analyze_set works on telescopes other than Pan-STARRS1, measured the
 same way on each:
 
-    julia --project=. examples/telescope_test.jl <instrument> <MPC code> <seed>
+    julia --project=. examples/telescope_test.jl <instrument> <MPC code> <seed> [set ...]
+
+Named sets are measured alone, the others read from their cache; runs on
+different sets can go side by side.
 
 Declared before running, for every instrument; each instrument's sets are
 chosen by the rules in examples/telescope_data.jl, fixed before its images
@@ -75,6 +78,7 @@ include("validation_stats.jl")
 const INSTRUMENT = ARGS[1]
 const CODE = ARGS[2]   # "site": each set's, the MPC code nearest its headers' site
 const SEED = parse(Int, ARGS[3])
+const ONLY = ARGS[4:end]   # sets to measure, if named; the others from their cache, or left out
 const DATA = joinpath(@__DIR__, "..", "data", "real", "telescopes", INSTRUMENT)
 const CACHE = joinpath(@__DIR__, "..", "data", "real", "telescope_test", INSTRUMENT)
 const PROGRESS = joinpath(homedir(), ".claude", "progress", "b1-" * INSTRUMENT)
@@ -175,6 +179,7 @@ measured = map(enumerate(sets)) do (k, name)
     write(PROGRESS, "$(k - 1) $(length(sets)) $INSTRUMENT\n")
     cache = joinpath(CACHE, name * ".jls")
     isfile(cache) && return deserialize(cache)
+    isempty(ONLY) || name in ONLY || return nothing
     global orbits
     orbits === nothing && (orbits = read_mpcorb(download_mpcorb()))
     result = try
@@ -185,6 +190,7 @@ measured = map(enumerate(sets)) do (k, name)
     serialize(cache, result)
     result
 end
+filter!(!isnothing, measured)
 write(PROGRESS, "$(length(sets)) $(length(sets)) $INSTRUMENT\n")
 
 println("\n$INSTRUMENT ($CODE), $(length(sets)) sets\n")
