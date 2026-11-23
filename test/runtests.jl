@@ -1496,6 +1496,19 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             gaia_reference_stars(3.5, -10.74, 0.05; epoch_jd=2457389.0, cache=dir)
             @test length(answered) == 4 && occursin("noirlab", answered[4])
             @test s2.dec[1] ≈ -10.74 - 20.0 * 10 / 3.6e6 && s2.dec[2:3] == [-10.75, -10.76]   # proper motion, or none (empty or NaN)
+            # the archive refusing the query (401): the next copy answers; a malformed query (400) fails at once
+            empty!(AsteroidPipeline._SERVICE_DOWN)
+            AsteroidPipeline._TAP_RESPONSES[] = (url, query) -> occursin("gea.esac", url) ?
+                throw(HTTP.StatusError(HTTP.Response(401))) : csv
+            s3 = @test_logs (:warn, r"Gaia archive") gaia_reference_stars(4.0, -10.74, 0.05; epoch_jd=2457389.0, cache=nothing)
+            @test length(s3) == 3
+            empty!(AsteroidPipeline._SERVICE_DOWN)
+            AsteroidPipeline._TAP_RESPONSES[] = (url, query) -> throw(HTTP.StatusError(HTTP.Response(400)))
+            @test_throws HTTP.StatusError gaia_reference_stars(4.5, -10.74, 0.05; epoch_jd=2457389.0, cache=nothing)
+            # a page behind status 200, as the archive gives while down: not kept, the next copy asked
+            @test_throws AsteroidPipeline.TAPServiceError AsteroidPipeline._tap_answered("\n<html><title>ESDC Archives downtime</title>")
+            @test AsteroidPipeline._is_service_failure(AsteroidPipeline.TAPServiceError("down"))
+            @test AsteroidPipeline._tap_answered(csv) == csv
         finally
             AsteroidPipeline._TAP_RESPONSES[] = recorded
             empty!(AsteroidPipeline._SERVICE_DOWN)

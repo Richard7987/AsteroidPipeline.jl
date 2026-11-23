@@ -93,9 +93,24 @@ function _tap_text(url::AbstractString, query::AbstractString)
     make_body() = HTTP.Form(Dict(
         "REQUEST" => "doQuery", "LANG" => "ADQL", "FORMAT" => "csv", "QUERY" => query))
     return _with_retries(_TAP_ATTEMPTS) do
-        String(HTTP.post(url, [], make_body(); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+        _tap_answered(String(HTTP.post(url, [], make_body(); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body))
     end
 end
+
+# A TAP service's CSV, or a TAPServiceError for a page in its place: the ESA
+# archive, down for maintenance on 2026-11-23, answered with status 200 and an
+# HTML page, which would otherwise be kept as the answer.
+function _tap_answered(text::AbstractString)
+    startswith(lstrip(text), "<") && throw(TAPServiceError(first(strip(text), 120)))
+    return text
+end
+
+# A TAP service answering with a page (HTML or XML) behind a success status:
+# the service failing, so the next copy of the catalogue is asked.
+struct TAPServiceError <: Exception
+    message::String
+end
+Base.showerror(io::IO, e::TAPServiceError) = print(io, "TAP service answered with a page, not CSV: ", e.message)
 
 # `(url, query) -> CSV text` answering every TAP query in place of the
 # services, when set: the tests' recorded answers
@@ -128,7 +143,7 @@ function _first_answer(services)
             lock(() -> delete!(_SERVICE_DOWN, url), _SERVICE_DOWN_LOCK)
             return answer
         catch e
-            (_is_service_failure(e) && k < length(order)) || rethrow()
+            ((_is_service_failure(e) || _is_access_refused(e)) && k < length(order)) || rethrow()
             lock(() -> _SERVICE_DOWN[url] = time(), _SERVICE_DOWN_LOCK)
             @warn "$name unavailable; trying $(order[k+1][2])" exception = e
         end
@@ -169,8 +184,13 @@ or protocol trouble, a timeout, a 5xx status — which a retry (or another
 copy of the catalog) can get past, as opposed to a 4xx status, which
 means the query itself is wrong and would fail anywhere.
 """
-_is_service_failure(e) = e isa Base.IOError ||
+_is_service_failure(e) = e isa Base.IOError || e isa TAPServiceError ||
                          (e isa HTTP.HTTPError && !(e isa HTTP.StatusError && e.status < 500))
+
+# A public catalogue copy refusing an anonymous query (401, 403, 429: the ESA
+# archive answered 401 to a cone search on 2026-11-23): that copy failing, not
+# the query, so the next copy is asked.
+_is_access_refused(e) = e isa HTTP.StatusError && e.status in (401, 403, 429)
 
 # Seconds a catalog request may go without receiving data: an idle limit,
 # so a large result that keeps streaming is never cut off.
