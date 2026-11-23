@@ -70,6 +70,12 @@ Changed during the second DECam set, with no result of it: a SkyBoT request
 waited 3 h for an answer that never came, HTTP.jl's 60 s idle timeout not
 ending the TLS read. SkyBoT and JPL requests now end at a deadline of their
 own and are retried. Set 1's result, measured before, is kept.
+
+Changed during the Las Cumbres sets: one (K2-25) failed when the ESA Gaia
+archive answered 401, and the archive then answered with an HTML page behind
+status 200. A copy that refuses, or answers with a page, is now passed over
+for the next. ZTF ran with this change; K2-25 was run again with it, its
+failed cache removed; the other sets' results are kept.
 =#
 using AsteroidPipeline, FITSIO, Printf, Random, Serialization, Statistics
 const P = AsteroidPipeline
