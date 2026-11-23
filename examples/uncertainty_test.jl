@@ -47,13 +47,26 @@ Same sets, seeds and settings; nothing else changed. Expected if that was
 the cause: on synthetic asteroids the position errors over uncertainties
 closer to a deviation of 1 than the 1.5 measured, and the mean offset of
 0.05" smaller. Cache data/real/uncertainty_test3.
+
+Run again after the candidates' photometry changed (2026-11-23): what lies
+still under a candidate is subtracted, measured where it was in the other
+frames, and the aperture's noise is measured in empty places of the frame
+instead of computed from the sky's pixel scatter. Seen first on DECam
+(examples/telescope_test.jl, 590 points): magnitude errors over
+uncertainties with a deviation of 3.05 (robust 1.17), from points up to 1.3
+mag too bright (a star in the aperture) and, without those, 1.35. Same sets,
+seeds and settings as uncertainty_test3, so the same asteroids are measured
+both ways. Expected: the magnitudes' deviation and robust deviation both
+between 0.8 and 1.25, fewer than 1% of points beyond 5, and the positions
+no worse than in uncertainty_test3 (deviation within 0.1 of it). Cache
+data/real/uncertainty_test4.
 =#
 using AsteroidPipeline, Printf, Random, Serialization, Statistics
 
 const SETS = ["XY14_p10", "XY15_p01", "XY25_p10", "XY26_p01", "XY42_p11", "XY45_p01", "XY45_p10",
               "XY45_p11", "XY54_p10", "XY72_p01", "XY72_p11", "XY73_p00", "XY73_p01"]
 const DATA = joinpath(@__DIR__, "..", "data", "real", "iasc")
-const CACHE = joinpath(@__DIR__, "..", "data", "real", "uncertainty_test3")
+const CACHE = joinpath(@__DIR__, "..", "data", "real", "uncertainty_test4")
 const PROGRESS = joinpath(homedir(), ".claude", "progress", "a1-uncertainty")
 
 orbits = read_mpcorb(download_mpcorb())
@@ -110,11 +123,12 @@ function summary(label, sel)
     zmag = [q.dmag / q.mag_err for q in p if isfinite(q.mag_err) && isfinite(q.dmag)]
     z = vcat(zra, zdec)
     isempty(z) && return
-    @printf("%-14s %5d | pos: std %5.2f robust %5.2f |z|<1 %3.0f%% <2 %3.0f%% median err %.3f\" given %.3f\" | mag: std %5.2f robust %5.2f |z|<1 %3.0f%% <2 %3.0f%% median err %.3f given %.3f\n",
+    beyond5 = 100mean(abs.(zmag) .> 5)
+    @printf("%-14s %5d | pos: std %5.2f robust %5.2f |z|<1 %3.0f%% <2 %3.0f%% median err %.3f\" given %.3f\" | mag: std %5.2f robust %5.2f |z|<1 %3.0f%% <2 %3.0f%% median err %.3f given %.3f, beyond 5 %.1f%%\n",
             label, length(p), std(z), robust(z), 100mean(abs.(z) .< 1), 100mean(abs.(z) .< 2),
             median(abs.(vcat([q.dra for q in p], [q.ddec for q in p]))), median(filter(isfinite, [q.pos_err for q in p])),
             std(zmag), robust(zmag), 100mean(abs.(zmag) .< 1), 100mean(abs.(zmag) .< 2),
-            median(filter(isfinite, abs.([q.dmag for q in p]))), median(filter(isfinite, [q.mag_err for q in p])))
+            median(filter(isfinite, abs.([q.dmag for q in p]))), median(filter(isfinite, [q.mag_err for q in p])), beyond5)
 end
 println()
 summary("all", trues(length(pts)))
