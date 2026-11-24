@@ -71,6 +71,11 @@ waited 3 h for an answer that never came, HTTP.jl's 60 s idle timeout not
 ending the TLS read. SkyBoT and JPL requests now end at a deadline of their
 own and are retried. Set 1's result, measured before, is kept.
 
+Changed after the first summary of Las Cumbres: 3 of its 708 injected points
+and 1 catalogued point had no uncertainty (an aperture that measured no
+flux), which made expectations 4 and 5 NaN. Such points are now left out of
+both, and counted.
+
 Changed during the Las Cumbres sets: one (K2-25) failed when the ESA Gaia
 archive answered 401, and the archive then answered with an HTML page behind
 status 200. A copy that refuses, or answers with a page, is now passed over
@@ -254,11 +259,12 @@ nu = sum(r.unknown for r in good)
 @printf("\n3. unidentified tracklets: %d on %d sets, %.1f per set; %s\n", nu, length(good), nu / length(good),
         nu / length(good) <= 2 ? "met" : "not met")
 
-pts = reduce(vcat, [r.points for r in good])
+all_pts = reduce(vcat, [r.points for r in good])
+pts = filter(p -> isfinite(p.pos_err) && isfinite(p.mag_err), all_pts)
 z = vcat([p.dra / p.pos_err for p in pts], [p.ddec / p.pos_err for p in pts])
 zm = [p.dmag / p.mag_err for p in pts]
-@printf("\n4. injected: %d points, position error over pos_err deviation %.2f (robust %.2f), %.0f%% within 2; %s\n",
-        length(pts), std(z), robust(z), 100 * mean(abs.(z) .<= 2), std(z) <= 1.5 && mean(abs.(z) .<= 2) >= 0.9 ? "met" : "not met")
+@printf("\n4. injected: %d points (%d without an uncertainty left out), position error over pos_err deviation %.2f (robust %.2f), %.0f%% within 2; %s\n",
+        length(pts), length(all_pts) - length(pts), std(z), robust(z), 100 * mean(abs.(z) .<= 2), std(z) <= 1.5 && mean(abs.(z) .<= 2) >= 0.9 ? "met" : "not met")
 @printf("   median error %.3f\", given %.3f\"; magnitudes: deviation %.2f (robust %.2f)\n",
         median(hypot.([p.dra for p in pts], [p.ddec for p in pts])) / sqrt(2), median([p.pos_err for p in pts]),
         std(zm), robust(zm))
@@ -273,6 +279,7 @@ for r in good, object in unique(p.object for p in r.known_rows)
         continue
     end
     for (p, (ra, dec)) in zip(rows, truth)
+        isfinite(p.pos_err) || continue
         dra = (p.ra - ra) * cosd(dec) * 3600; ddec = (p.dec - dec) * 3600
         append!(jz, (dra / p.pos_err, ddec / p.pos_err)); append!(jerr, (dra, ddec))
     end
