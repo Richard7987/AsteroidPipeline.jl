@@ -1734,6 +1734,8 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             noise = AsteroidPipeline._empty_aperture_noise(5.0 .* randn(400, 400), nothing, 5.0)
             @test 1.0 < noise / (5.0 * sqrt(pi * 25)) < 1.3
             @test isnan(AsteroidPipeline._empty_aperture_noise(randn(20, 20), nothing, 5.0))
+            # the frames' limit, with nothing to measure on them
+            @test isfinite(AsteroidPipeline._measure_candidates(injected, rows[1:0]; reference_stars=catalog).limit)
             # a run that finds nothing recovers nothing
             @test !any(injection_recovery(candidates[candidates.id .== -1], truth).recovered)
             # pixels with no data written as NaN, as Pan-STARRS1 warps have them

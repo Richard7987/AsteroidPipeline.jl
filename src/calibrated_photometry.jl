@@ -161,7 +161,7 @@ function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothin
         isnan(zp.zeropoint) && continue
         fwhm = _source_radius(image, mask, aperture_radius)
         sky = _sky_sigma(image, mask)
-        any(r -> r.frame == k, rows) && push!(limits, _limiting_magnitude(image, mask, zp.zeropoint, fwhm))
+        push!(limits, _limiting_magnitude(image, mask, zp.zeropoint, fwhm))
         noise = _empty_aperture_noise(image, mask, aperture_radius)
         isfinite(noise) || (noise = sqrt(pi * aperture_radius^2) * sky)
         frames[k] = (image=image, mask=mask, wcs=frame_wcs, epoch=epoch, gain=gain, zeropoint=zp.zeropoint,
