@@ -91,6 +91,19 @@ on every frame, where it was measured only on frames with candidates and so
 was NaN for a set with none (ZTF f0382_c15, which skipped its injection).
 Every set is run again with the same seeds into telescope_test2/; the
 expectations are not changed.
+
+Changed after the second run, with all its results seen: 64 unidentified
+tracklets of its three most crowded ZTF and Las Cumbres sets, looked at
+with examples/false_tracklets.jl, were all of 3 points; most had every
+point on a Gaia star as bright as the point, most of the rest were fainter
+than the limit. analyze_set now takes out frame-by-frame points within their
+frame's FWHM of such a star (star_test) and frame-by-frame tracklets fainter
+than the limit (faint_test), sparing tracklets found by stacking; measured
+first on Pan-STARRS1 by examples/star_test.jl. Every set is run a third time,
+same seeds, into telescope_test3/. The expectations are not changed;
+expected of the change, against the second run: fewer unidentified
+tracklets on every instrument, and with stacking at least 98% as many
+injected asteroids found on each.
 =#
 using AsteroidPipeline, FITSIO, Printf, Random, Serialization, Statistics
 const P = AsteroidPipeline
@@ -101,7 +114,7 @@ const CODE = ARGS[2]   # "site": each set's, the MPC code nearest its headers' s
 const SEED = parse(Int, ARGS[3])
 const ONLY = ARGS[4:end]   # sets to measure, if named; the others from their cache, or left out
 const DATA = joinpath(@__DIR__, "..", "data", "real", "telescopes", INSTRUMENT)
-const CACHE = joinpath(@__DIR__, "..", "data", "real", "telescope_test2", INSTRUMENT)
+const CACHE = joinpath(@__DIR__, "..", "data", "real", "telescope_test3", INSTRUMENT)
 const PROGRESS = joinpath(homedir(), ".claude", "progress", "b1-" * INSTRUMENT)
 const REL_EDGES = -2.0:0.25:0.5
 
