@@ -2017,6 +2017,22 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         empty!(said)
         @test AsteroidPipeline._without_faint(three, NaN, said) === three
         @test isempty(AsteroidPipeline._without_faint(three, 10.0, said).id)
+        # more frames: stacked tracklets are spared
+        empty!(said)
+        @test AsteroidPipeline._without_faint(three, 21.0, said; spare=Set([2]), why="a single exposure does not show them").id == [1, 1, 2, 2]
+        @test only(said) == "1 of 3 candidates left out, fainter than this set's limit (V 21.0): a single exposure does not show them"
+
+        # points on a Gaia star as bright as they are: the star's; a tracklet left short goes
+        gaia = AsteroidPipeline.Table(ra=[10.0, 10.01], dec=[0.0, 0.0], gmag=[17.0, 22.0])
+        on = AsteroidPipeline.Table(id=[1, 1, 1, 2, 2, 2, 2, 3, 3, 3], ra=[10.0, 10.1, 10.2, 10.01, 10.0003, 10.3, 10.4, 10.0, 10.5, 10.6],
+                                    dec=zeros(10), mag=[17.2, 17.0, 17.0, 20.0, 17.6, 20.0, 20.0, 17.0, 17.0, 17.0])
+        empty!(said)
+        kept = AsteroidPipeline._without_stars(on, fill(2.0, 10), gaia, Set([3]), 3, said)
+        # 1 loses a point and goes; 2 keeps three (22 is fainter, 17.6 within 0.5 of 17); 3 is stacked
+        @test kept.id == [2, 2, 2, 3, 3, 3]
+        @test kept.ra[1:3] == [10.01, 10.3, 10.4]
+        @test only(said) == "2 points on Gaia stars as bright as they are left out, and with them 1 of 3 candidates: what the subtraction left of stars"
+        @test AsteroidPipeline._without_stars(on, fill(2.0, 10), nothing, Set{Int}(), 3, said) === on
 
         # headers further off than one frame's refinement searches: still measured
         far = mktempdir()
