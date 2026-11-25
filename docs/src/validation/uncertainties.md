@@ -9,8 +9,10 @@ Against JPL's ephemerides of the 12 numbered asteroids identified on 11
 Pan-STARRS1 campaign sets (45 points), the position errors divided by the
 uncertainties have a standard deviation of 1.19 (robustly 1.01), 64% of them
 within 1 and 91% within 2, and no offset: −0.007″ in RA, −0.019″ in Dec. On
-synthetic asteroids the magnitude uncertainties are about right (robust
-deviation 1.2); the position ones first came out 1.5 times too small with a
+synthetic asteroids the magnitude uncertainties were about right for most
+points (robust deviation 1.2) and far too small for a few, stars in the
+aperture; since the photometry takes out what lies still and measures the
+noise in empty apertures, their deviation is 1.06 (robust 0.97); the position ones first came out 1.5 times too small with a
 mean offset of 0.05″, which were the test's: placed through the same fit as
 the search's, the errors are smaller than the uncertainties and the offset
 is gone. A first model of the position uncertainty was 4 times too small and
@@ -94,6 +96,28 @@ placed through the same fit it is measured through, so it carries none of
 the fit's error, which the uncertainty includes and a real asteroid carries
 (section 3).
 
+**Fourth run**, after the candidates' photometry changed, on finding
+magnitudes up to 1.3 mag too bright on DECam ([Other telescopes](telescopes.md)):
+a star in the aperture. What lies still under a candidate is now taken out,
+measured where the candidate was in the frames its tracklet has moved clear
+of, and the aperture's noise is measured in 400 empty apertures instead of
+computed from the frame's pixel scatter. Declared before it: the
+magnitudes' deviation and robust deviation both between 0.8 and 1.25, fewer
+than 1% of points beyond 5, and the positions' deviation within 0.1 of the
+third run's. Same sets and seeds, so the same asteroids.
+
+| | Points | Error, median | Uncertainty, median | Deviation (robust) | Within 1 / 2 | Beyond 5 |
+|:--|--:|--:|--:|--:|--:|--:|
+| Position, all | 1,968 | 0.026″ | 0.072″ | 0.91 (0.53) | 87% / 98% | |
+| Magnitude, all | 1,968 | 0.048 | 0.074 | 1.06 (0.97) | 67% / 94% | 0.1% (0.9% before) |
+| V 19.5–20.5 | 829 | 0.032 | 0.040 | 1.11 (1.05) | 60% / 93% | 0.1% |
+| V 20.5–21.5 | 827 | 0.061 | 0.100 | 1.00 (0.90) | 70% / 95% | 0.0% |
+| V 21.5–22.0 | 312 | 0.111 | 0.174 | 0.95 (0.83) | 76% / 96% | 0.0% |
+| stacked tracklets | 104 | 0.164 | 0.230 | 1.07 (0.90) | 69% / 90% | 0.0% |
+
+All four expectations are met: the magnitude uncertainties are now the
+right size, and the few points far off are gone.
+
 ## 3. Catalogued asteroids
 
 **Design**, declared before running (`examples/known_astrometry_test.jl`):
@@ -125,6 +149,6 @@ pipeline, the positions have no offset at this level and their
 uncertainties are the right size: the reported `rmsRA` and `rmsDec` can be
 taken as they are. The sample is small, 45 points of 12 asteroids on one
 telescope. The offset and the larger errors first measured on synthetic asteroids were
-the test's: with the frames fitted together for both, they are gone. The magnitude uncertainties are about right for most points and too
-small for a few: a magnitude off by more than 3 of its uncertainties is
-more likely a blend than noise.
+the test's: with the frames fitted together for both, they are gone. The magnitude uncertainties, with the photometry of the fourth run, are
+the right size on Pan-STARRS1, DECam and Las Cumbres; on ZTF a few points
+remain far off ([Other telescopes](telescopes.md)).
