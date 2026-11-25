@@ -5,6 +5,41 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Added**
+
+- [Validation: other telescopes](validation/telescopes.md): 15 public sets of
+  ZTF, Las Cumbres Observatory and DECam searched with the defaults, 100
+  synthetic asteroids added to each. Half are found frame by frame 0.78–1.00
+  mag brighter than the frames' limit, as on Pan-STARRS1. Catalogued
+  asteroids are found as often as synthetic ones. The position uncertainties
+  are right on synthetic asteroids, and against JPL on DECam and Las Cumbres
+  but not on ZTF. Unidentified tracklets exceed the 2 per set expected on
+  every instrument: 2,998 on one crowded DECam field in z, where none of the
+  synthetic asteroids was found.
+
+**Changed**
+
+- Candidate photometry takes out what lies still under a candidate (a star,
+  a galaxy), measured where it was in the frames its tracklet has moved
+  clear of. The aperture's noise is measured in empty places of the frame.
+  On Pan-STARRS1, the magnitude errors over `mag_err` went from a deviation
+  of 2.35 to 1.06 ([Uncertainties](validation/uncertainties.md)).
+- The limiting magnitude is measured on every frame. It was `NaN` for a set
+  with no candidates.
+
+**Fixed**
+
+- [`inject_movers`](@ref) reads a frame whose image is in a later or
+  tile-compressed extension, as [`analyze_set`](@ref) does.
+- [`injection_recovery`](@ref) matches points by epoch, not by frame number.
+  Frames whose names do not sort in time order were counted as not
+  recovered.
+- SkyBoT and JPL requests end at a deadline of their own and are retried. A
+  TLS read could wait for hours despite HTTP.jl's idle timeout.
+- A copy of Gaia DR3 that refuses (401, 403, 429), or answers with an HTML
+  page behind a success status, is passed over for the next copy. Such a
+  page is no longer cached as a catalogue.
+
 ## 1.7.0 — 2026-11-21
 
 **Added**
