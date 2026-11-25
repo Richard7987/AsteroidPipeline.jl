@@ -81,6 +81,16 @@ archive answered 401, and the archive then answered with an HTML page behind
 status 200. A copy that refuses, or answers with a page, is now passed over
 for the next. ZTF ran with this change; K2-25 was run again with it, its
 failed cache removed; the other sets' results are kept.
+
+Changed after the full first run of the three instruments, with all its
+results seen (kept in data/real/telescope_test/, recorded on the validation
+page): the candidate photometry was replaced, taking out what lies still
+under a candidate and measuring the noise in empty apertures (validated on
+Pan-STARRS1 in uncertainty_test.jl), and the limiting magnitude is measured
+on every frame, where it was measured only on frames with candidates and so
+was NaN for a set with none (ZTF f0382_c15, which skipped its injection).
+Every set is run again with the same seeds into telescope_test2/; the
+expectations are not changed.
 =#
 using AsteroidPipeline, FITSIO, Printf, Random, Serialization, Statistics
 const P = AsteroidPipeline
@@ -91,7 +101,7 @@ const CODE = ARGS[2]   # "site": each set's, the MPC code nearest its headers' s
 const SEED = parse(Int, ARGS[3])
 const ONLY = ARGS[4:end]   # sets to measure, if named; the others from their cache, or left out
 const DATA = joinpath(@__DIR__, "..", "data", "real", "telescopes", INSTRUMENT)
-const CACHE = joinpath(@__DIR__, "..", "data", "real", "telescope_test", INSTRUMENT)
+const CACHE = joinpath(@__DIR__, "..", "data", "real", "telescope_test2", INSTRUMENT)
 const PROGRESS = joinpath(homedir(), ".claude", "progress", "b1-" * INSTRUMENT)
 const REL_EDGES = -2.0:0.25:0.5
 
