@@ -141,6 +141,7 @@ function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothin
     mags = fill(NaN, length(rows))
     mag_errs = fill(NaN, length(rows))
     pos_errs = fill(NaN, length(rows))
+    fwhms = fill(NaN, length(rows))
     limits = Float64[]
     frames = Vector{Any}(nothing, length(fits_paths))
     for (k, path) in enumerate(fits_paths)
@@ -177,6 +178,7 @@ function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothin
         f = frames[r.frame]
         f === nothing && continue
         x, y = world_to_pix(f.wcs, Float64[r.ra, r.dec])
+        fwhms[i] = f.fwhm * f.scale
         flux = aperture_flux(f.image, x, y; aperture_radius, mask=f.mask)
         isfinite(flux) || continue
         still, still_var = _still_flux(frames, rows, tracks[r.id], r, f, aperture_radius)
@@ -190,7 +192,7 @@ function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothin
         pos_errs[i] = hypot(centroid * f.scale, f.fit_err)
     end
     finite = filter(isfinite, limits)
-    return (mags=mags, mag_errs=mag_errs, pos_errs=pos_errs, limit=isempty(finite) ? NaN : median(finite))
+    return (mags=mags, mag_errs=mag_errs, pos_errs=pos_errs, fwhms=fwhms, limit=isempty(finite) ? NaN : median(finite))
 end
 
 # The flux that stays at row `r`'s place, in frame `f`'s units, and its variance:
