@@ -122,13 +122,19 @@ candidate_magnitudes(fits_paths::AbstractVector{<:AbstractString}, candidates; k
     _measure_candidates(fits_paths, candidates; kw...).mags
 
 # The candidates' magnitudes, their 1σ uncertainties and the limit of the frames
-# they are measured on. A magnitude's uncertainty is its aperture's noise (sky
-# and the source's own photons, through the header's GAIN, else 1) with the
-# zero point's (its stars' scatter over their square root). A position's, per
-# axis, is the Cramér–Rao bound for a Gaussian of the frame's FWHM on that
-# noise, combined with the frame's astrometric fit (`wcs_err`, arcsec per axis, one
-# per frame): the scatter of its stars about the fit, which an affine fit leaves
-# the field's distortion in, so a target's position carries it as theirs do.
+# they are measured on. What lies still under a candidate (a star it passes, a
+# galaxy) is taken out: the same aperture is measured where the candidate was
+# in the other frames, wherever its tracklet has moved clear of it, and their
+# median, scaled by the frames' zero points, is subtracted. A magnitude's
+# uncertainty is the aperture's noise as measured in empty places of the frame
+# (so it holds the sky's correlations and the annulus' own error), the photons
+# of what it holds, through the header's GAIN, else 1, the error of what was
+# subtracted, and the zero point's (its stars' scatter over their square root).
+# A position's, per axis, is the Cramér–Rao bound for a Gaussian of the frame's
+# FWHM on that noise, combined with the frame's astrometric fit (`wcs_err`,
+# arcsec per axis, one per frame): the scatter of its stars about the fit,
+# which an affine fit leaves the field's distortion in, so a target's position
+# carries it as theirs do.
 function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothing,AbstractString}=nothing,
                              reference_stars=nothing, aperture_radius::Real=5.0, wcs=nothing, wcs_err=nothing)
     rows = collect(candidates)
@@ -136,9 +142,8 @@ function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothin
     mag_errs = fill(NaN, length(rows))
     pos_errs = fill(NaN, length(rows))
     limits = Float64[]
+    frames = Vector{Any}(nothing, length(fits_paths))
     for (k, path) in enumerate(fits_paths)
-        idx = [i for (i, r) in enumerate(rows) if r.frame == k]
-        isempty(idx) && continue
         image, header, epoch, gain = FITS(path, "r") do f
             hdr = read_header(f[1])
             permutedims(Float64.(read(f[1]))), read_header(f[1], String), frame_epoch(hdr; timestamp_key),
@@ -155,25 +160,90 @@ function _measure_candidates(fits_paths, candidates; timestamp_key::Union{Nothin
         zp = photometric_zeropoint(image, frame_wcs, reference_stars; mask, aperture_radius)
         isnan(zp.zeropoint) && continue
         fwhm = _source_radius(image, mask, aperture_radius)
-        push!(limits, _limiting_magnitude(image, mask, zp.zeropoint, fwhm))
         sky = _sky_sigma(image, mask)
-        σpsf = fwhm / (2 * sqrt(2 * log(2)))
-        scale = _pixel_scale_arcsec(frame_wcs, size(image))
-        zp_err = zp.scatter / sqrt(zp.n_stars)
-        fit_err = wcs_err === nothing ? 0.0 : wcs_err[k]
-        for i in idx
-            x, y = world_to_pix(frame_wcs, Float64[rows[i].ra, rows[i].dec])
-            flux = aperture_flux(image, x, y; aperture_radius, mask)
-            flux > 0 || continue
-            mags[i] = zp.zeropoint - 2.5 * log10(flux)
-            snr = flux / sqrt(pi * aperture_radius^2 * sky^2 + flux / gain)
-            mag_errs[i] = hypot(2.5 / log(10) / snr, zp_err)
-            centroid = sqrt(σpsf^2 / (flux * gain) + 8pi * σpsf^4 * sky^2 / flux^2)
-            pos_errs[i] = hypot(centroid * scale, fit_err)
-        end
+        push!(limits, _limiting_magnitude(image, mask, zp.zeropoint, fwhm))
+        noise = _empty_aperture_noise(image, mask, aperture_radius)
+        isfinite(noise) || (noise = sqrt(pi * aperture_radius^2) * sky)
+        frames[k] = (image=image, mask=mask, wcs=frame_wcs, epoch=epoch, gain=gain, zeropoint=zp.zeropoint,
+                     zp_err=zp.scatter / sqrt(zp.n_stars), fwhm=fwhm, sky=sky, noise=noise,
+                     scale=_pixel_scale_arcsec(frame_wcs, size(image)),
+                     fit_err=wcs_err === nothing ? 0.0 : wcs_err[k])
+    end
+    tracks = Dict{Any,Vector{Int}}()
+    for (i, r) in enumerate(rows)
+        push!(get!(tracks, r.id, Int[]), i)
+    end
+    for (i, r) in enumerate(rows)
+        f = frames[r.frame]
+        f === nothing && continue
+        x, y = world_to_pix(f.wcs, Float64[r.ra, r.dec])
+        flux = aperture_flux(f.image, x, y; aperture_radius, mask=f.mask)
+        isfinite(flux) || continue
+        still, still_var = _still_flux(frames, rows, tracks[r.id], r, f, aperture_radius)
+        net = flux - still
+        net > 0 || continue
+        mags[i] = f.zeropoint - 2.5 * log10(net)
+        snr = net / sqrt(f.noise^2 + max(flux, 0.0) / f.gain + still_var)
+        mag_errs[i] = hypot(2.5 / log(10) / snr, f.zp_err)
+        σpsf = f.fwhm / (2 * sqrt(2 * log(2)))
+        centroid = sqrt(σpsf^2 / (net * f.gain) + 8pi * σpsf^4 * f.sky^2 / net^2)
+        pos_errs[i] = hypot(centroid * f.scale, f.fit_err)
     end
     finite = filter(isfinite, limits)
     return (mags=mags, mag_errs=mag_errs, pos_errs=pos_errs, limit=isempty(finite) ? NaN : median(finite))
+end
+
+# The flux that stays at row `r`'s place, in frame `f`'s units, and its variance:
+# the median of the aperture there in the other frames, each scaled by its zero
+# point, leaving out those where the tracklet (`track`, its rows' indices) is
+# within two apertures and a FWHM of it. A tracklet of one point, or one that
+# never moves clear, has nothing taken out.
+function _still_flux(frames, rows, track, r, f, aperture_radius)
+    length(track) >= 2 || return 0.0, 0.0
+    t = [frames[rows[j].frame] === nothing ? NaN : frames[rows[j].frame].epoch for j in track]
+    ok = isfinite.(t)
+    count(ok) >= 2 || return 0.0, 0.0
+    t = t[ok]
+    ra = [rows[j].ra for j in track][ok]
+    dec = [rows[j].dec for j in track][ok]
+    line(v) = (b = cov(t, v) / var(t); (b, mean(v) - b * mean(t)))
+    (bra, ara), (bdec, adec) = line(ra), line(dec)
+    values, variances = Float64[], Float64[]
+    for g in frames
+        (g === nothing || g === f) && continue
+        x, y = world_to_pix(g.wcs, Float64[r.ra, r.dec])
+        xo, yo = world_to_pix(g.wcs, Float64[ara + bra * g.epoch, adec + bdec * g.epoch])
+        hypot(x - xo, y - yo) >= 2aperture_radius + g.fwhm || continue
+        v = aperture_flux(g.image, x, y; aperture_radius, mask=g.mask)
+        isfinite(v) || continue
+        s = 10^(0.4 * (f.zeropoint - g.zeropoint))
+        push!(values, s * v)
+        push!(variances, s^2 * (g.noise^2 + max(v, 0.0) / g.gain))
+    end
+    m = length(values)
+    m == 0 && return 0.0, 0.0
+    # a median's variance: a mean's for one or two, π/2 times it for more
+    return median(values), mean(variances) / m * (m <= 2 ? 1.0 : pi / 2)
+end
+
+# The aperture's noise in `image`: the robust scatter of `aperture_flux` at
+# places drawn across the frame (fixed, so a frame always gets the same), which
+# keeps the sky's pixel-to-pixel correlations and the annulus' error that a
+# sum of independent pixels misses, and ignores the places that land on a
+# source. `NaN` where fewer than 50 places are measured.
+function _empty_aperture_noise(image, mask, aperture_radius; n=400, annulus=(10.0, 15.0))
+    rng = Xoshiro(1)
+    n1, n2 = size(image)
+    edge = ceil(Int, annulus[2]) + 1
+    (n1 > 2edge && n2 > 2edge) || return NaN
+    values = Float64[]
+    for _ in 1:4n
+        length(values) >= n && break
+        v = aperture_flux(image, rand(rng, edge:n2-edge), rand(rng, edge:n1-edge); aperture_radius, annulus, mask)
+        isfinite(v) && push!(values, v)
+    end
+    length(values) < 50 && return NaN
+    return 1.4826 * median(abs.(values .- median(values)))
 end
 
 # An aperture of one FWHM holds most of a point source's light and little sky,

@@ -1732,6 +1732,30 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                 # bright: well under a pixel (0.257″) without the astrometric fit's share
                 @test all(0 .< m.pos_errs[ok] .< 0.1)
             end
+            # a star the object passes over, in every frame: taken out with what stays still
+            r = first(filter(r -> r.recovered, collect(rec)))
+            rows = Table(filter(c -> c.id == r.tracklet, collect(candidates)))
+            row = first(filter(c -> c.frame == 1, collect(rows)))
+            sx, sy = world_to_pix(truth_wcs, [row.ra, row.dec])
+            starred = map(enumerate(injected)) do (k, p)
+                raw, header = FITS(f -> (Float64.(read(f[1])), read_header(f[1])), p)
+                for i in floor(Int, sx) - 8:ceil(Int, sx) + 8, j in floor(Int, sy) - 8:ceil(Int, sy) + 8
+                    raw[i, j] += 10^(-0.4 * (16.0 - zp)) / (2π * σ^2) * exp(-((i - sx)^2 + (j - sy)^2) / (2σ^2))
+                end
+                path = joinpath(dir, "star$k.fits")
+                FITS(f -> write(f, raw; header=header), path, "w")
+                path
+            end
+            m = AsteroidPipeline._measure_candidates(starred, rows; reference_stars=catalog)
+            i = findfirst(c -> c.frame == 1, collect(rows))
+            @test m.mags[i] ≈ r.mag atol=0.2
+            @test abs(m.mags[i] - r.mag) < 3 * m.mag_errs[i]
+            # empty apertures on white noise: the sum of independent pixels, and the annulus' share
+            noise = AsteroidPipeline._empty_aperture_noise(5.0 .* randn(400, 400), nothing, 5.0)
+            @test 1.0 < noise / (5.0 * sqrt(pi * 25)) < 1.3
+            @test isnan(AsteroidPipeline._empty_aperture_noise(randn(20, 20), nothing, 5.0))
+            # the frames' limit, with nothing to measure on them
+            @test isfinite(AsteroidPipeline._measure_candidates(injected, rows[1:0]; reference_stars=catalog).limit)
             # a run that finds nothing recovers nothing
             @test !any(injection_recovery(candidates[candidates.id .== -1], truth).recovered)
             # pixels with no data written as NaN, as Pan-STARRS1 warps have them

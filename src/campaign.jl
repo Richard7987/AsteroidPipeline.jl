@@ -621,7 +621,8 @@ frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 the Cramér–Rao bound for the frame's point spread and noise with the error of
 its astrometric fit, which [`ades_psv`](@ref) writes as `rmsRA` and `rmsDec`),
 `limiting_mag` (the magnitude of a source 5σ above the frames'
-sky noise in an aperture of their FWHM, `NaN` with no candidates: see
+sky noise in an aperture of their FWHM, `NaN` for an unreliable set or
+when no frame has a zero point: see
 [`below_limit`](@ref); when only 3 frames are searched, candidates fainter
 than it or with no magnitude are left out, with a warning), `known`
 (`Dict` tracklet id => name), `stacked` (the ids found only by
@@ -712,12 +713,12 @@ function _analyze_set(source; workdir::AbstractString, observatory::AbstractStri
             stacked = Set(extra.id)
             found = vcat(found, extra)
         end
+        # per axis, the scatter of a star about the fit; unknown where only an offset was fitted
+        fit_err = [r.refined ? r.rms_arcsec / sqrt(2) : NaN for r in refined[used]]
+        measured = _measure_candidates(cleaned[used], found; reference_stars=stars, wcs=wcs[used], wcs_err=fit_err)
+        limiting_mag = measured.limit
         if !isempty(found)
-            # per axis, the scatter of a star about the fit; unknown where only an offset was fitted
-            fit_err = [r.refined ? r.rms_arcsec / sqrt(2) : NaN for r in refined[used]]
-            measured = _measure_candidates(cleaned[used], found; reference_stars=stars, wcs=wcs[used], wcs_err=fit_err)
             mags = measured.mags
-            limiting_mag = measured.limit
             candidates = Table(id=collect(found.id), frame=used[found.frame], x=collect(found.x), y=collect(found.y),
                                ra=collect(found.ra), dec=collect(found.dec), epoch=collect(found.epoch), mag=mags,
                                mag_err=measured.mag_errs, pos_err=measured.pos_errs)
