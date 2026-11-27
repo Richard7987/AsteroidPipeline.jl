@@ -5,6 +5,14 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Changed**
+
+- Gaia stars are matched to a frame's detections, for the astrometric fit,
+  the header's offset and the zero point, among the detections near each
+  star only, with the same result: the zero point of a ZTF frame with
+  213,605 Gaia stars went from 160 s to 2 s. A crowded field's whole
+  catalogue had made it most of a set's time.
+
 **Fixed**
 
 - A Gaia DR3 answer cut at a service's row limit is completed: an answer of
