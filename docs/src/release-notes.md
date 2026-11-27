@@ -9,13 +9,14 @@ from the version picker at the top right.
 
 - [Validation: other telescopes](validation/telescopes.md): 15 public sets of
   ZTF, Las Cumbres Observatory and DECam searched with the defaults, 100
-  synthetic asteroids added to each. Half are found frame by frame 0.78–1.00
+  synthetic asteroids added to each. Half are found frame by frame 0.82–1.18
   mag brighter than the frames' limit, as on Pan-STARRS1. Catalogued
   asteroids are found as often as synthetic ones. The position uncertainties
   are right on synthetic asteroids, and against JPL on DECam and Las Cumbres
-  but not on ZTF. Unidentified tracklets exceed the 2 per set expected on
-  every instrument: 2,998 on one crowded DECam field in z, where none of the
-  synthetic asteroids was found.
+  but not on ZTF. With the two new tests and whole Gaia answers (below),
+  ZTF leaves 0.3 unidentified tracklets per set and Las Cumbres 1.0, within
+  the 2 expected; one DECam set in the galactic bulge leaves 128 and finds 2
+  of its 100 synthetic asteroids.
 
 **Changed**
 
@@ -26,6 +27,14 @@ from the version picker at the top right.
   of 2.35 to 1.06 ([Uncertainties](validation/uncertainties.md)).
 - The limiting magnitude is measured on every frame. It was `NaN` for a set
   with no candidates.
+- [`analyze_set`](@ref) takes out frame-by-frame points within their frame's
+  FWHM of a Gaia star no more than 0.5 mag fainter than the point, and a
+  tracklet left with fewer than 3 (`star_test=true`): what the subtraction
+  left of a star. It takes out frame-by-frame tracklets fainter than the
+  frames' limit, as it did on 3-frame sets (`faint_test=true`). Neither
+  touches a tracklet found by stacking. On 11 Pan-STARRS1 sets with 100
+  synthetic asteroids each, 583 of 583 recovered, 24 of 24 catalogued
+  identified, other tracklets 11 → 3 ([Other telescopes](validation/telescopes.md)).
 - Gaia stars are matched to a frame's detections, for the astrometric fit,
   the header's offset and the zero point, among the detections near each
   star only, with the same result: the zero point of a ZTF frame with
