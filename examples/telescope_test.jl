@@ -104,6 +104,21 @@ same seeds, into telescope_test3/. The expectations are not changed;
 expected of the change, against the second run: fewer unidentified
 tracklets on every instrument, and with stacking at least 98% as many
 injected asteroids found on each.
+
+Changed after the third run, with all its results seen: 20 of the 24
+unidentified tracklets left on ZTF f0382_c06 had their 3 points on Gaia
+stars as bright as they are, which star_test had not taken out. Three
+fields' Gaia answers, kept in the cache, held exactly 50,000 rows: a TAP
+service had cut them at its row limit, so the stars of part of the field
+were missing, from star_test as from the astrometric and photometric fits.
+An answer of 1000 rows or more is now counted and, if cut, split by
+magnitude until whole; the three answers were taken out of the cache. They
+lie under ZTF f0382_c06, c13, c15 and DECam 2023-03-18_z; those four
+sets are run again into telescope_test4/, the other sets' third-run results
+copied, their answers whole (none at a round number). The expectations are
+not changed; expected of the change, against the third run: fewer
+unidentified tracklets on f0382_c06, and on the four sets together with
+stacking at least 98% as many injected asteroids found.
 =#
 using AsteroidPipeline, FITSIO, Printf, Random, Serialization, Statistics
 const P = AsteroidPipeline
@@ -114,7 +129,7 @@ const CODE = ARGS[2]   # "site": each set's, the MPC code nearest its headers' s
 const SEED = parse(Int, ARGS[3])
 const ONLY = ARGS[4:end]   # sets to measure, if named; the others from their cache, or left out
 const DATA = joinpath(@__DIR__, "..", "data", "real", "telescopes", INSTRUMENT)
-const CACHE = joinpath(@__DIR__, "..", "data", "real", "telescope_test3", INSTRUMENT)
+const CACHE = joinpath(@__DIR__, "..", "data", "real", "telescope_test4", INSTRUMENT)
 const PROGRESS = joinpath(homedir(), ".claude", "progress", "b1-" * INSTRUMENT)
 const REL_EDGES = -2.0:0.25:0.5
 

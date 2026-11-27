@@ -37,7 +37,7 @@ stars = patient(() -> gaia_reference_stars(ra0, dec0, min(radius, 5.0); epoch_jd
                                             mag_range=(0.0, 21.0)))
 @printf("%s: L %.2f, %d tracklets, %d unidentified, %d Gaia stars\n", basename(DIR), r.limiting_mag,
         length(unique(r.candidates.id)), length(r.unknown_ids), length(stars.ra))
-println("  id  pts  rate\"/h  mag-L  stacked  star\"  starG  on a star")
+println("  id  pts  rate\"/h  mag-L  stacked  star\"  starG  on a star  bright\"  brightG")
 for id in r.unknown_ids
     t = sort(filter(c -> c.id == id, rows); by=c -> c.epoch)
     dt = (t[end].epoch - t[1].epoch) * 24
@@ -51,6 +51,11 @@ for id in r.unknown_ids
         near = hypot.((stars.ra .- c.ra) .* cosd(c.dec), stars.dec .- c.dec) .* 3600 .< 4
         any(near) && isfinite(c.mag) && minimum(stars.gmag[near]) <= c.mag + 0.5
     end
-    @printf("%4d  %3d  %7.1f  %5.2f  %7s  %5.1f  %5.1f  %d of %d\n", id, length(t), rate,
-            isempty(mags) ? NaN : median(mags) - r.limiting_mag, id in r.stacked, median(d), stars.gmag[j], on, length(t))
+    # the brightest star within 60" of the first point
+    near = findall(hypot.((stars.ra .- t[1].ra) .* cosd(t[1].dec), stars.dec .- t[1].dec) .* 3600 .< 60)
+    b = isempty(near) ? 0 : near[argmin(stars.gmag[near])]
+    bd = b == 0 ? NaN : hypot((stars.ra[b] - t[1].ra) * cosd(t[1].dec), stars.dec[b] - t[1].dec) * 3600
+    @printf("%4d  %3d  %7.1f  %5.2f  %7s  %5.1f  %5.1f  %d of %d  %6.1f  %6.1f\n", id, length(t), rate,
+            isempty(mags) ? NaN : median(mags) - r.limiting_mag, id in r.stacked, median(d), stars.gmag[j], on, length(t),
+            bd, b == 0 ? NaN : stars.gmag[b])
 end
