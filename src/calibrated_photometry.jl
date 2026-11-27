@@ -67,14 +67,17 @@ function photometric_zeropoint(image::AbstractMatrix{<:Real}, wcs::WCSTransform,
                                match_radius::Real=1.5)
     detections = detect_sources(image; threshold=10.0, mask)
     n1, n2 = size(image)
+    det_xy = [(d.xcen, d.ycen) for d in detections]
+    grid = _cells(det_xy, match_radius)
     zps = Float64[]
     for s in stars
         (mag_range[1] <= s.gmag <= mag_range[2]) || continue
         x, y = world_to_pix(wcs, Float64[s.ra, s.dec])
         (1 <= x <= n2 && 1 <= y <= n1) || continue
-        dist, i = isempty(detections) ? (Inf, 0) :
-                  findmin(hypot(d.xcen - x, d.ycen - y) for d in detections)
+        near = _near(grid, x, y)
+        dist, k = isempty(near) ? (Inf, 0) : findmin(hypot(det_xy[j][1] - x, det_xy[j][2] - y) for j in near)
         dist <= match_radius || continue
+        i = near[k]
         flux = aperture_flux(image, detections[i].xcen, detections[i].ycen; aperture_radius, mask)
         flux > 0 && push!(zps, s.gmag + 2.5 * log10(flux))
     end

@@ -26,6 +26,11 @@ from the version picker at the top right.
   of 2.35 to 1.06 ([Uncertainties](validation/uncertainties.md)).
 - The limiting magnitude is measured on every frame. It was `NaN` for a set
   with no candidates.
+- Gaia stars are matched to a frame's detections, for the astrometric fit,
+  the header's offset and the zero point, among the detections near each
+  star only, with the same result: the zero point of a ZTF frame with
+  213,605 Gaia stars went from 160 s to 2 s. A crowded field's whole
+  catalogue had made it most of a set's time.
 
 **Fixed**
 
@@ -39,6 +44,11 @@ from the version picker at the top right.
 - A copy of Gaia DR3 that refuses (401, 403, 429), or answers with an HTML
   page behind a success status, is passed over for the next copy. Such a
   page is no longer cached as a catalogue.
+- A Gaia DR3 answer cut at a service's row limit is completed: an answer of
+  1000 rows or more is counted and, if short, asked again in parts by
+  magnitude. Three crowded fields had come back with 50,000 rows, part of
+  the field without stars. Answers cached before may be cut; deleting
+  [`gaia_cache_dir`](@ref)`()` asks for them again.
 
 ## 1.7.0 — 2026-11-21
 
