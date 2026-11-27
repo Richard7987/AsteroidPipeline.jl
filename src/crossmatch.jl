@@ -93,9 +93,24 @@ function _tap_text(url::AbstractString, query::AbstractString)
     make_body() = HTTP.Form(Dict(
         "REQUEST" => "doQuery", "LANG" => "ADQL", "FORMAT" => "csv", "QUERY" => query))
     return _with_retries(_TAP_ATTEMPTS) do
-        String(HTTP.post(url, [], make_body(); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body)
+        _tap_answered(String(HTTP.post(url, [], make_body(); read_idle_timeout=_CATALOG_IDLE_TIMEOUT).body))
     end
 end
+
+# A TAP service's CSV, or a TAPServiceError for a page in its place: the ESA
+# archive, down for maintenance on 2026-11-23, answered with status 200 and an
+# HTML page, which would otherwise be kept as the answer.
+function _tap_answered(text::AbstractString)
+    startswith(lstrip(text), "<") && throw(TAPServiceError(first(strip(text), 120)))
+    return text
+end
+
+# A TAP service answering with a page (HTML or XML) behind a success status:
+# the service failing, so the next copy of the catalogue is asked.
+struct TAPServiceError <: Exception
+    message::String
+end
+Base.showerror(io::IO, e::TAPServiceError) = print(io, "TAP service answered with a page, not CSV: ", e.message)
 
 # `(url, query) -> CSV text` answering every TAP query in place of the
 # services, when set: the tests' recorded answers
@@ -128,7 +143,7 @@ function _first_answer(services)
             lock(() -> delete!(_SERVICE_DOWN, url), _SERVICE_DOWN_LOCK)
             return answer
         catch e
-            (_is_service_failure(e) && k < length(order)) || rethrow()
+            ((_is_service_failure(e) || _is_access_refused(e)) && k < length(order)) || rethrow()
             lock(() -> _SERVICE_DOWN[url] = time(), _SERVICE_DOWN_LOCK)
             @warn "$name unavailable; trying $(order[k+1][2])" exception = e
         end
@@ -148,6 +163,17 @@ function _with_retries(f, attempts::Integer; retryable=_is_service_failure, back
     end
 end
 
+# `f()` given at most `seconds`, else an HTTP.TimeoutError, which is retried.
+# HTTP.jl's read_idle_timeout did not end a TLS read that SkyBoT left
+# waiting for hours; this deadline does. The stalled task is left behind.
+function _with_deadline(f, seconds::Real)
+    t = @async f()
+    timedwait(() -> istaskdone(t), seconds; pollint=0.5) === :ok ||
+        throw(HTTP.TimeoutError("request", round(Int64, seconds * 1e9)))
+    istaskfailed(t) && throw(_task_root(TaskFailedException(t)))
+    return fetch(t)
+end
+
 const _TAP_ATTEMPTS = 3
 
 """
@@ -158,8 +184,13 @@ or protocol trouble, a timeout, a 5xx status — which a retry (or another
 copy of the catalog) can get past, as opposed to a 4xx status, which
 means the query itself is wrong and would fail anywhere.
 """
-_is_service_failure(e) = e isa Base.IOError ||
+_is_service_failure(e) = e isa Base.IOError || e isa TAPServiceError ||
                          (e isa HTTP.HTTPError && !(e isa HTTP.StatusError && e.status < 500))
+
+# A public catalogue copy refusing an anonymous query (401, 403, 429: the ESA
+# archive answered 401 to a cone search on 2026-11-23): that copy failing, not
+# the query, so the next copy is asked.
+_is_access_refused(e) = e isa HTTP.StatusError && e.status in (401, 403, 429)
 
 # Seconds a catalog request may go without receiving data: an idle limit,
 # so a large result that keeps streaming is never cut off.
@@ -314,8 +345,9 @@ missed a known asteroid 0.94″ from the centre in two of four ZTF frames.
 """
 function _skybot_matches(c, radius_deg::Real;
                          observatory::Union{Nothing,AbstractString}=nothing,
-                         fetch=query -> _kept_answer(() -> _skybot_text(HTTP.get(_SKYBOT_URL; query=query,
-                                                                                 read_idle_timeout=_CATALOG_IDLE_TIMEOUT)),
+                         fetch=query -> _kept_answer(() -> _skybot_text(_with_deadline(_SKYBOT_DEADLINE) do
+                                                         HTTP.get(_SKYBOT_URL; query=query, read_idle_timeout=_CATALOG_IDLE_TIMEOUT)
+                                                     end),
                                                      "skybot", _answer_key(_SKYBOT_URL, query); keep=_skybot_answered),
                          backoff_seconds::Real=1.0)
     query = Dict(
@@ -420,7 +452,7 @@ function _jpl_field(c, radius_deg::Real, observatory::AbstractString)
         body = try
             _kept_answer("jpl-sbident", _answer_key(_JPL_SBIDENT_URL, query)) do
                 _with_retries(_TAP_ATTEMPTS) do
-                    String(HTTP.get(_JPL_SBIDENT_URL; query, read_idle_timeout=_JPL_TIMEOUT).body)
+                    String(_with_deadline(() -> HTTP.get(_JPL_SBIDENT_URL; query, read_idle_timeout=_JPL_TIMEOUT), 2_JPL_TIMEOUT).body)
                 end
             end
         catch e
@@ -497,6 +529,7 @@ _task_root(e) = e isa CompositeException && !isempty(e.exceptions) ? _task_root(
 # Tries per candidate in _skybot_matches (1/2/4 s backoff): enough for a short
 # burst of server errors, without stalling long on a real outage.
 const _SKYBOT_ATTEMPTS = 4
+const _SKYBOT_DEADLINE = 5_CATALOG_IDLE_TIMEOUT   # seconds for a whole SkyBoT request
 
 """
     SkyBoTServiceError(message)

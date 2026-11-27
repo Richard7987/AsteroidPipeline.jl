@@ -35,22 +35,26 @@ function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
     # any service.
     cone(racol, deccol) = "CONTAINS(POINT('ICRS', $racol, $deccol), " *
                           "CIRCLE('ICRS', $ra, $dec, $radius_deg)) = 1"
-    esa = "SELECT ra AS ra_deg, dec AS dec_deg, pmra AS pm_ra, pmdec AS pm_dec, " *
-          "phot_g_mean_mag AS g FROM gaiadr3.gaia_source " *
-          "WHERE $(cone("ra", "dec")) AND phot_g_mean_mag BETWEEN $lo AND $hi"
-    vizier = "SELECT RA_ICRS AS ra_deg, DE_ICRS AS dec_deg, pmRA AS pm_ra, pmDE AS pm_dec, " *
-             "Gmag AS g FROM \"I/355/gaiadr3\" " *
-             "WHERE $(cone("RA_ICRS", "DE_ICRS")) AND Gmag BETWEEN $lo AND $hi"
+    # the upper part of a split range leaves its lower end out, so no star is in two
+    mags(col, a, b, open) = open ? "$col > $a AND $col <= $b" : "$col BETWEEN $a AND $b"
+    esa(sel, a, b, open=false) = "SELECT $sel FROM gaiadr3.gaia_source " *
+          "WHERE $(cone("ra", "dec")) AND $(mags("phot_g_mean_mag", a, b, open))"
+    vizier(sel, a, b, open=false) = "SELECT $sel FROM \"I/355/gaiadr3\" " *
+             "WHERE $(cone("RA_ICRS", "DE_ICRS")) AND $(mags("Gmag", a, b, open))"
     # Data Lab's ADQL has no CONTAINS on this table; q3c is its own cone search
-    noirlab = "SELECT ra AS ra_deg, dec AS dec_deg, pmra AS pm_ra, pmdec AS pm_dec, " *
-              "phot_g_mean_mag AS g FROM gaia_dr3.gaia_source " *
+    noirlab(sel, a, b, open=false) = "SELECT $sel FROM gaia_dr3.gaia_source " *
               "WHERE q3c_radial_query(ra, dec, $ra, $dec, $radius_deg) = 't' " *
-              "AND phot_g_mean_mag BETWEEN $lo AND $hi"
-    services = ((_GAIA_ARCHIVE_TAP_URL, "the Gaia archive", () -> _tap_csv(_GAIA_ARCHIVE_TAP_URL, esa)),
-                (_VIZIER_TAP_URL, "VizieR", () -> _tap_csv(_VIZIER_TAP_URL, vizier)),
-                (_NOIRLAB_TAP_URL, "NOIRLab's Data Lab", () -> _tap_csv(_NOIRLAB_TAP_URL, noirlab)))
+              "AND $(mags("phot_g_mean_mag", a, b, open))"
+    gaia_cols = "ra AS ra_deg, dec AS dec_deg, pmra AS pm_ra, pmdec AS pm_dec, phot_g_mean_mag AS g"
+    vizier_cols = "RA_ICRS AS ra_deg, DE_ICRS AS dec_deg, pmRA AS pm_ra, pmDE AS pm_dec, Gmag AS g"
+    complete(url, query, cols) = _complete_answer((a, b, open) -> _tap_csv(url, query(cols, a, b, open)),
+                                                  (a, b, open) -> _tap_csv(url, query("COUNT(*) AS n", a, b, open)),
+                                                  lo, hi, false)
+    services = ((_GAIA_ARCHIVE_TAP_URL, "the Gaia archive", () -> complete(_GAIA_ARCHIVE_TAP_URL, esa, gaia_cols)),
+                (_VIZIER_TAP_URL, "VizieR", () -> complete(_VIZIER_TAP_URL, vizier, vizier_cols)),
+                (_NOIRLAB_TAP_URL, "NOIRLab's Data Lab", () -> complete(_NOIRLAB_TAP_URL, noirlab, gaia_cols)))
 
-    cached = cache === nothing ? nothing : joinpath(cache, string(hash(esa); base=16) * ".csv")
+    cached = cache === nothing ? nothing : joinpath(cache, string(hash(esa(gaia_cols, lo, hi)); base=16) * ".csv")
     text = cached !== nothing && isfile(cached) ? read(cached, String) : nothing
     if text === nothing
         _OFFLINE[] && throw(OfflineAnswerMissing("Gaia DR3"))
@@ -79,6 +83,25 @@ function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
     end
     return Table(ra=out_ra, dec=out_dec, gmag=gmag)
 end
+
+# A TAP service may cut an answer at its own row limit and say so only in a
+# VOTable: an answer of 1000 rows or more is counted, and split by magnitude
+# until each part is whole.
+function _complete_answer(ask, count, lo, hi, open)
+    text = ask(lo, hi, open)
+    rows = _line_count(text) - 1
+    rows < 1000 && return text
+    total = parse(Int, strip(split(strip(count(lo, hi, open)), '\n')[end]))
+    rows >= total && return text
+    mid = round((lo + hi) / 2; digits=3)
+    lo < mid < hi || throw(TAPServiceError("cut short at $rows of $total rows, even in G $lo to $hi"))
+    upper = _complete_answer(ask, count, mid, hi, true)
+    lower = _complete_answer(ask, count, lo, mid, open)
+    body = split(upper, '\n'; limit=2)
+    return rstrip(lower, '\n') * "\n" * (length(body) == 2 ? body[2] : "")
+end
+
+_line_count(text) = count(==('\n'), text) + !endswith(text, '\n')
 
 """
     gaia_cache_dir() -> String
@@ -358,8 +381,9 @@ can't fill a winner then, however few stars a frame holds.
 """
 function _vote_offset(det_xy, predicted, max_offset::Real; bin::Real=2.0)
     votes = Dict{Tuple{Int,Int},Vector{Tuple{Float64,Float64}}}()
-    for (px, py, _, _) in predicted, (dx_, dy_) in det_xy
-        ox, oy = dx_ - px, dy_ - py
+    grid = _cells(det_xy, max_offset)
+    for (px, py, _, _) in predicted, i in _near(grid, px, py)
+        ox, oy = det_xy[i][1] - px, det_xy[i][2] - py
         (abs(ox) <= max_offset && abs(oy) <= max_offset) || continue
         push!(get!(votes, (floor(Int, ox / bin), floor(Int, oy / bin)), Tuple{Float64,Float64}[]), (ox, oy))
     end
@@ -381,10 +405,12 @@ end
 function _match_stars(det_xy, predicted, offset, match_radius::Real)
     matches = Tuple{Float64,Float64,Float64,Float64}[]   # (x, y, ra, dec)
     used = Set{Int}()
+    grid = _cells(det_xy, match_radius)
     for (px, py, ra, dec) in predicted
         tx, ty = px + offset[1], py + offset[2]
         best, best_dist = 0, Float64(match_radius)
-        for (i, (x, y)) in enumerate(det_xy)
+        for i in _near(grid, tx, ty)
+            x, y = det_xy[i]
             d = hypot(x - tx, y - ty)
             d <= best_dist && ((best, best_dist) = (i, d))
         end
@@ -393,6 +419,29 @@ function _match_stars(det_xy, predicted, offset, match_radius::Real)
         push!(matches, (det_xy[best]..., ra, dec))
     end
     return matches
+end
+
+# Detections by square cell of side `size`, so a search within `size` of a
+# point looks at 9 cells; `_near` lists their indices in ascending order, the
+# order a scan of all detections would meet them; a point not finite meets none.
+function _cells(xy, size::Real)
+    size = max(Float64(size), 1.0)
+    cells = Dict{Tuple{Int,Int},Vector{Int}}()
+    for (i, (x, y)) in enumerate(xy)
+        isfinite(x) && isfinite(y) || continue
+        push!(get!(cells, (floor(Int, x / size), floor(Int, y / size)), Int[]), i)
+    end
+    return (cells=cells, size=size)
+end
+
+function _near(grid, x, y)
+    isfinite(x) && isfinite(y) || return Int[]
+    cx, cy = floor(Int, x / grid.size), floor(Int, y / grid.size)
+    found = Int[]
+    for a in -1:1, b in -1:1
+        append!(found, get(grid.cells, (cx + a, cy + b), Int[]))
+    end
+    return sort!(found)
 end
 
 """

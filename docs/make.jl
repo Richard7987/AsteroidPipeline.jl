@@ -84,6 +84,7 @@ makedocs(;
             "Uncertainties of positions and magnitudes" => "validation/uncertainties.md",
             "Raw frames, reduced here" => "validation/calibration.md",
             "Sets kept aside" => "validation/holdout.md",
+            "Other telescopes" => "validation/telescopes.md",
         ],
         "Reference" => [
             "Image sets and reports" => "reference/sets.md",

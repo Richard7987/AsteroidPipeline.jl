@@ -554,7 +554,8 @@ end
 """
     analyze_set(source; workdir, observatory, mpcorb=nothing, header=(;), name=nothing,
                 extract_to=dirname(source), config=nothing, reference_stars=nothing,
-                extension=nothing, offline=false, progress=(stage, fraction) -> nothing) -> NamedTuple
+                extension=nothing, offline=false, star_test=true, faint_test=true,
+                progress=(stage, fraction) -> nothing) -> NamedTuple
 
 Everything [`run_pipeline`](@ref) and the checks around it do for one image
 set — a same-field sequence of at least 3 frames — `source` being its `.zip`,
@@ -621,9 +622,13 @@ frames), `epochs`, `wcs` (refined, per frame), `image_size`, `ratios`,
 the Cramér–Rao bound for the frame's point spread and noise with the error of
 its astrometric fit, which [`ades_psv`](@ref) writes as `rmsRA` and `rmsDec`),
 `limiting_mag` (the magnitude of a source 5σ above the frames'
-sky noise in an aperture of their FWHM, `NaN` with no candidates: see
+sky noise in an aperture of their FWHM, `NaN` for an unreliable set or
+when no frame has a zero point: see
 [`below_limit`](@ref); when only 3 frames are searched, candidates fainter
-than it or with no magnitude are left out, with a warning), `known`
+than it or with no magnitude are left out, with a warning, and with more,
+the tracklets of the frame-by-frame search fainter than it unless
+`faint_test=false`: a single exposure does not show them, and those found
+are noise lined up), `known`
 (`Dict` tracklet id => name), `stacked` (the ids found only by
 [`stack_search`](@ref), which `stack=false` turns off), `unknown_ids`, `nearby`
 (`nearby_known_objects`'s check of each unknown tracklet), `neocp`
@@ -632,6 +637,12 @@ than it or with no magnitude are left out, with a warning), `known`
 `expected` (from `known_objects_in_field`, each with a `detected` flag),
 `report`, `report_kind` (`:blank`, `:candidates` or `:unreliable`) and
 `warnings`.
+
+With `star_test` (the default), the points of the frame-by-frame search
+that lie within their frame's FWHM of a Gaia star as bright as they are
+or brighter are taken out, as what the subtraction left of that star, and a
+tracklet left with fewer than 3 goes, with a warning; in a crowded field such
+points line up by chance. Tracklets found by stacking are not tested.
 """
 analyze_set(source; offline::Bool=false, kwargs...) =
     Base.ScopedValues.with(() -> _analyze_set(source; kwargs...), _OFFLINE => offline)
@@ -640,7 +651,7 @@ function _analyze_set(source; workdir::AbstractString, observatory::AbstractStri
                      header=(;), name=nothing,
                      extract_to::AbstractString=dirname(abspath(source isa AbstractString ? source : first(source))),
                      config=nothing, reference_stars=nothing, stack::Bool=true, extension=nothing,
-                     progress=(stage, fraction) -> nothing)
+                     star_test::Bool=true, faint_test::Bool=true, progress=(stage, fraction) -> nothing)
     warnings = String[]
     _KNOWN_FROM_JPL[] = false
     progress(:extract, 0.0)
@@ -712,16 +723,22 @@ function _analyze_set(source; workdir::AbstractString, observatory::AbstractStri
             stacked = Set(extra.id)
             found = vcat(found, extra)
         end
+        # per axis, the scatter of a star about the fit; unknown where only an offset was fitted
+        fit_err = [r.refined ? r.rms_arcsec / sqrt(2) : NaN for r in refined[used]]
+        measured = _measure_candidates(cleaned[used], found; reference_stars=stars, wcs=wcs[used], wcs_err=fit_err)
+        limiting_mag = measured.limit
         if !isempty(found)
-            # per axis, the scatter of a star about the fit; unknown where only an offset was fitted
-            fit_err = [r.refined ? r.rms_arcsec / sqrt(2) : NaN for r in refined[used]]
-            measured = _measure_candidates(cleaned[used], found; reference_stars=stars, wcs=wcs[used], wcs_err=fit_err)
             mags = measured.mags
-            limiting_mag = measured.limit
             candidates = Table(id=collect(found.id), frame=used[found.frame], x=collect(found.x), y=collect(found.y),
                                ra=collect(found.ra), dec=collect(found.dec), epoch=collect(found.epoch), mag=mags,
                                mag_err=measured.mag_errs, pos_err=measured.pos_errs)
-            length(used) == 3 && (candidates = _without_faint(candidates, limiting_mag, warnings))
+            star_test && (candidates = _without_stars(candidates, measured.fwhms, stars, stacked, min(3, length(used)), warnings))
+            if length(used) == 3
+                candidates = _without_faint(candidates, limiting_mag, warnings)
+            elseif faint_test
+                candidates = _without_faint(candidates, limiting_mag, warnings; spare=stacked,
+                                            why="a single exposure does not show them")
+            end
             progress(:identify, 0.75)
             known = _identify_tracklets(candidates, mpcorb, observatory, min(3, length(used)), warnings)
         end
@@ -783,17 +800,47 @@ end
 # With three frames no further frame can confirm a tracklet: noise lines up
 # by the thousand on dense fields, each one a query to the catalogues. A
 # tracklet with no magnitude in any frame shows no light above the sky in them.
-function _without_faint(candidates, limiting_mag, warnings)
+function _without_faint(candidates, limiting_mag, warnings; spare=Set{Int}(),
+                        why="with 3 frames, nothing can confirm them")
     isfinite(limiting_mag) || return candidates
     faint = below_limit(candidates, limiting_mag)
     for id in unique(candidates.id)
         all(isnan, candidates.mag[candidates.id .== id]) && push!(faint, id)
     end
+    setdiff!(faint, spare)
     isempty(faint) && return candidates
     n = length(unique(candidates.id))
     push!(warnings, "$(length(faint)) of $n candidates left out, fainter than this set's limit " *
-                    "(V $(round(limiting_mag; digits=1))): with 3 frames, nothing can confirm them")
+                    "(V $(round(limiting_mag; digits=1))): $why")
     return candidates[findall(id -> !(id in faint), candidates.id)]
+end
+
+# Points within their frame's FWHM of a Gaia star no more than 0.5 mag fainter
+# (G against the frame's band) are that star, left by the subtraction.
+function _without_stars(candidates, fwhms, stars, spare, min_points, warnings)
+    (stars === nothing || isempty(stars) || !hasproperty(stars, :gmag)) && return candidates
+    by_dec = sortperm(stars.dec)
+    decs = stars.dec[by_dec]
+    on_star = falses(length(candidates))
+    for i in eachindex(on_star)
+        m, r = candidates.mag[i], fwhms[i] / 3600
+        (candidates.id[i] in spare || !isfinite(m) || !isfinite(r)) && continue
+        ra, dec = candidates.ra[i], candidates.dec[i]
+        for k in by_dec[searchsortedfirst(decs, dec - r):searchsortedlast(decs, dec + r)]
+            if stars.gmag[k] <= m + 0.5 && hypot((stars.ra[k] - ra) * cosd(dec), stars.dec[k] - dec) < r
+                on_star[i] = true
+                break
+            end
+        end
+    end
+    any(on_star) || return candidates
+    kept = candidates[.!on_star]
+    counts = Dict{Int,Int}()
+    foreach(id -> counts[id] = get(counts, id, 0) + 1, kept.id)
+    gone = Set(id for id in unique(candidates.id) if get(counts, id, 0) < min_points && !(id in spare))
+    push!(warnings, "$(count(on_star)) points on Gaia stars as bright as they are left out, and with them " *
+                    "$(length(gone)) of $(length(unique(candidates.id))) candidates: what the subtraction left of stars")
+    return kept[findall(id -> !(id in gone), kept.id)]
 end
 
 # stack_search's tracklets that the frame-by-frame search didn't find: none

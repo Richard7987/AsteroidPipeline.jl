@@ -1,7 +1,7 @@
 """
     inject_movers(fits_paths, out_dir; n=50, mag_range=(19.0, 22.5), speed_range=(5.0, 100.0),
                   rng=default_rng(), timestamp_key=nothing, exptime_key="EXPTIME",
-                  reference_stars=nothing, margin=50) -> (paths, truth)
+                  reference_stars=nothing, margin=50, extension=nothing) -> (paths, truth)
 
 Write copies of a same-field sequence `fits_paths` into `out_dir` with `n`
 synthetic asteroids added — known truth to measure the pipeline against,
@@ -31,12 +31,18 @@ object per frame: `object`, `frame`, `ra`, `dec` (degrees, mid-exposure),
 `epoch` (Julian Date, mid-exposure — the same convention
 [`run_pipeline`](@ref) now uses), `mag`, `speed` (arcsec/hour), `x`, `y`
 (pixels in that frame). Score a run with [`injection_recovery`](@ref).
+A file whose image is not in its first extension, or tile-compressed, or in
+amplifiers, is read as [`analyze_set`](@ref) reads it ([`plain_frame`](@ref), with
+`extension`), and written as one plain image.
 """
 function inject_movers(fits_paths::AbstractVector{<:AbstractString}, out_dir::AbstractString;
                        n::Integer=50, mag_range=(19.0, 22.5), speed_range=(5.0, 100.0),
                        rng::AbstractRNG=default_rng(), timestamp_key::Union{Nothing,AbstractString}=nothing,
-                       exptime_key::AbstractString="EXPTIME", reference_stars=nothing, margin::Integer=50)
-    frames = map(fits_paths) do path
+                       exptime_key::AbstractString="EXPTIME", reference_stars=nothing, margin::Integer=50, extension=nothing)
+    # the image in any extension, tile-compressed or assembled, as analyze_set reads it
+    plain = [extension === nothing && FITS(f -> _is_image(f[1]), p, "r") ? p : plain_frame(p; outdir=mktempdir(), extension)
+             for p in fits_paths]
+    frames = map(plain) do path
         FITS(path, "r") do f
             h = read_header(f[1])
             (image=permutedims(Float64.(read(f[1]))), header=h, header_str=read_header(f[1], String),
@@ -94,7 +100,7 @@ function inject_movers(fits_paths::AbstractVector{<:AbstractString}, out_dir::Ab
     end
 
     mkpath(out_dir)
-    paths = map(enumerate(fits_paths)) do (k, path)
+    paths = map(enumerate(plain)) do (k, path)
         out = joinpath(out_dir, basename(path))
         FITS(out, "w") do f
             write(f, permutedims(images[k]); header=frames[k].header)
@@ -173,12 +179,12 @@ function injection_recovery(candidates, truth; radius::Real=1.5, min_frames::Int
     out_mag = Float64[]; out_speed = Float64[]; recovered = Bool[]; tracklet = Int[]
     for obj in objects
         t = filter(r -> r.object == obj, collect(truth))
-        pos = Dict(r.frame => (r.ra, r.dec) for r in t)
         hits = Dict{Int,Int}()
         for r in rows
-            haskey(pos, r.frame) || continue
-            p = pos[r.frame]
-            _angular_distance_arcsec(r.ra, r.dec, p[1], p[2]) <= radius &&
+            # by epoch: the frames may be numbered in another order than the truth's
+            k = findfirst(p -> abs(p.epoch - r.epoch) < 1e-5, t)
+            k === nothing && continue
+            _angular_distance_arcsec(r.ra, r.dec, t[k].ra, t[k].dec) <= radius &&
                 (hits[r.id] = get(hits, r.id, 0) + 1)
         end
         best = isempty(hits) ? (0, 0) : findmax(hits)

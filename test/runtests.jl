@@ -1387,6 +1387,11 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         end
         @test wrapped isa CompositeException
         @test AsteroidPipeline._task_root(wrapped) isa SkyBoTServiceError
+        # a request that never answers ends at the deadline as a timeout, which is retried
+        @test_throws HTTP.TimeoutError AsteroidPipeline._with_deadline(() -> sleep(30), 0.5)
+        @test AsteroidPipeline._is_service_failure(HTTP.TimeoutError("request", 1))
+        @test AsteroidPipeline._with_deadline(() -> 7, 5) == 7
+        @test_throws SkyBoTServiceError AsteroidPipeline._with_deadline(() -> throw(SkyBoTServiceError("down")), 5)
         @test_throws ArgumentError crossmatch_catalog([c], :vsx; radius=5.0, observatory="F51")
         @test_throws ArgumentError crossmatch_catalog([c], :skybot; radius=5.0, observatory="Palomar")
 
@@ -1491,6 +1496,29 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             gaia_reference_stars(3.5, -10.74, 0.05; epoch_jd=2457389.0, cache=dir)
             @test length(answered) == 4 && occursin("noirlab", answered[4])
             @test s2.dec[1] ≈ -10.74 - 20.0 * 10 / 3.6e6 && s2.dec[2:3] == [-10.75, -10.76]   # proper motion, or none (empty or NaN)
+            # the archive refusing the query (401): the next copy answers; a malformed query (400) fails at once
+            empty!(AsteroidPipeline._SERVICE_DOWN)
+            AsteroidPipeline._TAP_RESPONSES[] = (url, query) -> occursin("gea.esac", url) ?
+                throw(HTTP.StatusError(HTTP.Response(401))) : csv
+            s3 = @test_logs (:warn, r"Gaia archive") gaia_reference_stars(4.0, -10.74, 0.05; epoch_jd=2457389.0, cache=nothing)
+            @test length(s3) == 3
+            empty!(AsteroidPipeline._SERVICE_DOWN)
+            AsteroidPipeline._TAP_RESPONSES[] = (url, query) -> throw(HTTP.StatusError(HTTP.Response(400)))
+            @test_throws HTTP.StatusError gaia_reference_stars(4.5, -10.74, 0.05; epoch_jd=2457389.0, cache=nothing)
+            # a page behind status 200, as the archive gives while down: not kept, the next copy asked
+            @test_throws AsteroidPipeline.TAPServiceError AsteroidPipeline._tap_answered("\n<html><title>ESDC Archives downtime</title>")
+            @test AsteroidPipeline._is_service_failure(AsteroidPipeline.TAPServiceError("down"))
+            @test AsteroidPipeline._tap_answered(csv) == csv
+            # a service cutting answers at 1200 rows: split by magnitude until whole
+            g = round.(range(12.0, 21.0; length=5000); digits=6)
+            within(a, b, open) = filter(x -> (open ? x > a : x >= a) && x <= b, g)
+            ask(a, b, open) = "g\n" * join(string.(first(within(a, b, open), 1200)) .* "\n")
+            whole = AsteroidPipeline._complete_answer(ask, (a, b, open) -> "n\n$(length(within(a, b, open)))\n", 12.0, 21.0, false)
+            got = parse.(Float64, split(strip(whole), '\n')[2:end])
+            @test sort(got) == g
+            @test AsteroidPipeline._complete_answer(ask, (a, b, open) -> error("not asked"), 20.9, 21.0, false) == ask(20.9, 21.0, false)
+            @test_throws AsteroidPipeline.TAPServiceError AsteroidPipeline._complete_answer(
+                (a, b, open) -> "g\n" * "15.0\n"^1500, (a, b, open) -> "n\n2000\n", 15.0, 15.001, false)
         finally
             AsteroidPipeline._TAP_RESPONSES[] = recorded
             empty!(AsteroidPipeline._SERVICE_DOWN)
@@ -1697,6 +1725,8 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                                       refine_astrometry=true, reference_stars=catalog, difference_stack=true,
                                       min_sharpness=0.3)
             rec = injection_recovery(candidates, truth; radius=1.0)
+            # matched by epoch, whatever order the frames were numbered in
+            @test injection_recovery(candidates, Table(truth; frame=4 .- truth.frame); radius=1.0).recovered == rec.recovered
             # bright and clear of the field edges, but placed at random: one
             # can still land on a star or another synthetic object and be
             # masked out — a real loss, which is what this machinery measures
@@ -1712,6 +1742,30 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
                 # bright: well under a pixel (0.257″) without the astrometric fit's share
                 @test all(0 .< m.pos_errs[ok] .< 0.1)
             end
+            # a star the object passes over, in every frame: taken out with what stays still
+            r = first(filter(r -> r.recovered, collect(rec)))
+            rows = Table(filter(c -> c.id == r.tracklet, collect(candidates)))
+            row = first(filter(c -> c.frame == 1, collect(rows)))
+            sx, sy = world_to_pix(truth_wcs, [row.ra, row.dec])
+            starred = map(enumerate(injected)) do (k, p)
+                raw, header = FITS(f -> (Float64.(read(f[1])), read_header(f[1])), p)
+                for i in floor(Int, sx) - 8:ceil(Int, sx) + 8, j in floor(Int, sy) - 8:ceil(Int, sy) + 8
+                    raw[i, j] += 10^(-0.4 * (16.0 - zp)) / (2π * σ^2) * exp(-((i - sx)^2 + (j - sy)^2) / (2σ^2))
+                end
+                path = joinpath(dir, "star$k.fits")
+                FITS(f -> write(f, raw; header=header), path, "w")
+                path
+            end
+            m = AsteroidPipeline._measure_candidates(starred, rows; reference_stars=catalog)
+            i = findfirst(c -> c.frame == 1, collect(rows))
+            @test m.mags[i] ≈ r.mag atol=0.2
+            @test abs(m.mags[i] - r.mag) < 3 * m.mag_errs[i]
+            # empty apertures on white noise: the sum of independent pixels, and the annulus' share
+            noise = AsteroidPipeline._empty_aperture_noise(5.0 .* randn(400, 400), nothing, 5.0)
+            @test 1.0 < noise / (5.0 * sqrt(pi * 25)) < 1.3
+            @test isnan(AsteroidPipeline._empty_aperture_noise(randn(20, 20), nothing, 5.0))
+            # the frames' limit, with nothing to measure on them
+            @test isfinite(AsteroidPipeline._measure_candidates(injected, rows[1:0]; reference_stars=catalog).limit)
             # a run that finds nothing recovers nothing
             @test !any(injection_recovery(candidates[candidates.id .== -1], truth).recovered)
             # pixels with no data written as NaN, as Pan-STARRS1 warps have them
@@ -1737,6 +1791,18 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test length(partial_truth) == 4 * 2
             @test FITS(f -> read(f[1]), partial[2]) == FITS(f -> read(f[1]), starless)
             @test_throws ErrorException inject_movers([starless], joinpath(dir, "none"); reference_stars=catalog)
+            # tile-compressed, the image in the second extension: read as analyze_set reads it
+            packed = map(enumerate(paths)) do (k, p)
+                raw, header = FITS(f -> (Float32.(read(f[1])), read_header(f[1])), p)
+                path = joinpath(dir, "packed$k.fits.fz")
+                FITS(f -> write(f, raw; header=header), path * "[compress]", "w")
+                path
+            end
+            unpacked, packed_truth = inject_movers(packed, joinpath(dir, "packed"); n=4, rng=Xoshiro(3),
+                                                   reference_stars=catalog, margin=60)
+            @test length(packed_truth) == 4 * 3
+            @test basename.(unpacked) == ["packed$k.fits" for k in 1:3]
+            @test FITS(f -> ndims(f[1]) == 2 && frame_epoch(read_header(f[1])) ≈ truth.epoch[truth.frame .== 1][1], unpacked[1])
             # headers 25″ off, past one frame's search: the frames are fitted together,
             # and the objects land where they are on the sky
             off = map(enumerate(paths)) do (k, p)
@@ -1961,6 +2027,22 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
         empty!(said)
         @test AsteroidPipeline._without_faint(three, NaN, said) === three
         @test isempty(AsteroidPipeline._without_faint(three, 10.0, said).id)
+        # more frames: stacked tracklets are spared
+        empty!(said)
+        @test AsteroidPipeline._without_faint(three, 21.0, said; spare=Set([2]), why="a single exposure does not show them").id == [1, 1, 2, 2]
+        @test only(said) == "1 of 3 candidates left out, fainter than this set's limit (V 21.0): a single exposure does not show them"
+
+        # points on a Gaia star as bright as they are: the star's; a tracklet left short goes
+        gaia = AsteroidPipeline.Table(ra=[10.0, 10.01], dec=[0.0, 0.0], gmag=[17.0, 22.0])
+        on = AsteroidPipeline.Table(id=[1, 1, 1, 2, 2, 2, 2, 3, 3, 3], ra=[10.0, 10.1, 10.2, 10.01, 10.0003, 10.3, 10.4, 10.0, 10.5, 10.6],
+                                    dec=zeros(10), mag=[17.2, 17.0, 17.0, 20.0, 17.6, 20.0, 20.0, 17.0, 17.0, 17.0])
+        empty!(said)
+        kept = AsteroidPipeline._without_stars(on, fill(2.0, 10), gaia, Set([3]), 3, said)
+        # 1 loses a point and goes; 2 keeps three (22 is fainter, 17.6 within 0.5 of 17); 3 is stacked
+        @test kept.id == [2, 2, 2, 3, 3, 3]
+        @test kept.ra[1:3] == [10.01, 10.3, 10.4]
+        @test only(said) == "2 points on Gaia stars as bright as they are left out, and with them 1 of 3 candidates: what the subtraction left of stars"
+        @test AsteroidPipeline._without_stars(on, fill(2.0, 10), nothing, Set{Int}(), 3, said) === on
 
         # headers further off than one frame's refinement searches: still measured
         far = mktempdir()

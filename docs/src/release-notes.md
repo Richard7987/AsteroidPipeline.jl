@@ -5,6 +5,60 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Added**
+
+- [Validation: other telescopes](validation/telescopes.md): 15 public sets of
+  ZTF, Las Cumbres Observatory and DECam searched with the defaults, 100
+  synthetic asteroids added to each. Half are found frame by frame 0.82–1.18
+  mag brighter than the frames' limit, as on Pan-STARRS1. Catalogued
+  asteroids are found as often as synthetic ones. The position uncertainties
+  are right on synthetic asteroids, and against JPL on DECam and Las Cumbres
+  but not on ZTF. With the two new tests and whole Gaia answers (below),
+  ZTF leaves 0.3 unidentified tracklets per set and Las Cumbres 1.0, within
+  the 2 expected; one DECam set in the galactic bulge leaves 128 and finds 2
+  of its 100 synthetic asteroids.
+
+**Changed**
+
+- Candidate photometry takes out what lies still under a candidate (a star,
+  a galaxy), measured where it was in the frames its tracklet has moved
+  clear of. The aperture's noise is measured in empty places of the frame.
+  On Pan-STARRS1, the magnitude errors over `mag_err` went from a deviation
+  of 2.35 to 1.06 ([Uncertainties](validation/uncertainties.md)).
+- The limiting magnitude is measured on every frame. It was `NaN` for a set
+  with no candidates.
+- [`analyze_set`](@ref) takes out frame-by-frame points within their frame's
+  FWHM of a Gaia star no more than 0.5 mag fainter than the point, and a
+  tracklet left with fewer than 3 (`star_test=true`): what the subtraction
+  left of a star. It takes out frame-by-frame tracklets fainter than the
+  frames' limit, as it did on 3-frame sets (`faint_test=true`). Neither
+  touches a tracklet found by stacking. On 11 Pan-STARRS1 sets with 100
+  synthetic asteroids each, 583 of 583 recovered, 24 of 24 catalogued
+  identified, other tracklets 11 → 3 ([Other telescopes](validation/telescopes.md)).
+- Gaia stars are matched to a frame's detections, for the astrometric fit,
+  the header's offset and the zero point, among the detections near each
+  star only, with the same result: the zero point of a ZTF frame with
+  213,605 Gaia stars went from 160 s to 2 s. A crowded field's whole
+  catalogue had made it most of a set's time.
+
+**Fixed**
+
+- [`inject_movers`](@ref) reads a frame whose image is in a later or
+  tile-compressed extension, as [`analyze_set`](@ref) does.
+- [`injection_recovery`](@ref) matches points by epoch, not by frame number.
+  Frames whose names do not sort in time order were counted as not
+  recovered.
+- SkyBoT and JPL requests end at a deadline of their own and are retried. A
+  TLS read could wait for hours despite HTTP.jl's idle timeout.
+- A copy of Gaia DR3 that refuses (401, 403, 429), or answers with an HTML
+  page behind a success status, is passed over for the next copy. Such a
+  page is no longer cached as a catalogue.
+- A Gaia DR3 answer cut at a service's row limit is completed: an answer of
+  1000 rows or more is counted and, if short, asked again in parts by
+  magnitude. Three crowded fields had come back with 50,000 rows, part of
+  the field without stars. Answers cached before may be cut; deleting
+  [`gaia_cache_dir`](@ref)`()` asks for them again.
+
 ## 1.7.0 — 2026-11-21
 
 **Added**
