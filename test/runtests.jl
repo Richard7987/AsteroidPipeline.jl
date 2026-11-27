@@ -1504,6 +1504,16 @@ push!(lost.fields, AsteroidPipeline._solved_field(150.0, 10.0, other, scale, 0.0
             @test_throws AsteroidPipeline.TAPServiceError AsteroidPipeline._tap_answered("\n<html><title>ESDC Archives downtime</title>")
             @test AsteroidPipeline._is_service_failure(AsteroidPipeline.TAPServiceError("down"))
             @test AsteroidPipeline._tap_answered(csv) == csv
+            # a service cutting answers at 1200 rows: split by magnitude until whole
+            g = round.(range(12.0, 21.0; length=5000); digits=6)
+            within(a, b, open) = filter(x -> (open ? x > a : x >= a) && x <= b, g)
+            ask(a, b, open) = "g\n" * join(string.(first(within(a, b, open), 1200)) .* "\n")
+            whole = AsteroidPipeline._complete_answer(ask, (a, b, open) -> "n\n$(length(within(a, b, open)))\n", 12.0, 21.0, false)
+            got = parse.(Float64, split(strip(whole), '\n')[2:end])
+            @test sort(got) == g
+            @test AsteroidPipeline._complete_answer(ask, (a, b, open) -> error("not asked"), 20.9, 21.0, false) == ask(20.9, 21.0, false)
+            @test_throws AsteroidPipeline.TAPServiceError AsteroidPipeline._complete_answer(
+                (a, b, open) -> "g\n" * "15.0\n"^1500, (a, b, open) -> "n\n2000\n", 15.0, 15.001, false)
         finally
             AsteroidPipeline._TAP_RESPONSES[] = recorded
             empty!(AsteroidPipeline._SERVICE_DOWN)

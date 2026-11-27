@@ -5,6 +5,14 @@ from the version picker at the top right.
 
 ## Unreleased
 
+**Fixed**
+
+- A Gaia DR3 answer cut at a service's row limit is completed: an answer of
+  1000 rows or more is counted and, if short, asked again in parts by
+  magnitude. Three crowded fields had come back with 50,000 rows, part of
+  the field without stars. Answers cached before may be cut; deleting
+  [`gaia_cache_dir`](@ref)`()` asks for them again.
+
 ## 1.7.0 — 2026-11-21
 
 **Added**

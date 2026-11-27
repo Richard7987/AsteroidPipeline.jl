@@ -35,22 +35,26 @@ function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
     # any service.
     cone(racol, deccol) = "CONTAINS(POINT('ICRS', $racol, $deccol), " *
                           "CIRCLE('ICRS', $ra, $dec, $radius_deg)) = 1"
-    esa = "SELECT ra AS ra_deg, dec AS dec_deg, pmra AS pm_ra, pmdec AS pm_dec, " *
-          "phot_g_mean_mag AS g FROM gaiadr3.gaia_source " *
-          "WHERE $(cone("ra", "dec")) AND phot_g_mean_mag BETWEEN $lo AND $hi"
-    vizier = "SELECT RA_ICRS AS ra_deg, DE_ICRS AS dec_deg, pmRA AS pm_ra, pmDE AS pm_dec, " *
-             "Gmag AS g FROM \"I/355/gaiadr3\" " *
-             "WHERE $(cone("RA_ICRS", "DE_ICRS")) AND Gmag BETWEEN $lo AND $hi"
+    # the upper part of a split range leaves its lower end out, so no star is in two
+    mags(col, a, b, open) = open ? "$col > $a AND $col <= $b" : "$col BETWEEN $a AND $b"
+    esa(sel, a, b, open=false) = "SELECT $sel FROM gaiadr3.gaia_source " *
+          "WHERE $(cone("ra", "dec")) AND $(mags("phot_g_mean_mag", a, b, open))"
+    vizier(sel, a, b, open=false) = "SELECT $sel FROM \"I/355/gaiadr3\" " *
+             "WHERE $(cone("RA_ICRS", "DE_ICRS")) AND $(mags("Gmag", a, b, open))"
     # Data Lab's ADQL has no CONTAINS on this table; q3c is its own cone search
-    noirlab = "SELECT ra AS ra_deg, dec AS dec_deg, pmra AS pm_ra, pmdec AS pm_dec, " *
-              "phot_g_mean_mag AS g FROM gaia_dr3.gaia_source " *
+    noirlab(sel, a, b, open=false) = "SELECT $sel FROM gaia_dr3.gaia_source " *
               "WHERE q3c_radial_query(ra, dec, $ra, $dec, $radius_deg) = 't' " *
-              "AND phot_g_mean_mag BETWEEN $lo AND $hi"
-    services = ((_GAIA_ARCHIVE_TAP_URL, "the Gaia archive", () -> _tap_csv(_GAIA_ARCHIVE_TAP_URL, esa)),
-                (_VIZIER_TAP_URL, "VizieR", () -> _tap_csv(_VIZIER_TAP_URL, vizier)),
-                (_NOIRLAB_TAP_URL, "NOIRLab's Data Lab", () -> _tap_csv(_NOIRLAB_TAP_URL, noirlab)))
+              "AND $(mags("phot_g_mean_mag", a, b, open))"
+    gaia_cols = "ra AS ra_deg, dec AS dec_deg, pmra AS pm_ra, pmdec AS pm_dec, phot_g_mean_mag AS g"
+    vizier_cols = "RA_ICRS AS ra_deg, DE_ICRS AS dec_deg, pmRA AS pm_ra, pmDE AS pm_dec, Gmag AS g"
+    complete(url, query, cols) = _complete_answer((a, b, open) -> _tap_csv(url, query(cols, a, b, open)),
+                                                  (a, b, open) -> _tap_csv(url, query("COUNT(*) AS n", a, b, open)),
+                                                  lo, hi, false)
+    services = ((_GAIA_ARCHIVE_TAP_URL, "the Gaia archive", () -> complete(_GAIA_ARCHIVE_TAP_URL, esa, gaia_cols)),
+                (_VIZIER_TAP_URL, "VizieR", () -> complete(_VIZIER_TAP_URL, vizier, vizier_cols)),
+                (_NOIRLAB_TAP_URL, "NOIRLab's Data Lab", () -> complete(_NOIRLAB_TAP_URL, noirlab, gaia_cols)))
 
-    cached = cache === nothing ? nothing : joinpath(cache, string(hash(esa); base=16) * ".csv")
+    cached = cache === nothing ? nothing : joinpath(cache, string(hash(esa(gaia_cols, lo, hi)); base=16) * ".csv")
     text = cached !== nothing && isfile(cached) ? read(cached, String) : nothing
     if text === nothing
         _OFFLINE[] && throw(OfflineAnswerMissing("Gaia DR3"))
@@ -79,6 +83,25 @@ function gaia_reference_stars(ra::Real, dec::Real, radius_deg::Real;
     end
     return Table(ra=out_ra, dec=out_dec, gmag=gmag)
 end
+
+# A TAP service may cut an answer at its own row limit and say so only in a
+# VOTable: an answer of 1000 rows or more is counted, and split by magnitude
+# until each part is whole.
+function _complete_answer(ask, count, lo, hi, open)
+    text = ask(lo, hi, open)
+    rows = _line_count(text) - 1
+    rows < 1000 && return text
+    total = parse(Int, strip(split(strip(count(lo, hi, open)), '\n')[end]))
+    rows >= total && return text
+    mid = round((lo + hi) / 2; digits=3)
+    lo < mid < hi || throw(TAPServiceError("cut short at $rows of $total rows, even in G $lo to $hi"))
+    upper = _complete_answer(ask, count, mid, hi, true)
+    lower = _complete_answer(ask, count, lo, mid, open)
+    body = split(upper, '\n'; limit=2)
+    return rstrip(lower, '\n') * "\n" * (length(body) == 2 ? body[2] : "")
+end
+
+_line_count(text) = count(==('\n'), text) + !endswith(text, '\n')
 
 """
     gaia_cache_dir() -> String
